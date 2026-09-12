@@ -215,7 +215,7 @@ export const spec = {
     power_high: 'rpv', period_short: 'rpv', oprm: 'rpv', instability: 'rpv',
     dome_press_high: 'rpv', level_low: 'rpv', level_high: 'rpv', srv_open: 'srv', clad_temp: 'rpv',
     recirc_low: 'rcp',
-    turbine_trip: 'gen',
+    turbine_trip: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
     cont_press_high: 'rpv', h2_critical: 'rpv',
   },
 

@@ -170,7 +170,7 @@ export const spec = {
     pzr_press_low: 'pzr', pzr_press_high: 'pzr', pzr_level_low: 'pzr', porv_open: 'pzr',
     sg_level_low: 'sg', sg_level_high: 'sg', sg_press_high: 'sg',
     rcp_lost: 'rcp',
-    turbine_trip: 'gen',
+    turbine_trip: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
   },
 
   mimic: 'mimic-pwr',

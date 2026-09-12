@@ -6,6 +6,7 @@
 
 import { Rng } from '../rng.js';
 import { clamp } from '../sim/constants.js';
+import { SEVERITY } from '../sim/trips.js';
 
 /**
  * Wert einer stückweise linearen Kurve. Stützstellen sind {t, mw}; zwischen
@@ -88,6 +89,51 @@ export class Scenario {
     for (const e of this.events) if (!e.fired && e.t > t) return e;
     return null;
   }
+}
+
+/**
+ * Meldetafel-Kacheln für die Fail-Bedingung 'grid_deviation' (siehe
+ * RunState.checkFail): ohne die stand nirgends, dass gerade eine Uhr läuft --
+ * "Abweichung" in der Statuszeile lief die ganze Zeit sichtbar mit, aber ohne
+ * jede Warnfarbe oder Meldung. Ein Spieler, der die Netzanforderung überholt
+ * (Leistung liefern, obwohl 0 MW verlangt sind), fiel nach der stillen Frist
+ * einfach aus der Runde -- kein Alarm, kein Ton, kein Log-Eintrag zuvor.
+ *
+ * Zwei Stufen wie bei orm_low/orm_critical: WARN sobald die Abweichung
+ * überhaupt übers Limit geht, TRIP als letzte Warnung kurz vor der Frist
+ * (`for_s`), mit Vorlauf genug, um noch reagieren zu können (Leistung
+ * zurücknehmen oder SCRAM -- SCRAM setzt die Frist ohnehin auf null, siehe
+ * checkFail()). `test()` prüft dieselbe Bedingung wie checkFail() selbst,
+ * einschließlich des SCRAM-Ausnahmefalls, sonst bliebe die Kachel bei einer
+ * gewollten Abschaltung fälschlich stehen.
+ *
+ * Gehört hierher statt zu den Reaktortypen: die Bedingung kommt aus der
+ * Szenariodatei, nicht aus der Anlage. Engine/TripSystem kennen dafür
+ * opts.extraTrips (siehe sim/engine.js).
+ *
+ * @param {object} def  geladene Szenario-JSON (Scenario.def)
+ * @returns {object[]}  0 oder 2 Eintraege fuer TripSystem
+ */
+export function gridDeviationTrips(def) {
+  const f = (def.fail || []).find((x) => x.type === 'grid_deviation');
+  if (!f) return [];
+  const mw = f.mw;
+  const forS = f.for_s || 60;
+  // Vorlauf vor der harten Frist: 90 s, aber nie mehr als die Haelfte der
+  // Frist selbst -- sonst wuerde die TRIP-Kachel bei einer kurzen Frist (z.B.
+  // 150 s) schon fast beim Ueberschreiten selbst aufleuchten.
+  const tripDelay = Math.max(1, forS - Math.min(90, forS * 0.5));
+  const cond = (s) => !s.scram.active && Math.abs(s.P_e - s.P_demand) > mw;
+  return [
+    {
+      id: 'grid_deviation_warn', key: 'alarm_grid_deviation_warn', severity: SEVERITY.WARN,
+      test: cond, delay_s: 5,
+    },
+    {
+      id: 'grid_deviation_trip', key: 'alarm_grid_deviation_trip', severity: SEVERITY.TRIP,
+      test: cond, delay_s: tripDelay,
+    },
+  ];
 }
 
 /**

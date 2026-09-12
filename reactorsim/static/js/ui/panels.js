@@ -360,7 +360,12 @@ export function buildPanels(engine, render, geiger) {
     if (ev.key === 'Escape' && !alarmHelp.hidden) alarmHelp.hidden = true;
   });
 
-  const annun = new Annunciator($('#rs-annun'), $('#rs-log'), sp.trips || [], showAlarmHelp);
+  // engine.trips.defs statt sp.trips: enthaelt dieselbe Liste PLUS die
+  // Szenario-eigenen Meldungen (opts.extraTrips, siehe sim/engine.js) -- ohne
+  // die hier mitzugeben, haette z.B. "Netzanforderung verfehlt" keine Kachel
+  // auf der Meldetafel, obwohl die Engine sie laengst mitfuehrt (Hupe und
+  // Protokolleintrag kaemen trotzdem, nur die blinkende Kachel fehlte).
+  const annun = new Annunciator($('#rs-annun'), $('#rs-log'), engine.trips.defs, showAlarmHelp);
   const horn = new Horn();
   let hornNext = 0;
 
@@ -391,6 +396,17 @@ export function buildPanels(engine, render, geiger) {
 
   render.add('text', () => {
     const d = engine.derive();
+    // Einmal geholt, dreifach gebraucht (Abweichungs-Farbe unten, Meldetafel,
+    // Alarm-Schwere) -- baut sonst denselben Array drei Mal im selben Bild.
+    const tiles = engine.trips.tiles();
+    const isTileActive = (tile) => tile.tile === 'new' || tile.tile === 'ack';
+    // Hoechste anstehende Schwere unter den gegebenen Kachel-IDs, oder 0 --
+    // fuer die Farbe einzelner Werte (z.B. "Abweichung"), die an einer
+    // Meldung haengen, aber nicht selbst eine Panel-Grenzwertprobe sind.
+    const severityOf = (...ids) => ids.reduce((worst, id) => {
+      const tile = tiles.find((tl) => tl.id === id);
+      return tile && isTileActive(tile) ? Math.max(worst, tile.severity) : worst;
+    }, 0);
 
     // Auch die groß gedruckten Leitwerte in der Statuszeile bekommen eine
     // Zustandsfarbe statt fest verdrahtetem Blau -- sonst sieht eine Anlage,
@@ -401,7 +417,12 @@ export function buildPanels(engine, render, geiger) {
     put('power_e', num(s.P_e, 0) + U('unit_mwe'),
         s.turbineTripped ? 2 : (!s.breaker && s.P_demand > 0 ? 1 : 0));
     put('demand', num(s.P_demand, 0) + U('unit_mwe'));
-    put('deviation', (d.deviation >= 0 ? '+' : '') + num(d.deviation, 0) + U('unit_mwe'));
+    // Farbe kommt von der Meldetafel-Kachel (siehe game/scenario.js,
+    // gridDeviationTrips()), nicht von einer eigenen Schwelle hier: nur ein
+    // Szenario mit grid_deviation-Fail hat die Kacheln ueberhaupt, sonst
+    // liefert severityOf() 0 und die Anzeige bleibt ungefaerbt wie bisher.
+    put('deviation', (d.deviation >= 0 ? '+' : '') + num(d.deviation, 0) + U('unit_mwe'),
+        severityOf('grid_deviation_warn', 'grid_deviation_trip'));
     put('t_avg', num(d.T_avg - 273.15, 1) + U('unit_celsius'));
     put('t_hot', num(d.T_hot - 273.15, 1) + U('unit_celsius'));
     put('t_cold', num(d.T_cold - 273.15, 1) + U('unit_celsius'));
@@ -499,12 +520,12 @@ export function buildPanels(engine, render, geiger) {
     promptNode.hidden = !s.promptCritical;
 
     // Meldetafel und Protokoll
-    annun.update(engine.trips.tiles());
+    annun.update(tiles);
     const entries = engine.drainLog();
     if (entries.length) annun.log(entries);
 
     let worst = 0, worstKey = null;
-    for (const tile of engine.trips.tiles()) {
+    for (const tile of tiles) {
       if (tile.tile === 'new' || tile.tile === 'ack') {
         if (tile.severity > worst) { worst = tile.severity; worstKey = tile.key; }
       }

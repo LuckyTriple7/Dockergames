@@ -204,7 +204,7 @@ export const spec = {
     void_positive: 'core', graphite_hot: 'core', axial_tilt: 'core', clad_temp: 'core',
     drum_press_high: 'drum', drum_level_low: 'drum', drum_level_high: 'drum',
     mcp_cavitation: 'rcp',
-    turbine_trip: 'gen',
+    turbine_trip: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
   },
 
   // Der Schalter im Kern-Panel heisst hier nach dem, was er wirklich regelt.

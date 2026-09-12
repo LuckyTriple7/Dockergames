@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.0.69
+
+- 🐛 **"Netzanforderung zu lange verfehlt" schlug ohne jede Vorwarnung zu.**
+  Betrifft 6 von 9 Szenarien (bwr_flow_control, bwr_instability,
+  pwr_load_follow, pwr_turbine_trip, rbmk_cold_start, rbmk_night_shift).
+  Die Abweichung stand zwar staendig sichtbar in der Statuszeile
+  ("Abweichung"), aber ohne Warnfarbe, Meldetafel-Eintrag oder Hupe -- die
+  interne Frist (600s bei den meisten, teils 150-300s) lief unsichtbar mit,
+  bis die Schicht ohne Ankuendigung abgebrochen war.
+  - Neue Szenario-eigene Meldetafel-Kacheln (`game/scenario.js`,
+    `gridDeviationTrips()`): WARN sobald die Abweichung das Fail-Limit
+    ueberhaupt reisst, TRIP als letzte Warnung rund 90s vor der harten
+    Frist (bzw. die Haelfte der Frist bei kurzen Fenstern) -- inklusive
+    Hupe, Protokolleintrag und Hilfetext, genau wie jede andere Meldung.
+    Nimmt dieselbe SCRAM-Ausnahme wie die Fail-Bedingung selbst (`RunState.
+    checkFail()`): eine bewusste Abschaltung zaehlt nicht als Verfehlen.
+  - Engine kennt dafuer `opts.extraTrips` (`sim/engine.js`) -- Meldungen, die
+    am Szenario haengen statt am Reaktortyp, ohne `spec.trips` (Modul-weit,
+    nicht pro Runde) dafuer anzufassen.
+  - "Abweichung" im Netz-Panel faerbt sich jetzt mit derselben Kachel-Schwere.
+  - Kleinere Optimierung nebenbei: `engine.trips.tiles()` lief im Renderlauf
+    bisher dreimal je Bild, jetzt einmal und wiederverwendet.
+  - Per Smoke-Test durchgespielt: Warn-/Trip-Zeitpunkt, SCRAM-Ausnahme,
+    Clear-Uebergang -- alle drei bestaetigt korrekt.
+
 ## 0.0.68
 
 - ✨ **Auswertung zeigt jetzt Minimum DNBR/CPR und Abschaltreserve.** Beide

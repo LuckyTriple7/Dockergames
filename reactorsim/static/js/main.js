@@ -9,6 +9,7 @@ import { Loop } from './loop.js';
 import { createEngine } from './sim/engine.js';
 import { getPlant, isAvailable } from './plants/index.js';
 import { Session, PHASE } from './game/session.js';
+import { gridDeviationTrips } from './game/scenario.js';
 import { api } from './net/api.js';
 import { save as saveGame, load as loadGame } from './net/persist.js';
 import { GLOSSARY } from './ui/glossary.js';
@@ -963,6 +964,10 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   app.endShown = false;
   app.engine = createEngine(plant, {
     n: isColdStart ? 1e-6 : 1.0, cold: isColdStart, seed: scenarioDef ? scenarioDef.seed : 1,
+    // Meldetafel-Vorwarnung fuer die szenarioeigene Fail-Bedingung
+    // 'grid_deviation' (siehe game/scenario.js) -- ohne sie fiel eine Runde
+    // bisher ganz ohne Alarm aus, sobald die Anforderung laenger verfehlt war.
+    extraTrips: scenarioDef ? gridDeviationTrips(scenarioDef) : [],
   });
   app.session = new Session(app.engine, scenarioDef);
   app.session.onEnd = (result, failed) => showDebrief(result, failed);

@@ -77,7 +77,12 @@ export function createEngine(plant, opts = {}) {
   const kin = makeKinetics(betaEff, spec.Lambda);
   const s = createState(spec, { ...opts, kin, burnup });
   const rx = makeReactivity(spec, hooks);
-  const trips = new TripSystem(spec.trips || []);
+  // opts.extraTrips: Meldungen, die nicht am Reaktortyp haengen, sondern am
+  // laufenden Szenario (siehe game/scenario.js, gridDeviationTrips()) --
+  // spec.trips bleibt dafuer unangetastet, sonst wuerden sie sich beim
+  // naechsten Rundenstart am selben Typ ansammeln (spec ist ein Modul-
+  // weites Objekt, keine Kopie je Runde).
+  const trips = new TripSystem([...(spec.trips || []), ...(opts.extraTrips || [])]);
 
   // Wärmekapazitäten und Durchgänge aus den Zeitkonstanten zurückgerechnet --
   // die Literatur nennt Zeitkonstanten, nicht kW/K.
