@@ -2,7 +2,7 @@ FROM python:3.14-alpine
 
 LABEL org.opencontainers.image.title="ReactorSim"
 LABEL org.opencontainers.image.description="Nuclear power plant control room simulation in the browser"
-LABEL org.opencontainers.image.source="https://github.com/LuckyTriple7/HA-AddOns"
+LABEL org.opencontainers.image.source="https://github.com/LuckyTriple7/Dockergames"
 LABEL org.opencontainers.image.licenses="MIT"
 
 RUN apk add --no-cache curl
