@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.0.71
+
+- ✨ **Automatischer Helfer bei Meldungen** (`game/helper.js`), optional,
+  Standard AN (Häkchen im Startbildschirm, "Automatische Störungshilfe").
+  Ein Klick auf eine Meldetafel-Kachel öffnet wie bisher die Hilfe -- jetzt
+  mit einem zusätzlichen Knopf "Problem beheben", der Bedienhandlungen aus
+  dem "Konkret tun"-Text selbst ausführt: Blockventil zu, ausgefallene Pumpe
+  zuschalten, Regler auf Automatik, Turbine wieder zuschalten, je nachdem was
+  die Meldung verlangt. Jede ausgeführte Handlung erscheint einzeln im Dialog
+  UND im Ereignisprotokoll ("Blockventil geschlossen — Leck am Abblaseventil
+  gestoppt." statt nur "behoben").
+  Eine Handlung fasst der Helfer NIE an, bei keinem der drei Typen: die
+  Schnellabschaltung selbst (SCRAM/RESA/AZ-5, siehe `sim/trips.js` -- "Die
+  Schnellabschaltung bleibt allein Sache des Bedieners"). Verlangt eine
+  Meldung nur diesen einen Handgriff (Leistungsauslösung, kurze Periode, ...),
+  bleibt sie deshalb "lässt sich nicht automatisch beheben" -- der Hilfetext
+  daneben sagt, was zu tun ist, aber drücken muss der Spieler selbst.
+  Beim RBMK ist das zugleich sicherheitsrelevant: bei niedriger Abschalt-
+  reserve (ORM) führt AZ-5 in den ersten Sekunden POSITIVE Reaktivität ein
+  (Graphitspitzen, siehe `plants/rbmk.js`, 26. April 1986) -- der Helfer fährt
+  die Stäbe stattdessen von Hand ein, genau wie es `alarm_orm_critical_help`
+  selbst vorschreibt.
+  Zweite Ausnahme unabhängig von der SCRAM-Regel: **SWR, Wasserstoff
+  kritisch** bleibt absichtlich unbehebbar. Bei der Auslöseschwelle dieser
+  Meldung (40 kg) steht die Wasserstoffmenge längst über den 25 kg, ab denen
+  Venten in `bwr.js` die Explosion selbst auslöst -- eine Abwägung mit
+  Ermessen, kein Knopf, der sie blind trifft.
+  Nicht jede Meldung ist sonst automatisierbar (ein klemmender Stab, axiale
+  Xenon-Schieflage) -- auch dort sagt der Dialog "lässt sich nicht automatisch
+  beheben" statt gar nichts zu tun.
+
 ## 0.0.70
 
 - 🐛 **Turbine wieder zuschalten konnte den Kern zerstören (DWR).** Gefunden

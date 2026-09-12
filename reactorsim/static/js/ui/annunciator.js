@@ -54,7 +54,11 @@ export class Annunciator {
       }, [
         el('time', { text: clock(e.t) }),
         el('span', {
-          text: t(e.key) + (e.kind ? ' — ' + t('event_' + e.kind) : '')
+          // e.params: fuer Eintraege, deren Text einen Platzhalter braucht
+          // (z.B. der Helfer, siehe game/helper.js) -- t() ignoriert ein
+          // fehlendes zweites Argument, jeder bisherige Aufrufer bleibt also
+          // unveraendert.
+          text: t(e.key, e.params) + (e.kind ? ' — ' + t('event_' + e.kind) : '')
                 + (e.cause ? ' (' + t(e.cause === 'manual' ? 'state_manual' : e.cause) + ')' : ''),
         }),
       ]);

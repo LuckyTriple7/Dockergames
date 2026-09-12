@@ -14,6 +14,7 @@ import {
   autoSwitch, station, slider, buttonGroup, jogButtons, pumpRow, isControlsPaused,
 } from './controls.js';
 import { MIMICS } from './mimic.js';
+import { runHelper } from '../game/helper.js';
 
 const U = (key) => ' ' + t(key);
 
@@ -43,7 +44,7 @@ function coreFlowSeverity(id, kgs) {
   return undefined;
 }
 
-export function buildPanels(engine, render, geiger) {
+export function buildPanels(engine, render, geiger, helperEnabled) {
   const s = engine.state;
   const sp = engine.spec;
   const ctx = engine.ctx;
@@ -348,16 +349,52 @@ export function buildPanels(engine, render, geiger) {
   // erklären sich schon über ihren Text selbst, has() unterscheidet das von
   // einer wirklich fehlenden Übersetzung (die t() sonst als Schlüsselnamen
   // ausgibt -- unlesbar im Fenster).
+  const fixBtn = $('#rs-alarm-help-fix');
+  const fixResult = $('#rs-alarm-fix-result');
+  const fixMsg = $('#rs-alarm-fix-msg');
+  const fixList = $('#rs-alarm-fix-list');
+  // Die zuletzt gezeigte Meldung -- der Fix-Knopf braucht ihre id, wenn er
+  // gedrueckt wird, und kein zweites Argument passt hier ohne die bestehende
+  // onSelect(def)-Schnittstelle der Annunciator-Klasse anzufassen.
+  let helpDef = null;
+
   const showAlarmHelp = (def) => {
+    helpDef = def;
     const helpKey = def.key + '_help';
     setText($('#rs-alarm-help-title'), t(def.key));
     setText($('#rs-alarm-help-text'), has(helpKey) ? t(helpKey) : t('alarm_help_none'));
+    fixResult.hidden = true;
+    fixList.replaceChildren();
+    setText(fixMsg, '');
+    // Nur echte Meldungen haben eine id (ein Protokolleintrag wie "SCRAM
+    // ausgeloest" hat keine, siehe sim/trips.js) -- und nur wenn der Spieler
+    // die Hilfe im Startbildschirm eingeschaltet hat (Standard: an).
+    fixBtn.hidden = !helperEnabled || !def.id;
     alarmHelp.hidden = false;
   };
   $('#rs-alarm-help-close').addEventListener('click', () => { alarmHelp.hidden = true; });
   alarmHelp.addEventListener('click', (ev) => { if (ev.target === alarmHelp) alarmHelp.hidden = true; });
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && !alarmHelp.hidden) alarmHelp.hidden = true;
+  });
+
+  // Automatischer Helfer (game/helper.js): fuehrt die im Hilfetext oben
+  // beschriebene Bedienhandlung selbst aus und sagt genau, was er getan hat
+  // -- als Liste hier im Dialog UND als Protokolleintraege in der Meldetafel
+  // (annun.log() weiter unten definiert; der Klick kommt immer erst, NACHDEM
+  // buildPanels() zurueckgekehrt ist, also existiert annun laengst).
+  fixBtn.addEventListener('click', () => {
+    if (!helpDef || !helpDef.id) return;
+    const { status, actions } = runHelper(engine, sp.id, helpDef.id);
+    fixResult.hidden = false;
+    if (status === 'fixed') {
+      setText(fixMsg, t('alarm_fix_heading'));
+      fixList.replaceChildren(...actions.map((a) => el('li', null, [t(a.key, a.params)])));
+      annun.log(actions.map((a) => ({ t: s.t_sim, key: a.key, params: a.params, severity: 1 })));
+    } else {
+      fixList.replaceChildren();
+      setText(fixMsg, t(status === 'none' ? 'alarm_fix_none' : 'alarm_fix_unfixable'));
+    }
   });
 
   // engine.trips.defs statt sp.trips: enthaelt dieselbe Liste PLUS die

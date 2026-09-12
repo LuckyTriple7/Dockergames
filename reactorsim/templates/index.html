@@ -77,6 +77,13 @@
       {{ t.opt_cold_start }}
     </label>
 
+    <!-- Standard AN (siehe main.js, prefs.helper !== false) -- die Hilfe soll
+         beim ersten Spiel schon greifen, nicht erst nach bewusstem Einschalten. -->
+    <label class="rs-cold-start">
+      <input type="checkbox" id="rs-helper-toggle">
+      {{ t.opt_helper }}
+    </label>
+
     <div class="rs-start-actions">
       <button class="rs-btn rs-btn-primary" id="rs-start-go" type="button" disabled>{{ t.start_free_play }}</button>
     </div>
@@ -475,7 +482,18 @@
   <div class="rs-modal-box rs-modal-wide">
     <h2 id="rs-alarm-help-title"></h2>
     <p id="rs-alarm-help-text"></p>
-    <button type="button" class="rs-btn rs-btn-primary" id="rs-alarm-help-close">{{ t.btn_close }}</button>
+    <!-- Ergebnis des automatischen Helfers (game/helper.js) -- verdeckt, bis
+         der Fix-Knopf unten einmal gedrueckt wurde, siehe panels.js. -->
+    <div class="rs-alarm-fix" id="rs-alarm-fix-result" hidden>
+      <p class="rs-ctl-hint" id="rs-alarm-fix-msg"></p>
+      <ul class="rs-log" id="rs-alarm-fix-list"></ul>
+    </div>
+    <div class="rs-modal-actions">
+      <!-- Nur sichtbar, wenn die Meldung eine id hat UND der Spieler die
+           Hilfe im Startbildschirm eingeschaltet hat -- siehe panels.js. -->
+      <button type="button" class="rs-btn rs-btn-primary" id="rs-alarm-help-fix" hidden>{{ t.btn_alarm_fix }}</button>
+      <button type="button" class="rs-btn" id="rs-alarm-help-close">{{ t.btn_close }}</button>
+    </div>
   </div>
 </div>
 

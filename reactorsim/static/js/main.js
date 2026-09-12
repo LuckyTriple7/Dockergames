@@ -114,6 +114,17 @@ function initStart() {
     api.writePrefs(app.prefs);
   });
 
+  // Automatischer Helfer (siehe game/helper.js und panels.js showAlarmHelp):
+  // Standard AN, deshalb `!== false` statt `!!` beim Vorbelegen -- ein Spieler,
+  // der die Kopfzeile nie angefasst hat, soll den Knopf gleich beim ersten
+  // Spiel sehen, nicht erst nach einem bewussten Einschalten.
+  const helperBox = $('#rs-helper-toggle');
+  app.prefsPromise.then((prefs) => { helperBox.checked = prefs.helper !== false; });
+  helperBox.addEventListener('change', () => {
+    app.prefs.helper = helperBox.checked;
+    api.writePrefs(app.prefs);
+  });
+
   for (const card of cards) {
     const id = card.dataset.reactor;
     card.setAttribute('aria-pressed', 'false');
@@ -979,7 +990,10 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // aufzurufen -- im freien Spiel gibt es keine, der Knopf bleibt weg.
   $('#rs-briefing-btn').hidden = app.session.free;
   app.render.clear();
-  const built = buildPanels(app.engine, app.render, app.geiger);
+  // prefs.helper ist ungesetzt bei jedem Spieler, der die Kopfzeile im
+  // Startbildschirm nie angefasst hat -- Standard ist AN, siehe rs-helper-
+  // toggle in initStart().
+  const built = buildPanels(app.engine, app.render, app.geiger, app.prefs.helper !== false);
   app.horn = built.horn;
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;
