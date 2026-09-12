@@ -263,5 +263,19 @@
 
 /* In Automatik läuft der Schieber nur mit -- er ist Anzeige, nicht Bedienung. */
 .rs-slider-auto { opacity: .45; cursor: default; }
+
+/* Angehalten (Leertaste, siehe main.js setSpeed()): kein engine.step() läuft
+   mehr, also greift auch kein Griff mehr durch (siehe controls.js) -- die
+   Bedienfelder sehen das, statt tot und unerklärt auf Klicks zu schweigen.
+   Nur die Stellteile selbst, nicht die Anzeigefelder drumherum. */
+body.rs-ctl-paused #rs-rod-ctl,
+body.rs-ctl-paused #rs-pumps,
+body.rs-ctl-paused #rs-sec-ctl,
+body.rs-ctl-paused #rs-grid-ctl,
+body.rs-ctl-paused #rs-chem-ctl,
+body.rs-ctl-paused #rs-safety-ctl {
+  opacity: .45;
+  cursor: not-allowed;
+}
 .rs-ctl-block .rs-ctl-row .rs-slider { flex: 1 1 auto; }
 .rs-ctl-block .rs-ctl-row .rs-ctl-v { flex: 0 0 auto; min-width: 5.5em; text-align: right; }

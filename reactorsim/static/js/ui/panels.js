@@ -9,8 +9,9 @@ import { t, num, clock, has } from './i18n.js';
 import { gauge, bar, reactivityBars } from './gauges.js';
 import { TrendRecorder } from './trend.js';
 import { Annunciator, Horn } from './annunciator.js';
+import { PulseLoop } from './music.js';
 import {
-  autoSwitch, station, slider, buttonGroup, jogButtons, pumpRow,
+  autoSwitch, station, slider, buttonGroup, jogButtons, pumpRow, isControlsPaused,
 } from './controls.js';
 import { MIMICS } from './mimic.js';
 
@@ -166,7 +167,18 @@ export function buildPanels(engine, render, geiger) {
         rodCtl.auto = v;
       })
     : null;
-  const rodJog = jogButtons('ctl_rods', (dir) => {
+  // Motorengeraeusch der Stabfahrt: pulse() haelt die Schleife am Laufen,
+  // solange jogRod() im Ein-Taktrhythmus (Klick-Wiederholung oder gehaltene
+  // Pfeiltaste) weiter aufgerufen wird, und laesst sie sonst von selbst
+  // auslaufen -- kein eigenes "losgelassen" noetig (siehe PulseLoop).
+  const rodSound = new PulseLoop('game_rods_move.mp3', 0.5);
+  // Eigene Funktion statt Inline-Callback: der Tastaturkurzbefehl (Strg+Pfeil
+  // hoch/runter, siehe main.js) fährt dieselben Stäbe, ohne über die Knöpfe zu
+  // gehen -- isControlsPaused() sperrt hier direkt, weil dieser Weg an
+  // jogButtons' eigener Pause-Sperre vorbei ruft.
+  const jogRod = (dir) => {
+    if (isControlsPaused()) return;
+    rodSound.pulse();
     if (rodCtl && rodCtl.auto) { rodCtl.auto = false; rodAuto.set(false); }
     s.rodDmd[0] = Math.max(0, Math.min(1, s.rodDmd[0] + dir * 0.005));
     if (sp.rodBanksMoveTogether) {
@@ -174,7 +186,8 @@ export function buildPanels(engine, render, geiger) {
         s.rodDmd[i] = Math.max(0, Math.min(1, s.rodDmd[i] + dir * 0.005));
       }
     }
-  });
+  };
+  const rodJog = jogButtons('ctl_rods', jogRod);
   $('#rs-rod-ctl').replaceChildren(
     ...(rodAuto ? [rodAuto.node] : []), rodJog.node,
     el('p.rs-ctl-hint', { text: t('hint_rods') }));
@@ -222,7 +235,7 @@ export function buildPanels(engine, render, geiger) {
   // immer da, aber erst nach einem Trip wirklich etwas zu drücken.
   const turbineResume = el('button.rs-btn.rs-btn-primary', { type: 'button', disabled: true },
     [t('btn_turbine_resume')]);
-  turbineResume.addEventListener('click', () => engine.resumeTurbine());
+  turbineResume.addEventListener('click', () => { if (!isControlsPaused()) engine.resumeTurbine(); });
   $('#rs-grid-ctl').replaceChildren(demand.node, turbineResume);
 
   // Typspezifische Bedienung. Ein Druckwasserreaktor braucht Bor und einen
@@ -539,7 +552,7 @@ export function buildPanels(engine, render, geiger) {
     });
   }
 
-  return { horn };
+  return { horn, jogRod, rodSound };
 }
 
 function ctxPos(valve) { return valve ? valve.pos : 0; }

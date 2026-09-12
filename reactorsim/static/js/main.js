@@ -4,6 +4,7 @@ import { $, $$, el, setText, setAttr } from './ui/dom.js';
 import { t, clock } from './ui/i18n.js';
 import { Render } from './ui/render.js';
 import { buildPanels } from './ui/panels.js';
+import { setControlsPaused } from './ui/controls.js';
 import { Loop } from './loop.js';
 import { createEngine } from './sim/engine.js';
 import { getPlant, isAvailable } from './plants/index.js';
@@ -67,6 +68,9 @@ function applyAudioPrefs() {
   app.introMusic.enabled = on('music');
   app.bgMusic.enabled = on('music');
   if (app.horn) app.horn.enabled = on('horn');
+  // Kein eigener Schalter im Dialog dafuer -- nur der Hauptschalter sticht,
+  // wie bei SCRAM/Kernschmelze (siehe annunciator.js) auch keine eigene Regel.
+  if (app.rodSound) app.rodSound.setEnabled(!a.muted);
   if (!on('music')) { app.introMusic.stop(); app.bgMusic.stop(); }
   // Zwei Knoepfe: einer auf dem Startbildschirm, einer in der Kopfzeile des
   // Leitstands. Beide zeigen denselben Zustand.
@@ -553,7 +557,9 @@ function initControls() {
     toMenu();
   });
 
-  // Tastatur am Rechner: Leertaste hält an, Zahlen wählen den Zeitraffer.
+  // Tastatur am Rechner: Leertaste hält an, Zahlen wählen den Zeitraffer,
+  // Strg+Pfeil hoch/runter fährt die Stäbe -- ohne Strg kollidiert Pfeil
+  // hoch/runter sonst mit dem Scrollen der Seite.
   document.addEventListener('keydown', (ev) => {
     if (ev.target instanceof HTMLInputElement) return;
     if (ev.code === 'Space') { ev.preventDefault(); setSpeed(app.loop.speed > 0 ? 0 : 1); }
@@ -561,6 +567,8 @@ function initControls() {
     else if (ev.key === '2') setSpeed(4);
     else if (ev.key === '3') setSpeed(16);
     else if (ev.key === '4') setSpeed(60);
+    else if (ev.ctrlKey && ev.key === 'ArrowUp') { ev.preventDefault(); if (app.jogRod) app.jogRod(-1); }
+    else if (ev.ctrlKey && ev.key === 'ArrowDown') { ev.preventDefault(); if (app.jogRod) app.jogRod(1); }
   });
 }
 
@@ -581,6 +589,11 @@ function scramLabel() {
 function setSpeed(v) {
   app.loop.setSpeed(v);
   for (const b of $$('.rs-speed-b')) b.classList.toggle('rs-on', Number(b.dataset.speed) === v);
+  // v === 0 heisst angehalten: kein engine.step() laeuft mehr, also darf auch
+  // keine Bedienhandlung mehr durchgreifen (siehe controls.js) -- vorher
+  // liessen sich Staebe, Pumpen und Regler auch im Stillstand bewegen.
+  setControlsPaused(v === 0);
+  document.body.classList.toggle('rs-ctl-paused', v === 0);
 }
 
 // Sekunden Sim-Zeit je Innenschritt -- derselbe Takt wie loop.js (DT), sonst
@@ -612,7 +625,7 @@ async function fastForwardXenon() {
   const btn = $('#rs-xenon-skip');
   const before = btn.textContent;
   app.xenonSkipping = true;
-  app.loop.setSpeed(0);
+  setSpeed(0);
   btn.disabled = true;
   let elapsed = 0;
   while (elapsed < XENON_SKIP_CAP_S && s.X > XENON_SKIP_TARGET && !s.destroyed && !s.fault) {
@@ -685,7 +698,7 @@ function showFault(detail) {
  */
 function showDestroyed() {
   app.endShown = true;
-  app.loop.setSpeed(0);
+  setSpeed(0);
   app.bgMusic.stop();
   if (app.horn) app.horn.meltdown();
   const s = app.engine.state;
@@ -734,7 +747,7 @@ function toMenu() {
 
 /** Auswertung am Ende eines Szenarios. */
 function showDebrief(result, failed) {
-  app.loop.setSpeed(0);
+  setSpeed(0);
   app.bgMusic.stop();
   const verdict = $('#rs-debrief-verdict');
   const ok = !failed;
@@ -890,6 +903,8 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   app.render.clear();
   const built = buildPanels(app.engine, app.render, app.geiger);
   app.horn = built.horn;
+  app.jogRod = built.jogRod;
+  app.rodSound = built.rodSound;
   // Anders als der Geigerzaehler wird die Hupe bei jeder Runde neu gebaut
   // (buildPanels()), die Einstellung muss also jedes Mal neu uebertragen
   // werden -- ueber applyAudioPrefs(), damit auch der Hauptschalter greift.

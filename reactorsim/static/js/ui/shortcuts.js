@@ -8,6 +8,7 @@
 
 export const SHORTCUTS = [
   { key: 'sc_pause', def: 'sc_pause_d' },
+  { key: 'sc_rods', def: 'sc_rods_d' },
   { key: 'sc_speed1', def: 'sc_speed1_d' },
   { key: 'sc_speed2', def: 'sc_speed2_d' },
   { key: 'sc_speed3', def: 'sc_speed3_d' },

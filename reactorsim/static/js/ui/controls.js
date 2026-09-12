@@ -7,6 +7,16 @@
 import { el, setText, setAttr } from './dom.js';
 import { t, num } from './i18n.js';
 
+// Pause-Sperre: bei angehaltener Simulation (Leertaste, loop.speed === 0)
+// darf keine Bedienhandlung mehr durchgreifen -- vorher liessen sich Staebe,
+// Pumpen, Regler und Schalter auch im Stillstand bewegen, obwohl kein
+// engine.step() mehr lief, um die Wirkung zu berechnen. Ein Modul-weiter
+// Schalter statt einer Pruefung je Aufrufstelle, weil main.js/panels.js
+// gar nicht wissen muessen, welche Widgets hier alles existieren.
+let paused = false;
+export function setControlsPaused(v) { paused = v; }
+export function isControlsPaused() { return paused; }
+
 /**
  * Umschalter Automatik / Hand.
  *
@@ -22,7 +32,7 @@ export function autoSwitch(labelKey, initial, onChange) {
   const mk = (key, target) => {
     const b = el('button.rs-seg', { type: 'button' }, [t(key)]);
     b.addEventListener('click', () => {
-      if (value === target) return;
+      if (paused || value === target) return;
       value = target;
       paint();
       onChange(value);
@@ -81,7 +91,7 @@ export function station({ labelKey, min = 0, max = 100, step = 1, digits = 0,
   const mk = (key, target) => {
     const b = el('button.rs-seg', { type: 'button' }, [t(key)]);
     b.addEventListener('click', () => {
-      if (auto === target) return;
+      if (paused || auto === target) return;
       // Stoßfreie Übernahme: erst den Ist-Wert als Sollwert setzen, dann
       // umschalten. Andersherum regelt die Station eine Sekunde lang gegen
       // den alten Handwert, und genau das ist der Stoß.
@@ -105,6 +115,7 @@ export function station({ labelKey, min = 0, max = 100, step = 1, digits = 0,
   };
 
   input.addEventListener('input', () => {
+    if (paused) { input.value = String(Math.round(read() / step) * step); return; }
     paint(input.value);
     if (!auto) write(Number(input.value));
   });
@@ -144,7 +155,13 @@ export function slider({ labelKey, min, max, step, value, digits = 0, unitKey, o
   });
   const read = el('span.rs-ctl-v');
   const paint = (v) => setText(read, num(Number(v), digits) + (unitKey ? ' ' + t(unitKey) : ''));
-  input.addEventListener('input', () => { paint(input.value); onInput(Number(input.value)); });
+  let last = value;
+  input.addEventListener('input', () => {
+    if (paused) { input.value = String(last); return; }
+    last = input.value;
+    paint(input.value);
+    onInput(Number(input.value));
+  });
   paint(value);
   return {
     node: el('div.rs-ctl-block', null, [
@@ -169,7 +186,10 @@ export function buttonGroup(labelKey, options, initial, onChange) {
     for (const b of btns) b.classList.toggle('rs-on', b.dataset.v === String(value));
   };
   for (const b of btns) {
-    b.addEventListener('click', () => { value = b.dataset.v; paint(); onChange(value); });
+    b.addEventListener('click', () => {
+      if (paused) return;
+      value = b.dataset.v; paint(); onChange(value);
+    });
   }
   paint();
   return {
@@ -188,13 +208,16 @@ export function jogButtons(labelKey, onJog) {
     let timer = 0;
     const start = (ev) => {
       ev.preventDefault();
+      if (paused) return;
       // Capture: sonst bekommt der Knopf kein pointerup, wenn der Zeiger beim
       // Loslassen schon daneben steht -- der Timer liefe sonst unbemerkt
       // weiter und führe, egal was der nächste Klick will.
       if (b.setPointerCapture) { try { b.setPointerCapture(ev.pointerId); } catch { /* egal */ } }
       onJog(dir);
       // Wiederholung: der Stabantrieb faehrt, solange die Taste gehalten wird.
-      timer = window.setInterval(() => onJog(dir), 100);
+      // Pausiert waehrend des Haltens jemand die Simulation (Leertaste), soll
+      // die Fahrt sofort stehen bleiben statt bis zum Loslassen weiterzulaufen.
+      timer = window.setInterval(() => { if (paused) return; onJog(dir); }, 100);
       b.classList.add('rs-on');
     };
     const stop = () => {
@@ -213,6 +236,7 @@ export function jogButtons(labelKey, onJog) {
     b.addEventListener('keydown', (ev) => {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
       ev.preventDefault();
+      if (paused) return;
       onJog(dir);
       b.classList.add('rs-on');
     });
@@ -236,7 +260,7 @@ export function pumpRow(count, onToggle) {
   for (let i = 0; i < count; i++) {
     const b = el('button.rs-pump', { type: 'button', 'data-state': 'run' },
       [t('ctl_pump', { n: i + 1 })]);
-    b.addEventListener('click', () => onToggle(i));
+    b.addEventListener('click', () => { if (!paused) onToggle(i); });
     btns.push(b);
   }
   return {

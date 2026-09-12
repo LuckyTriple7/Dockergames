@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.0.63
+
+- 🐛 **Bedienung griff auch bei angehaltener Simulation durch.** Leertaste
+  (`loop.speed = 0`) stoppte nur `engine.step()` -- Stabfahrt, Pumpen, Bor,
+  Regelstationen (Turbinenventil, Speisewasser, Druckhalter, Umwaelzstrom,
+  MSIV, ...) liessen sich trotzdem bedienen, ohne dass sich etwas rechnete.
+  Alle Bedienelemente aus `controls.js` sperren jetzt zentral, solange
+  angehalten ist (`setControlsPaused()`); die betroffenen Panels blenden
+  dazu ab.
+- ✨ **Strg+Pfeil hoch/runter fährt die Stäbe.** Bisher nur per Maus/Touch
+  ueber die Halteknoepfe. Pfeiltasten ohne Strg blieben bewusst frei --
+  sie scrollen sonst die Seite.
+- ✨ **Motorengeraeusch bei der Stabfahrt** (`game_rods_move.mp3`). Laeuft,
+  solange gefahren wird (Knopf gehalten oder Strg+Pfeil wiederholt), und
+  stoppt von selbst kurz nach dem Loslassen -- kein eigener Schalter im
+  Ton-Dialog, nur der Hauptschalter (Stummschaltung) sticht, wie bei
+  SCRAM/Kernschmelze auch.
+
 ## 0.0.62
 
 - ✨ **Startbanner vor dem Startbildschirm.** Grosses Logo, Klick/Enter/
