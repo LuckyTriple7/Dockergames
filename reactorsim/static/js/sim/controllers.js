@@ -157,7 +157,7 @@ export class GovernorController {
    * den Rest und darf dafür klein und langsam bleiben.
    */
   constructor({ mode = 'load', pSet = 70, P0 = 1400, posNominal = 0.79,
-                kp = 0.4, ki = 0.12, trim = 0.25 }) {
+                kp = 0.4, ki = 0.12, trim = 0.25, resumeRampS = 180 }) {
     this.mode = mode;
     this.pSet = pSet;
     this.P0 = P0;
@@ -174,6 +174,10 @@ export class GovernorController {
     this.auto = true;
     this.manual = posNominal;
     this.tripped = false;
+    // Nachziehzeit fuer die Vorsteuerung nach resume() -- siehe dort.
+    this.resumeRampS = resumeRampS;
+    this.resumeRampT = null;
+    this.resumeRampFrom = 0;
   }
 
   /** @returns {number} Sollstellung des Regelventils 0..1 */
@@ -185,26 +189,63 @@ export class GovernorController {
       // dem Kern. So fährt ein Siedewasserreaktor.
       return clamp(this.pi.step((pSteam - this.pSet) * 0.05, dt), 0, 1);
     }
-    const ff = this.posNominal * clamp(P_demand / this.P0, 0, 1.1);
+    let ff = this.posNominal * clamp(P_demand / this.P0, 0, 1.1);
+    if (this.resumeRampT !== null) {
+      // Frisch zugeschaltet: die Vorsteuerung faehrt von der Stellung aus
+      // hoch, die zur IST-Leistung beim Zuschalten gehoerte, nicht sofort auf
+      // die volle Anforderung -- siehe resume().
+      this.resumeRampT += dt;
+      const frac = clamp(this.resumeRampT / this.resumeRampS, 0, 1);
+      ff = this.resumeRampFrom + (ff - this.resumeRampFrom) * frac;
+      if (frac >= 1) this.resumeRampT = null;
+    }
     // Fehler auf die Nennleistung normiert, nicht auf die Anforderung: sonst
     // wächst die Regelverstärkung bei kleiner Last ins Unangemessene.
     const err = (P_demand - P_e) / this.P0;
     return clamp(ff + this.pi.step(err, dt), 0, 1);
   }
 
-  trip() { this.tripped = true; this.pi.preset(0); }
+  trip() { this.tripped = true; this.pi.preset(0); this.resumeRampT = null; }
 
-  /** Turbine wieder zuschalten. Der PI beginnt wieder bei null, nicht bei dem
-   *  Wert von vor dem Trip -- sonst würde das Ventil im selben Augenblick auf
-   *  eine Stellung springen, die mit der jetzigen Lage nichts zu tun hat. */
-  resume() { this.tripped = false; this.pi.preset(0); }
+  /**
+   * Turbine wieder zuschalten. Der PI beginnt wieder bei null, nicht bei dem
+   * Wert von vor dem Trip -- sonst würde das Ventil im selben Augenblick auf
+   * eine Stellung springen, die mit der jetzigen Lage nichts zu tun hat.
+   *
+   * Das allein reichte nicht: die VORSTEUERUNG (ff oben) haengt nur an
+   * P_demand, nicht am PI, und sprang deshalb trotzdem sofort auf den vollen
+   * Anforderungswert -- unabhaengig davon, wie weit der Kern nach einem
+   * Turbinenschnellschluss tatsaechlich zurueckgefahren war (der pendelt sich
+   * oft deutlich unter 100 % ein, siehe Umleitstation). Ein Sprung auf
+   * Vollast-Dampfabnahme reisst dann mehr Dampf ab, als der Kern gerade
+   * macht -- kuehlt ihn schlagartig, und ueber den negativen Moderator-
+   * koeffizienten wird aus zu viel Kuehlung zu viel Reaktivitaet. Genau der
+   * Leistungsausflug, den langsames Wiederzuschalten eigentlich vermeiden
+   * soll. Die Vorsteuerung faehrt jetzt stattdessen ueber resumeRampS von der
+   * Stellung aus hoch, die zur Ist-Leistung beim Zuschalten passt.
+   *
+   * @param {number} P_e  Ist-Leistung im Augenblick des Zuschaltens (MWe)
+   */
+  resume(P_e) {
+    this.tripped = false;
+    this.pi.preset(0);
+    this.resumeRampFrom = this.posNominal * clamp((P_e || 0) / this.P0, 0, 1.1);
+    this.resumeRampT = 0;
+  }
 
-  snapshot() { return { auto: this.auto, manual: this.manual, tripped: this.tripped, pi: this.pi.snapshot() }; }
+  snapshot() {
+    return {
+      auto: this.auto, manual: this.manual, tripped: this.tripped, pi: this.pi.snapshot(),
+      resumeRampT: this.resumeRampT, resumeRampFrom: this.resumeRampFrom,
+    };
+  }
   restore(d) {
     this.auto = !!d.auto;
     this.tripped = !!d.tripped;
     if (Number.isFinite(d.manual)) this.manual = d.manual;
     if (d.pi) this.pi.restore(d.pi);
+    this.resumeRampT = Number.isFinite(d.resumeRampT) ? d.resumeRampT : null;
+    if (Number.isFinite(d.resumeRampFrom)) this.resumeRampFrom = d.resumeRampFrom;
   }
 }
 

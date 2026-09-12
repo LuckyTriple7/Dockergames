@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.0.70
+
+- 🐛 **Turbine wieder zuschalten konnte den Kern zerstören (DWR).** Gefunden
+  beim headless Durchspielen aller neun Szenarien (echte Engine, kein Mock).
+  Nach einem Turbinenschnellschluss pendelt sich die Anlage oft deutlich
+  unter Volllast ein (Umleitstation faengt den Dampf auf) -- schaltete man
+  die Turbine dann wieder zu ("Turbine zuschalten"), sprang die Vorsteuerung
+  des Regelventils sofort auf den vollen Anforderungswert, egal wie weit die
+  Ist-Leistung davon entfernt war. Das riss mehr Dampf ab, als der Kern
+  gerade machte, kühlte ihn schlagartig -- und über den negativen
+  Moderatorkoeffizienten wurde daraus ein echter Leistungsausflug bis zur
+  Kernzerstörung, oft nur Sekunden nach dem Zuschalten.
+  `GovernorController.resume()` faehrt die Vorsteuerung jetzt ueber 180s von
+  der Stellung aus hoch, die zur Ist-Leistung beim Zuschalten passt, statt in
+  einem Schritt zu springen -- betrifft nur den Lastbetrieb (DWR), Druck-
+  betrieb (SWR/RBMK) unveraendert. Kein Regressionsschaden in den anderen
+  acht Szenarien (per erneutem Durchlauf bestaetigt).
+
 ## 0.0.69
 
 - 🐛 **"Netzanforderung zu lange verfehlt" schlug ohne jede Vorwarnung zu.**

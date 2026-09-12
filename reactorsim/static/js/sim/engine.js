@@ -342,7 +342,7 @@ export function createEngine(plant, opts = {}) {
     if (s.scram.active) return false;
     s.turbineTripped = false;
     s.breaker = true;
-    if (ctx.govCtl) ctx.govCtl.resume();
+    if (ctx.govCtl) ctx.govCtl.resume(s.P_e);
     ctx.log.push({ t: s.t_sim, key: 'event_turbine_resume', severity: 1 });
     return true;
   }
