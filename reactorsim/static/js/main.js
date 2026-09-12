@@ -507,9 +507,19 @@ function initControls() {
   // ganz ohne Rundenneustart.
   const statsModal = $('#rs-stats-modal');
   const statsList = $('#rs-stats-list');
+  // 'dnbr' braucht eine eigene Textstelle statt eines rohen Textknotens: der
+  // Abstand zur Siedekrise heisst je nach Kern anders (DNBR beim
+  // Druckwasserreaktor, CPR bei den beiden siedenden -- siehe panels.js,
+  // sp.marginKey), und diese Liste wird nur EINMAL gebaut (initControls()
+  // laeuft nur beim ersten Rundenstart). Ohne Nachfuehrung stuende hier fuer
+  // immer "Marge"/generic, egal welcher Typ gerade laeuft -- ein RBMK-Spieler
+  // faende "CPR" dann nirgends, weil die Kachel so nie heisst.
   statsList.replaceChildren(...STATUS_STATS.map(({ key, labelKey }) => {
     const box = el('input', { type: 'checkbox', value: key });
-    return el('label', null, [box, t(labelKey)]);
+    const label = key === 'dnbr'
+      ? el('span', { 'data-stat-label': key }, [t(labelKey)])
+      : t(labelKey);
+    return el('label', null, [box, label]);
   }));
   const audioHornBox = $('#rs-audio-horn');
   const audioGeigerBox = $('#rs-audio-geiger');
@@ -519,6 +529,8 @@ function initControls() {
     const saved = app.prefs.statusBar ? app.prefs.statusBar[reactorId] : null;
     const keys = new Set(sanitizeStatusKeys(saved));
     for (const box of $$('input', statsList)) box.checked = keys.has(box.value);
+    const dnbrLabel = $('[data-stat-label="dnbr"]', statsList);
+    if (dnbrLabel) setText(dnbrLabel, t((app.engine && app.engine.spec.marginKey) || 'val_dnbr'));
     const a = app.prefs.audio || {};
     audioHornBox.checked = !a.muted && a.horn !== false;
     audioGeigerBox.checked = !a.muted && a.geiger !== false;
@@ -918,6 +930,10 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // aus dem, was zu dem Zeitpunkt im DOM steht.
   const prefs = await app.prefsPromise;
   buildStatusBar();
+  // Gleicher Grund wie beim '[data-stat-label="dnbr"]' im Einstellungen-
+  // Dialog: DNBR/CPR ist derselbe Wert, der Name wechselt nur mit dem Typ.
+  const marginTile = statusTiles.get('dnbr');
+  if (marginTile) setText($('.rs-stat-k', marginTile), t(plant.spec.marginKey || 'val_dnbr'));
   applyStatusSelection(sanitizeStatusKeys(prefs.statusBar && prefs.statusBar[reactorId]));
 
   app.endShown = false;

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.66
+
+- 🐛 **CPR fehlte in der Kopfzeilen-Auswahl beim RBMK/SWR.** Der Katalog
+  (`statusStats.js`) beschriftete den Abstand-zur-Siedekrise-Wert immer mit
+  dem generischen "Marge" -- die Panels selbst zeigen dort schon laenger
+  DNBR bzw. CPR je nach Kerntyp (`sp.marginKey`), die Kopfzeile und ihr
+  Einstellungen-Dialog taten das nicht. Beide zeigen den Namen jetzt passend
+  zum aktuell geladenen Reaktortyp; beim RBMK/SWR taucht "CPR" jetzt in der
+  Auswahlliste auf.
+
 ## 0.0.65
 
 - ✨ **Statuskacheln in der Kopfzeile per Ziehen umsortieren.** Kurz halten
