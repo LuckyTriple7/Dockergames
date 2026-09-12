@@ -258,7 +258,14 @@ function refreshResumeList() {
         const base = window.RS_CFG ? `/s/${window.RS_CFG.version}` : '';
         fetch(`${base}/data/scenarios/${scn.file}`)
           .then((r) => (r.ok ? r.json() : Promise.reject(new Error('scenario'))))
-          .then((def) => boot(sv.reactor, def, sv.slot))
+          .then((def) => {
+            // app.briefDef nachziehen -- sonst bleibt es beim Fortsetzen leer
+            // (oder auf einem alten Stand von vorher) und der
+            // Einweisung-Knopf waehrend der Runde (#rs-briefing-btn) tut
+            // dann still gar nichts, obwohl eine Einweisung existiert.
+            app.briefDef = def;
+            boot(sv.reactor, def, sv.slot);
+          })
           .catch(() => boot(sv.reactor, null, sv.slot));
       });
       return el('div.rs-resume-row', null, [btn, makeDeleteSaveButton(sv.slot)]);

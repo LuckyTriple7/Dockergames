@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.67
+
+- 🐛 **Einweisung liess sich nach "Fortsetzen" nicht mehr oeffnen.** Der
+  Knopf braucht `app.briefDef` -- das setzte bisher nur der Weg ueber "Los"
+  (frischer Szenariostart, `loadScenario()`). Der Fortsetzen-Knopf in der
+  Start-Liste holte die Szenariodefinition zum Booten zwar auch nach, schrieb
+  sie aber nie in `app.briefDef`: kein Fehler, der Knopf tat einfach nichts.
+  Betraf jeden Szenario-Spielstand nach Speichern+Fortsetzen.
+
 ## 0.0.66
 
 - 🐛 **CPR fehlte in der Kopfzeilen-Auswahl beim RBMK/SWR.** Der Katalog
