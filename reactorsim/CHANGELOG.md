@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.0.68
+
+- ✨ **Auswertung zeigt jetzt Minimum DNBR/CPR und Abschaltreserve.** Beide
+  wurden schon laenger mitgezaehlt (`RunState.summary()`), standen aber
+  nirgends in der Auswertung -- eine Einweisung, die "Ziel: ... ohne die
+  Reserve unter 30 zu sehen" verspricht, muss hinterher auch zeigen, wie nah
+  man dran war. Je Reaktortyp nur, wenn er den Wert kennt (DNBR beim DWR,
+  CPR bei SWR/RBMK, Abschaltreserve nur beim RBMK).
+- 🐛 **Einweisung "Kaltstart nach Revision" (RBMK) irrefuehrend.** Text
+  schickte direkt in den Leistungsanstieg durch die 200-MW-Zone, ohne zu
+  erwaehnen, dass die Netzanforderung die ersten 30 Minuten bei 0 MW steht
+  UND das Regelventil in Automatik nur den Trommeldruck haelt, nicht die
+  Last -- jedes Megawatt, das der Kern macht, ging bisher unbemerkt durch
+  und riss binnen Minuten die Fehlbedingung "Netzanforderung zu lange
+  verfehlt". Hinweis ergaenzt: Kernleistung zurückhalten, bis die
+  Anforderung selbst zu klettern beginnt.
+
 ## 0.0.67
 
 - 🐛 **Einweisung liess sich nach "Fortsetzen" nicht mehr oeffnen.** Der

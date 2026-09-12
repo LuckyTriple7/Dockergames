@@ -819,6 +819,23 @@ function showDebrief(result, failed) {
         el('span', { text: t(key) }), el('b', { text: value }),
       ]));
     }
+    // min_dnbr/min_orm werden schon laenger mitgezaehlt (RunState.summary()),
+    // standen aber nirgends in der Auswertung -- eine Einweisung, die "Ziel:
+    // ... ohne die Reserve unter 30 zu sehen" verspricht, muss hinterher auch
+    // zeigen, wie nah man dran war. Beide nur, wenn der Typ den Wert ueberhaupt
+    // kennt (min_dnbr/min_orm bleiben sonst null, siehe RunState.summary()).
+    if (Number.isFinite(sum.min_dnbr)) {
+      const marginKey = (app.engine && app.engine.spec.marginKey) || 'val_dnbr';
+      parts.append(el('div.rs-row', null, [
+        el('span', { text: `${t('debrief_min_prefix')} ${t(marginKey)}` }),
+        el('b', { text: sum.min_dnbr.toFixed(2) }),
+      ]));
+    }
+    if (Number.isFinite(sum.min_orm)) {
+      parts.append(el('div.rs-row', null, [
+        el('span', { text: t('debrief_min_orm') }), el('b', { text: sum.min_orm.toFixed(1) }),
+      ]));
+    }
   }
   // Eintragen nur, wenn es eine Wertung gibt und es ein Szenario war.
   const submit = $('#rs-debrief-submit');
