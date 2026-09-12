@@ -38,8 +38,22 @@
   gap: 1px;
   padding: 3px 10px;
   border-right: 1px solid var(--rs-line-soft);
+  cursor: grab;
+  touch-action: pan-x;
 }
 .rs-stat:last-child { border-right: 0; }
+/* Nach Ablauf des Long-Press (siehe dragReorder.js): erkennbar angehoben,
+   liegt ueber den Nachbarn, waehrend sie sich unter dem Finger/Zeiger
+   verschieben. Kein Uebergang auf transform -- der wuerde jedem Frame beim
+   Ziehen hinterherhinken. */
+.rs-stat.rs-drag-active {
+  cursor: grabbing;
+  position: relative;
+  z-index: 5;
+  background: var(--rs-line-soft);
+  border-radius: 4px;
+  user-select: none;
+}
 .rs-stat-k {
   font-size: 10px;
   letter-spacing: .08em;

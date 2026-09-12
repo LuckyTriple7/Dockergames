@@ -59,7 +59,7 @@
   "btn_briefing": "Einweisung",
   "btn_stats_cfg": "Einstellungen",
   "stats_cfg_title": "Einstellungen",
-  "stats_cfg_hint": "Welche Werte oben in der Kopfzeile stehen, wählst du hier selbst -- je Reaktortyp getrennt und dauerhaft für dich gespeichert. Wirkt sofort.",
+  "stats_cfg_hint": "Welche Werte oben in der Kopfzeile stehen, wählst du hier selbst -- je Reaktortyp getrennt und dauerhaft für dich gespeichert. Wirkt sofort. Die Reihenfolge oben lässt sich auch direkt dort per Ziehen (kurz halten, dann verschieben) ändern.",
   "stats_cfg_save": "Speichern",
   "stats_cfg_saved": "Gespeichert",
   "opt_audio_title": "Ton",

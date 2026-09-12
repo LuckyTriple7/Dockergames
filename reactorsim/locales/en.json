@@ -59,7 +59,7 @@
   "btn_briefing": "Briefing",
   "btn_stats_cfg": "Settings",
   "stats_cfg_title": "Settings",
-  "stats_cfg_hint": "Choose which values appear in the header bar -- separately per reactor type, saved for you. Applies immediately.",
+  "stats_cfg_hint": "Choose which values appear in the header bar -- separately per reactor type, saved for you. Applies immediately. You can also reorder them right there by dragging (press and hold, then move).",
   "stats_cfg_save": "Save",
   "stats_cfg_saved": "Saved",
   "opt_audio_title": "Sound",

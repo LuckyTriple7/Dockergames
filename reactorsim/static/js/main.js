@@ -16,6 +16,7 @@ import { SHORTCUTS } from './ui/shortcuts.js';
 import { MusicLoop, playClip } from './ui/music.js';
 import { STATUS_STATS, sanitizeStatusKeys } from './ui/statusStats.js';
 import { Geiger } from './ui/geiger.js';
+import { enableDragReorder } from './ui/dragReorder.js';
 
 const app = {
   engine: null,
@@ -526,8 +527,18 @@ function initControls() {
   });
   $('#rs-stats-save').addEventListener('click', () => {
     const reactorId = app.lastReactor;
-    const chosen = $$('input', statsList).filter((b) => b.checked).map((b) => b.value);
-    const keys = sanitizeStatusKeys(chosen);
+    const checked = new Set($$('input', statsList).filter((b) => b.checked).map((b) => b.value));
+    // Reihenfolge des Dialogs ist immer die feste Katalogreihenfolge -- eine
+    // per Ziehen in der Statuszeile gesetzte eigene Reihenfolge (siehe
+    // enableDragReorder in initControls()) bleibt fuer weiterhin angehakte
+    // Werte erhalten, statt hier ueberschrieben zu werden. Neu angehakte
+    // Werte kommen ans Ende, in Katalogreihenfolge.
+    const prevOrder = sanitizeStatusKeys(app.prefs.statusBar && app.prefs.statusBar[reactorId]);
+    const ordered = prevOrder.filter((k) => checked.has(k));
+    for (const { key } of STATUS_STATS) {
+      if (checked.has(key) && !ordered.includes(key)) ordered.push(key);
+    }
+    const keys = sanitizeStatusKeys(ordered);
     app.prefs.statusBar = { ...(app.prefs.statusBar || {}), [reactorId]: keys };
     // Wer hier einen Einzelschalter anfasst, will Ton -- also den
     // Hauptschalter mit aufdrehen, sonst bliebe es still und niemand wuesste
@@ -569,6 +580,24 @@ function initControls() {
     else if (ev.key === '4') setSpeed(60);
     else if (ev.ctrlKey && ev.key === 'ArrowUp') { ev.preventDefault(); if (app.jogRod) app.jogRod(-1); }
     else if (ev.ctrlKey && ev.key === 'ArrowDown') { ev.preventDefault(); if (app.jogRod) app.jogRod(1); }
+  });
+
+  // Statuskacheln per Ziehen umsortieren -- gilt je Reaktortyp, unabhaengig
+  // von Szenario/freiem Spiel (derselbe Schluessel wie die Auswahl selbst,
+  // siehe app.prefs.statusBar). #rs-status-scroll bleibt derselbe Knoten
+  // ueber alle Runden hinweg, nur seine Kinder wechseln (buildStatusBar()) --
+  // einmaliges Verdrahten hier reicht deshalb fuer die ganze Sitzung.
+  enableDragReorder($('#rs-status-scroll'), '.rs-stat:not([hidden])', (items) => {
+    const reactorId = app.lastReactor;
+    if (!reactorId) return;
+    const keys = sanitizeStatusKeys(items.map((n) => n.dataset.key));
+    app.prefs.statusBar = { ...(app.prefs.statusBar || {}), [reactorId]: keys };
+    api.writePrefs(app.prefs);
+    // Die ersten zwei Kacheln stehen groesser (rs-stat-lead) -- nach dem
+    // Ziehen kann das jetzt eine andere sein, applyStatusSelection() setzt
+    // die Klasse aus der neuen Reihenfolge neu (Wiederanhaengen an den
+    // Schluss ist dabei ein no-op, sie stehen ja schon dort).
+    applyStatusSelection(keys);
   });
 }
 
@@ -816,10 +845,14 @@ let statusTiles = null;
  *  Rundenstart, weil buildPanels() gleich danach seine Wertebindungen aus
  *  genau diesem DOM einsammelt. */
 function buildStatusBar() {
-  statusTiles = new Map(STATUS_STATS.map(({ key, labelKey }) => [key, el('div.rs-stat', { hidden: true }, [
-    el('span.rs-stat-k', { text: t(labelKey) }),
-    el('span.rs-stat-v', { 'data-v': key, text: '—' }),
-  ])]));
+  // data-key: haelt fest, welche Kachel welcher Statuswert ist -- die
+  // Zeigergesten-Umsortierung (enableDragReorder in initControls()) liest
+  // die neue Reihenfolge nur aus dem DOM zurueck, ohne die Map hier zu kennen.
+  statusTiles = new Map(STATUS_STATS.map(({ key, labelKey }) => [key,
+    el('div.rs-stat', { hidden: true, 'data-key': key }, [
+      el('span.rs-stat-k', { text: t(labelKey) }),
+      el('span.rs-stat-v', { 'data-v': key, text: '—' }),
+    ])]));
   $('#rs-status-scroll').replaceChildren(...statusTiles.values());
 }
 

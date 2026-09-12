@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.65
+
+- ✨ **Statuskacheln in der Kopfzeile per Ziehen umsortieren.** Kurz halten
+  (Long-Press, gegen Kollision mit dem seitlichen Wischen zum Scrollen),
+  dann verschieben -- Maus, Touch und Stift gleich (`ui/dragReorder.js`,
+  kein HTML5-Drag&Drop, das kennt keine Touch-Geraete). Reihenfolge wird wie
+  die Auswahl selbst je Reaktortyp gespeichert, unabhaengig von Szenario
+  oder freiem Spiel. Der Einstellungen-Dialog ueberschreibt eine gezogene
+  Reihenfolge nicht mehr -- neu angehakte Werte kommen ans Ende, bereits
+  gezeigte behalten ihren Platz.
+
 ## 0.0.64
 
 - ✨ **Klick-Geraeusch fuer Schalter** (`game_switch.mp3`). Automatik/Hand-
