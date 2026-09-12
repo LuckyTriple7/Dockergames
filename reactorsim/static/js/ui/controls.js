@@ -6,6 +6,14 @@
 
 import { el, setText, setAttr } from './dom.js';
 import { t, num } from './i18n.js';
+import { playClip } from './music.js';
+
+// Klick-Geraeusch fuer echte Schalter (Automatik/Hand, Tastengruppen,
+// Pumpen) -- hier zentral statt an jeder Aufrufstelle in panels.js/plants/*,
+// sonst brauchte jeder neue Reaktortyp seinen eigenen Aufruf und einer
+// vergaesse ihn zuverlaessig. Schieber/Stellrad bekommen bewusst keinen: die
+// laufen stufenlos, ein Klackern je Pixel waere Laerm, kein Feedback.
+const click = () => playClip('game_switch.mp3', 0.5);
 
 // Pause-Sperre: bei angehaltener Simulation (Leertaste, loop.speed === 0)
 // darf keine Bedienhandlung mehr durchgreifen -- vorher liessen sich Staebe,
@@ -33,6 +41,7 @@ export function autoSwitch(labelKey, initial, onChange) {
     const b = el('button.rs-seg', { type: 'button' }, [t(key)]);
     b.addEventListener('click', () => {
       if (paused || value === target) return;
+      click();
       value = target;
       paint();
       onChange(value);
@@ -92,6 +101,7 @@ export function station({ labelKey, min = 0, max = 100, step = 1, digits = 0,
     const b = el('button.rs-seg', { type: 'button' }, [t(key)]);
     b.addEventListener('click', () => {
       if (paused || auto === target) return;
+      click();
       // Stoßfreie Übernahme: erst den Ist-Wert als Sollwert setzen, dann
       // umschalten. Andersherum regelt die Station eine Sekunde lang gegen
       // den alten Handwert, und genau das ist der Stoß.
@@ -188,6 +198,7 @@ export function buttonGroup(labelKey, options, initial, onChange) {
   for (const b of btns) {
     b.addEventListener('click', () => {
       if (paused) return;
+      click();
       value = b.dataset.v; paint(); onChange(value);
     });
   }
@@ -260,7 +271,7 @@ export function pumpRow(count, onToggle) {
   for (let i = 0; i < count; i++) {
     const b = el('button.rs-pump', { type: 'button', 'data-state': 'run' },
       [t('ctl_pump', { n: i + 1 })]);
-    b.addEventListener('click', () => { if (!paused) onToggle(i); });
+    b.addEventListener('click', () => { if (paused) return; click(); onToggle(i); });
     btns.push(b);
   }
   return {

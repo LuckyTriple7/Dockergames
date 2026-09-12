@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.64
+
+- ✨ **Klick-Geraeusch fuer Schalter** (`game_switch.mp3`). Automatik/Hand-
+  Umschalter, Tastengruppen (Bor, PORV-Sperre, MSIV, IC, Notinjektion,
+  Behaelterentlueftung, ...) und Pumpenknoepfe geben jetzt hoerbares
+  Feedback -- zentral in `controls.js`, damit kein Reaktortyp seinen eigenen
+  Aufruf braucht und vergisst. Schieber/Stellraeder bleiben stumm, die
+  laufen stufenlos.
+
 ## 0.0.63
 
 - 🐛 **Bedienung griff auch bei angehaltener Simulation durch.** Leertaste
