@@ -302,14 +302,17 @@ button {
   color: var(--rs-fg-mute);
   word-break: break-word;
 }
-/* Meldetafel-Hilfe und Einweisung kommen als EIN String mit \n -- eigene
-   Zeilen für Bedingung, "Konkret tun:" und die Aufzählung, ohne dafür
-   DOM-Knoten zu bauen.
-   Der Einweisung fehlte die Regel: seit dort ein Block "Darauf kommt es an"
-   mit nummerierten Schritten steht, lief ohne sie alles zu einer einzigen
-   Textwand zusammen -- ausgerechnet der Teil, der die Handgriffe aufzählt. */
-#rs-alarm-help-text,
+/* Die Einweisung kommt als EIN String mit \n -- eigene Zeilen für den Block
+   "Darauf kommt es an" mit seinen nummerierten Schritten, ohne dafür
+   DOM-Knoten zu bauen. Ohne diese Regel lief das zu einer einzigen Textwand
+   zusammen -- ausgerechnet der Teil, der die Handgriffe aufzählt.
+   Meldetafel- und Instrumenten-Hilfe (#rs-alarm-help-text) brauchen das nicht
+   mehr: renderHelpText() (panels.js) baut dort echte <p>/<br>-Knoten, seit
+   Instrumente eigene Absätze und Zwischenüberschriften bekommen haben. */
 #rs-brief-text { white-space: pre-line; }
+#rs-alarm-help-text p { margin: 0 0 .7em; }
+#rs-alarm-help-text p:last-child { margin-bottom: 0; }
+.rs-help-h { font-weight: 700; color: var(--rs-fg); margin-top: 1em; }
 .rs-modal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .rs-modal-actions .rs-btn { flex: 1; }
 

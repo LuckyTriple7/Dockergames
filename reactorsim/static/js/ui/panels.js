@@ -21,6 +21,39 @@ import { recordingKit } from '../game/replayKit.js';
 const U = (key) => ' ' + t(key);
 
 /**
+ * Hilfetext in den DOM setzen -- eine winzige, selbst geschriebene Teilmenge
+ * von Markdown statt roher innerHTML: Leerzeile trennt Absaetze, "### " macht
+ * eine eigene Zwischenueberschrift daraus, "**..**" wird fett. Reicht fuer
+ * die Instrumenten- und Meldetafel-Hilfetexte (siehe locales/*.json) und baut
+ * echte Knoten statt eines HTML-Strings -- kein Escaping noetig, keine
+ * Einschleusung moeglich, selbst wenn ein Text mal spitze Klammern enthaelt.
+ */
+function renderHelpText(node, text) {
+  node.replaceChildren();
+  for (const block of text.split('\n\n')) {
+    if (block.startsWith('### ')) {
+      node.append(el('p.rs-help-h', { text: block.slice(4) }));
+      continue;
+    }
+    const p = document.createElement('p');
+    const lines = block.split('\n');
+    lines.forEach((line, i) => {
+      if (i > 0) p.append(document.createElement('br'));
+      for (const part of line.split(/(\*\*[^*]+\*\*)/g)) {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          const strong = document.createElement('strong');
+          strong.textContent = part.slice(2, -2);
+          p.append(strong);
+        } else if (part) {
+          p.append(document.createTextNode(part));
+        }
+      }
+    });
+    node.append(p);
+  }
+}
+
+/**
  * Primaerdruck-Ampel fuer die Statuszeile -- dieselben Zahlen wie die
  * jeweilige Grenzwertprobe in plants/*.js (pzr_press_low/high, dome_press_high,
  * drum_press_high), mit einer selbst gewaehlten Vorwarnstufe knapp darunter.
@@ -72,13 +105,13 @@ export function buildPanels(engine, render, helperEnabled) {
   const gCore = [
     { g: gauge({ label: t('status_power_th'), min: 0, max: 120, digits: 1, unitKey: 'unit_percent',
         bands: [[0, 100, 'ok'], [100, 110, 'warn'], [110, 120, 'danger']] }),
-      get: (d) => d.power_th_pct },
+      get: (d) => d.power_th_pct, key: 'gauge_power_th_help' },
     { g: gauge({ label: t('val_fuel_temp'), min: 200, max: 2000, digits: 0, unitKey: 'unit_celsius',
         bands: [[200, 1400, 'ok'], [1400, 1700, 'warn'], [1700, 2000, 'danger']] }),
-      get: (d, st) => st.T_f - 273.15 },
+      get: (d, st) => st.T_f - 273.15, key: 'gauge_fuel_temp_help' },
     { g: gauge({ label: t('val_reactivity'), min: -500, max: 500, digits: 0, unitKey: 'unit_pcm',
         bands: [[-500, -200, 'warn'], [-200, 200, 'ok'], [200, 500, 'danger']] }),
-      get: (d) => d.rho_pcm },
+      get: (d) => d.rho_pcm, key: 'gauge_reactivity_help' },
   ];
   // Leeren, bevor angehaengt wird: buildPanels() laeuft bei jedem Neustart
   // erneut (siehe boot()), und ohne das hier blieben die Instrumente der
@@ -100,13 +133,13 @@ export function buildPanels(engine, render, helperEnabled) {
   const gPrim = [
     { g: gauge({ label: t('status_pressure'), min: pg.min, max: pg.max, digits: 1, unitKey: 'unit_bar',
         bands: pg.bands }),
-      get: (d, st) => st.p_prim },
+      get: (d, st) => st.p_prim, key: 'gauge_prim_pressure_help' },
     { g: gauge({ label: t('val_subcooling'), min: 0, max: 40, digits: 1, unitKey: 'unit_kelvin',
         bands: [[0, 8, 'danger'], [8, 15, 'warn'], [15, 40, 'ok']] }),
-      get: (d) => d.subcooling },
+      get: (d) => d.subcooling, key: 'gauge_subcooling_help' },
     { g: gauge({ label: t(sp.marginKey || 'val_dnbr'), min: 1, max: 4, digits: 2,
         bands: [[1, 1.3, 'danger'], [1.3, 1.8, 'warn'], [1.8, 4, 'ok']] }),
-      get: (d) => d.dnbr },
+      get: (d) => d.dnbr, key: 'gauge_dnbr_help' },
   ];
   const primBox = $('#rs-prim-gauges');
   primBox.replaceChildren();
@@ -115,13 +148,13 @@ export function buildPanels(engine, render, helperEnabled) {
   const gSec = [
     { g: gauge({ label: t('val_sg_press'), min: 40, max: 100, digits: 1, unitKey: 'unit_bar',
         bands: [[40, 55, 'warn'], [55, 76, 'ok'], [76, 100, 'danger']] }),
-      get: (d) => d.p_sg },
+      get: (d) => d.p_sg, key: 'gauge_sg_press_help' },
     { g: gauge({ label: t('val_sg_level'), min: 0, max: 100, digits: 0, unitKey: 'unit_percent',
         bands: [[0, 25, 'danger'], [25, 40, 'warn'], [40, 70, 'ok'], [70, 100, 'warn']] }),
-      get: (d) => d.L_sg * 100 },
+      get: (d) => d.L_sg * 100, key: 'gauge_sg_level_help' },
     { g: gauge({ label: t('val_generator'), min: 0, max: sp.P0_e * 1.15, digits: 0, unitKey: 'unit_mwe',
         bands: [[0, sp.P0_e, 'ok'], [sp.P0_e, sp.P0_e * 1.15, 'warn']] }),
-      get: (d, st) => st.P_e },
+      get: (d, st) => st.P_e, key: 'gauge_generator_help' },
   ];
   // Sicherheitsbehälterdruck stand bisher nur als Zeile unter "Sicherheits-
   // systeme" -- kein Rundinstrument wie jeder andere überwachte Druck. Nur
@@ -132,7 +165,7 @@ export function buildPanels(engine, render, helperEnabled) {
       g: gauge({ label: t('val_cont_press'), min: 0, max: cont.designLimit * 1.15, digits: 2, unitKey: 'unit_bar',
         bands: [[0, cont.designLimit * 0.7, 'ok'], [cont.designLimit * 0.7, cont.designLimit * 0.9, 'warn'],
           [cont.designLimit * 0.9, cont.designLimit * 1.15, 'danger']] }),
-      get: (d, st) => st.pCont,
+      get: (d, st) => st.pCont, key: 'gauge_cont_press_help',
     });
   }
   const secBox = $('#rs-sec-gauges');
@@ -363,7 +396,7 @@ export function buildPanels(engine, render, helperEnabled) {
     helpDef = def;
     const helpKey = def.key + '_help';
     setText($('#rs-alarm-help-title'), t(def.key));
-    setText($('#rs-alarm-help-text'), has(helpKey) ? t(helpKey) : t('alarm_help_none'));
+    renderHelpText($('#rs-alarm-help-text'), has(helpKey) ? t(helpKey) : t('alarm_help_none'));
     fixResult.hidden = true;
     fixList.replaceChildren();
     setText(fixMsg, '');
@@ -378,6 +411,34 @@ export function buildPanels(engine, render, helperEnabled) {
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && !alarmHelp.hidden) alarmHelp.hidden = true;
   });
+
+  // Dasselbe Fenster wie fuer Meldetafel-Kacheln, nur ohne den Beheben-Knopf
+  // -- ein Rundinstrument ist kein anstehender Fehler, den man quittiert,
+  // sondern ein Wert, den man nachschlaegt. helpDef bleibt dabei unberuehrt:
+  // der Fix-Knopf hat so nichts zu tun, ganz gleich was zuletzt offen war.
+  const showGaugeHelp = (label, helpKey) => {
+    setText($('#rs-alarm-help-title'), label);
+    renderHelpText($('#rs-alarm-help-text'), has(helpKey) ? t(helpKey) : t('alarm_help_none'));
+    fixResult.hidden = true;
+    fixList.replaceChildren();
+    setText(fixMsg, '');
+    fixBtn.hidden = true;
+    alarmHelp.hidden = false;
+  };
+  // Jedes Rundinstrument bekommt sein eigenes gauge_<name>_help -- Kern-,
+  // Primaer- und Sekundaerkreis-Instrumente in einem Rutsch, dieselbe
+  // Klick/Tastatur-Behandlung wie eine Meldetafel-Kachel (siehe annunciator.js).
+  for (const x of [...gCore, ...gPrim, ...gSec]) {
+    if (!x.key) continue;
+    const node = x.g.node;
+    node.setAttribute('role', 'button');
+    node.setAttribute('tabindex', '0');
+    const label = node.querySelector('.rs-gauge-label').textContent;
+    node.addEventListener('click', () => showGaugeHelp(label, x.key));
+    node.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); showGaugeHelp(label, x.key); }
+    });
+  }
 
   // Automatischer Helfer (game/helper.js): fuehrt die im Hilfetext oben
   // beschriebene Bedienhandlung selbst aus und sagt genau, was er getan hat

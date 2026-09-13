@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.0.90
+
+- ✨ **Rundinstrumente klickbar: eigene Hilfe je Messwert.** Alle 10
+  Rundinstrumente (Kern/Primär-/Sekundärkreis) lassen sich jetzt anklicken
+  (oder per Tastatur: Tab, dann Enter/Leertaste) -- genau wie eine
+  Meldetafel-Kachel öffnet das dasselbe Hilfefenster, mit konkreter
+  Zu-niedrig-/Zu-hoch-Anleitung statt bloßer Definition. Neue Schlüssel
+  `gauge_<name>_help` (DE+EN), Nutzer-Text.
+- 🛠️ **Hilfefenster kann jetzt Absätze, Zwischenüberschriften und Fettschrift.**
+  `renderHelpText()` (panels.js) ist eine winzige selbstgeschriebene
+  Markdown-Teilmenge (Leerzeile = Absatz, `### ` = Zwischenüberschrift,
+  `**..**` = fett), baut echte DOM-Knoten statt eines HTML-Strings -- kein
+  Escaping nötig. Betrifft auch die Meldetafel-Hilfe (dieselbe Funktion),
+  bestehende Texte ohne diese Zeichen sehen unverändert aus.
+- Verifiziert per Playwright gegen den laufenden Server: Klick UND Tastatur
+  getestet (DWR Primärdruck, RBMK/DWR-Verzweigung im Text korrekt
+  dargestellt), SWR-spezifisches Containment-Instrument ebenfalls verdrahtet.
+  Volle Testsuite 71/71 grün, inklusive
+  `test_help_texts_only_name_controls_that_exist` für die neuen Schlüssel.
+
 ## 0.0.89
 
 - 🗑️ **Geigerzähler-Ticken entfernt.** Reiner WebAudio-Synthesizer

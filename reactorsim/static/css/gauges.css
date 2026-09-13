@@ -15,6 +15,12 @@
   flex-direction: column;
   gap: 3px;
 }
+/* Klickbar heisst: es gibt eine Erklaerung dazu (panels.js showGaugeHelp) --
+   dieselbe Zustandsmarkierung wie eine Meldetafel-Kachel (siehe
+   annunciator.css .rs-tile[role="button"]), nicht jedes Instrument hat das. */
+.rs-gauge[role="button"] { cursor: pointer; border-radius: 6px; }
+.rs-gauge[role="button"]:hover .rs-gauge-dial,
+.rs-gauge[role="button"]:focus-visible .rs-gauge-dial { border-color: var(--rs-value); outline: none; }
 
 .rs-gauge-label {
   /* Zwei Zeilen Platz, damit alle Instrumente einer Reihe gleich hoch

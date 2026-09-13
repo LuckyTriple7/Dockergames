@@ -481,7 +481,10 @@
 <div class="rs-modal" id="rs-alarm-help" hidden>
   <div class="rs-modal-box rs-modal-wide">
     <h2 id="rs-alarm-help-title"></h2>
-    <p id="rs-alarm-help-text"></p>
+    <!-- Div statt p: renderHelpText() (panels.js) fuellt hier eigene
+         <p>-Absaetze und Zwischenueberschriften ein, das waere in einem <p>
+         ungueltig verschachtelt. -->
+    <div id="rs-alarm-help-text"></div>
     <!-- Ergebnis des automatischen Helfers (game/helper.js) -- verdeckt, bis
          der Fix-Knopf unten einmal gedrueckt wurde, siehe panels.js. -->
     <div class="rs-alarm-fix" id="rs-alarm-fix-result" hidden>
