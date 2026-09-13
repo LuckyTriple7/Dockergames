@@ -1342,6 +1342,11 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
       // Protokoll mit, und der Server faellt auf die reine
       // Plausibilitaetspruefung zurueck (siehe scoring.py).
       app.engine.recorder = null;
+      // Quittierstatus der Meldetafel zeigt sich von selbst im naechsten
+      // Bild (annun.update() liest jeden Takt engine.trips.tiles() neu, das
+      // restore() oben schon veraendert hat) -- nur das Log-Panel muss
+      // einmalig nachgetragen werden, es haengt nur an, statt neu zu lesen.
+      if (app.engine.ctx.history.length) built.annun.log(app.engine.ctx.history);
     });
   }
 }

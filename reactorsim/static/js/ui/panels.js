@@ -672,7 +672,10 @@ export function buildPanels(engine, render, helperEnabled) {
     });
   }
 
-  return { horn, jogRod, rodSound };
+  // annun: main.js braucht sie einmalig nach dem Laden eines Spielstands, um
+  // ctx.history (siehe sim/engine.js) ins Log-Panel nachzutragen -- das Panel
+  // selbst startet immer mit leerem DOM (siehe Annunciator-Konstruktor).
+  return { horn, jogRod, rodSound, annun };
 }
 
 function ctxPos(valve) { return valve ? valve.pos : 0; }

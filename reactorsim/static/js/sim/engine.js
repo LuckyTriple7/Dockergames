@@ -30,6 +30,11 @@ import { Rng } from '../rng.js';
 /** Regler laufen nicht in jedem Rechenschritt, sondern alle 0,2 s. */
 const CONTROL_PERIOD = 0.2;
 
+/** Obergrenze fuer ctx.history (siehe dort) -- dieselbe wie die Anzeige
+ *  selbst (Annunciator.log() in annunciator.js), mehr wuerde dort ohnehin
+ *  sofort wieder abgeschnitten. */
+const HISTORY_CAP = 120;
+
 /**
  * Zwei Abbruchkriterien für den Brennstoff.
  *
@@ -111,6 +116,13 @@ export function createEngine(plant, opts = {}) {
     period: Infinity,
     substeps: 1,
     log: [],
+    // Rollendes Protokoll-Gedaechtnis (siehe HISTORY_CAP oben), unabhaengig
+    // vom DOM des Log-Panels (das haelt seine Eintraege nur als <li>-Knoten,
+    // siehe annunciator.js) -- drainLog() unten fuellt es bei jedem Abholen
+    // nach, persist.js nimmt es 1:1 in den Spielstand mit. Ohne das startete
+    // das Protokoll nach jedem Laden leer, obwohl vorher Stunden gespielt
+    // wurden.
+    history: [],
   };
 
   // Startwerte des Typs: Bor, Druckhalter, Dampferzeuger, Turbine ...
@@ -464,8 +476,17 @@ export function createEngine(plant, opts = {}) {
     scram,
     resetScram,
     resumeTurbine,
-    /** Protokolleinträge abholen und Puffer leeren. */
-    drainLog() { const l = ctx.log.concat(trips.drainEvents()); ctx.log = []; return l; },
+    /** Protokolleinträge abholen und Puffer leeren -- ctx.history (siehe
+     *  oben) wird dabei gleich mitgefuehrt, gedeckelt auf HISTORY_CAP. */
+    drainLog() {
+      const l = ctx.log.concat(trips.drainEvents());
+      ctx.log = [];
+      if (l.length) {
+        ctx.history.push(...l);
+        if (ctx.history.length > HISTORY_CAP) ctx.history.splice(0, ctx.history.length - HISTORY_CAP);
+      }
+      return l;
+    },
     toC,
   };
 }

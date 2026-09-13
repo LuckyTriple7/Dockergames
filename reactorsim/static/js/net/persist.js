@@ -53,6 +53,13 @@ export function pack(engine, scenarioId, runState) {
     // Automatik zurueck, ganz gleich was der Spieler eingestellt hatte.
     components: packComponents(engine.ctx),
     run: runState ? runState.snapshot() : undefined,
+    // Quittierstatus der Meldetafel -- ohne das blinkte/hupte nach dem Laden
+    // jede vorher schon quittierte, aber weiterhin anstehende Meldung sofort
+    // wieder auf (siehe TripSystem.snapshot() in sim/trips.js).
+    trips: engine.ctx.trips.snapshot(),
+    // Rollendes Protokoll-Gedaechtnis (siehe ctx.history in sim/engine.js) --
+    // ohne das startete das Log-Panel nach jedem Laden leer.
+    history: engine.ctx.history,
   };
 }
 
@@ -118,6 +125,15 @@ export function apply(blob, engine, runState) {
   // diesem Fix hat kein run-Feld, dann startet die Wertung wie bisher bei
   // null statt den Ladevorgang scheitern zu lassen.
   if (runState && blob.run && typeof blob.run === 'object') runState.restore(blob.run);
+
+  // Quittierstatus und Protokoll -- ebenso optional: ein Stand von vor
+  // diesem Fix hat weder trips noch history, dann bleibt die Meldetafel wie
+  // bisher auf "normal" und das Log-Panel leer, statt den Ladevorgang
+  // scheitern zu lassen. restore() prueft seine Felder selbst.
+  if (blob.trips) engine.ctx.trips.restore(blob.trips);
+  if (Array.isArray(blob.history)) {
+    engine.ctx.history = blob.history.filter((e) => e && typeof e === 'object' && typeof e.key === 'string');
+  }
   return null;
 }
 

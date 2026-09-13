@@ -139,4 +139,41 @@ export class TripSystem {
     this.events = [];
     return e;
   }
+
+  /** Quittierstatus je Kachel sichern -- fuer Spielstaende (siehe persist.js),
+   *  damit eine quittierte Meldung nach dem Laden quittiert bleibt, statt
+   *  erneut aufzublinken und die Hupe neu loszutreten. `def` (die Funktionen
+   *  darin) kommt bewusst NICHT mit: die serialisieren nicht und muessen es
+   *  auch nicht -- dieselbe TripSystem-Instanz bringt ihre defs beim Bauen
+   *  schon mit, nur der veraenderliche Zustand je Kachel wird gebraucht. */
+  snapshot() {
+    const out = {};
+    for (const [id, st] of this.states) {
+      out[id] = {
+        active: st.active, latched: st.latched, tile: st.tile,
+        tOn: st.tOn, tOff: st.tOff, since: st.since, unackS: st.unackS,
+      };
+    }
+    return out;
+  }
+
+  /** Gegenstueck zu snapshot(). Eine id, die es in DIESER Instanz nicht
+   *  (mehr) gibt -- z.B. ein Szenario-Trip aus einem anderen Lauf -- wird
+   *  stillschweigend uebersprungen, statt den Ladevorgang scheitern zu
+   *  lassen; ein alter Spielstand ohne dieses Feld liess frueher jede
+   *  Kachel einfach auf "normal" stehen (wie bisher), auch das bleibt so. */
+  restore(data) {
+    if (!data || typeof data !== 'object') return;
+    for (const [id, st] of this.states) {
+      const d = data[id];
+      if (!d || typeof d !== 'object') continue;
+      st.active = !!d.active;
+      st.latched = !!d.latched;
+      st.tile = ['normal', 'new', 'ack', 'clear'].includes(d.tile) ? d.tile : 'normal';
+      st.tOn = Number(d.tOn) || 0;
+      st.tOff = Number(d.tOff) || 0;
+      st.since = Number(d.since) || 0;
+      st.unackS = Number(d.unackS) || 0;
+    }
+  }
 }

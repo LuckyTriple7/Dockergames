@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.3
+
+- 🔧 **Fix: Spielstand vergaß Quittierstatus und Ereignisprotokoll.**
+  Beides lag ausserhalb von `engine.state` (Meldetafel-Quittierung in
+  `engine.trips`, das Protokoll nur als `<li>`-Knoten im DOM) und landete
+  nie im Speicherstand. Nach dem Laden blinkte/hupte jede vorher schon
+  quittierte, aber weiterhin anstehende Meldung sofort wieder auf, und
+  das Log-Panel startete leer, egal wie lange vorher gespielt wurde.
+  - `TripSystem` bekommt `snapshot()`/`restore()` (sim/trips.js) --
+    Quittierstatus je Kachel ist jetzt Teil des Spielstands.
+  - Ein rollendes Protokoll-Gedächtnis (`ctx.history`, gedeckelt auf 120
+    wie die Anzeige selbst) läuft unabhängig vom DOM mit und wird beim
+    Laden einmalig ins Log-Panel nachgetragen.
+  - Beides optional wie die bisherigen Zusatzfelder: ein alter
+    Spielstand ohne sie lädt weiterhin normal, nur eben ohne diese zwei
+    Extras (wie bisher).
+
 ## 0.1.2
 
 - 🔧 **Fix: Ausklapp-Pfeil bei den Spielstand-Karten hing am linken
