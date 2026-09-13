@@ -60,6 +60,26 @@ export function pack(engine, scenarioId, runState) {
     // Rollendes Protokoll-Gedaechtnis (siehe ctx.history in sim/engine.js) --
     // ohne das startete das Log-Panel nach jedem Laden leer.
     history: engine.ctx.history,
+    // Laufende Stoerungs-Merker aus game/events.js (stepEvents()) -- leben
+    // NUR auf ctx, nicht in engine.state, und waren deshalb komplett aus dem
+    // Spielstand ausgeschlossen. Ohne sie kam nach dem Laden zwar die
+    // Simulation richtig weiter (die betroffenen Werte selbst -- s.msiv,
+    // Pumpen-Snapshot usw. -- sind ja Teil von state/components), aber
+    // stepEvents() haette nichts mehr gehabt, das es weiter verteidigt: ein
+    // "ausgefallener" Pumpenknopf liesse sich nach dem Laden einfach wieder
+    // anklicken, und die zugehoerige Meldung (mcp_stuck/rod_stuck) fiel beim
+    // naechsten Bild sofort auf "normal" zurueck, obwohl sie schon quittiert
+    // war und die Ursache unveraendert weiter ansteht.
+    malfunctions: {
+      stuckRods: engine.ctx.stuckRods,
+      msivStuck: engine.ctx.msivStuck,
+      pumpsStuck: engine.ctx.pumpsStuck ? Array.from(engine.ctx.pumpsStuck) : undefined,
+      recircPumpStuck: engine.ctx.recircPumpStuck,
+      recircRunback: engine.ctx.recircRunback,
+      porvStuck: engine.ctx.porvStuck,
+      sgLeak: engine.ctx.sgLeak,
+      boronRunaway: engine.ctx.boronRunaway,
+    },
   };
 }
 
@@ -133,6 +153,29 @@ export function apply(blob, engine, runState) {
   if (blob.trips) engine.ctx.trips.restore(blob.trips);
   if (Array.isArray(blob.history)) {
     engine.ctx.history = blob.history.filter((e) => e && typeof e === 'object' && typeof e.key === 'string');
+  }
+
+  // Laufende Stoerungs-Merker -- ebenso optional: ein Stand von vor diesem
+  // Fix hat kein malfunctions-Feld, dann bleibt es wie bisher (die
+  // betroffenen Werte selbst laden trotzdem korrekt aus state/components,
+  // nur stepEvents() verteidigt sie ab da nicht mehr aktiv).
+  const m = blob.malfunctions;
+  if (m && typeof m === 'object') {
+    if (m.stuckRods && typeof m.stuckRods === 'object') engine.ctx.stuckRods = { ...m.stuckRods };
+    if (m.msivStuck) engine.ctx.msivStuck = true;
+    if (Array.isArray(m.pumpsStuck) && m.pumpsStuck.length) {
+      engine.ctx.pumpsStuck = new Set(m.pumpsStuck.filter((i) => Number.isInteger(i)));
+    }
+    if (m.recircPumpStuck) engine.ctx.recircPumpStuck = true;
+    if (m.recircRunback && typeof m.recircRunback === 'object') {
+      const { from, to, t0, dur } = m.recircRunback;
+      if ([from, to, t0, dur].every((x) => typeof x === 'number' && Number.isFinite(x))) {
+        engine.ctx.recircRunback = { from, to, t0, dur };
+      }
+    }
+    if (m.porvStuck) engine.ctx.porvStuck = true;
+    if (typeof m.sgLeak === 'number' && Number.isFinite(m.sgLeak)) engine.ctx.sgLeak = m.sgLeak;
+    if (m.boronRunaway) engine.ctx.boronRunaway = true;
   }
   return null;
 }

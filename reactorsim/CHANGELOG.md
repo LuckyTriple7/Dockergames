@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.14
+
+- 🐛 **Fix: "Pumpe ausgefallen" (und jede andere laufende Störung) verlor
+  ihren Quittierstatus beim Laden eines Spielstands -- der von 0.1.3
+  eigentlich schon gelöste Fall, nur an einer Stelle, die 0.1.3 nicht
+  erreichte.** Ursache: `ctx.stuckRods`, `ctx.msivStuck`, `ctx.pumpsStuck`,
+  `ctx.recircPumpStuck`, `ctx.recircRunback`, `ctx.porvStuck`,
+  `ctx.sgLeak`, `ctx.boronRunaway` (alle in `game/events.js` `stepEvents()`)
+  leben nur auf `ctx`, nie in `engine.state`, und waren deshalb komplett
+  vom Spielstand ausgeschlossen. Nach dem Laden verteidigte `stepEvents()`
+  nichts mehr aktiv: die Meldung fiel beim nächsten Bild sofort auf
+  "normal" zurück, obwohl sie schon quittiert war und die Ursache
+  unverändert weiter anstand -- UND der zugehörige Knopf (z.B. der
+  "ausgefallenen" Pumpe) ließ sich wieder anklicken, ganz ohne Wirkung
+  aus 0.1.11.
+  Alle acht Merker sind jetzt Teil von `persist.js` `pack()`/`apply()`
+  (neues, optionales `malfunctions`-Feld) -- geprüft per Nachbau des
+  genauen Ablaufs (Pumpenausfall → quittiert → gespeichert → geladen):
+  Meldung bleibt "ack", Knopf bleibt gesperrt.
+
 ## 0.1.13
 
 - 🔧 **Fix: Reaktivitätsbilanz-Balken beim RBMK stand am Volllast-
