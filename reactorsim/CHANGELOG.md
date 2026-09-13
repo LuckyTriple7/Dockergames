@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.0.81
+
+- 🐛 **Hupen-Fehler wirklich gefunden (Diagnose-Logs aus 0.0.79 haben ihn
+  gezeigt): `TripSystem.horn` lief nur bei Kachelzustand 'new', nicht bei
+  'clear'.** Eine Störung, die von selbst wieder verschwindet, BEVOR jemand
+  quittiert, wechselt nach `hold_s` von 'new' zu 'clear' (langsames Blinken,
+  siehe ISA-18.2-Folge im Dateikopf `sim/trips.js`) -- die Kachel bleibt
+  dabei unquittiert, aber die Hupe verstummte trotzdem sofort. Die Sirene
+  (0.0.74: einmal durch, dann Dauerton bis zum Quittieren) wurde dadurch
+  oft mitten im Ton abgewürgt, lange bevor sie fertig war -- der Dauerton
+  kam praktisch nie an, weil die meisten Störungen kürzer stehen als die
+  Sirene selbst läuft. 0.0.77/0.0.78 haben an der Symptomstelle
+  (Sirene→Dauerton-Übergabe) gesucht, der Fehler lag eine Ebene tiefer.
+  `horn` läuft jetzt für 'new' UND 'clear' -- verstummt erst durch echtes
+  Quittieren.
+  Temporäre Diagnose-Logs (0.0.79) wieder entfernt, 5 neue Tests
+  (`tests/test-trips.mjs`) sichern das Verhalten gegen Wiederauftreten ab
+  -- schlagen nachweislich fehl auf dem alten Stand, grün auf diesem.
+  Volle Suite: 65 Python + 98 JS, alle grün.
+
 ## 0.0.80
 
 - 🐛 **Speichern-Knopf und Autospeicherung teilten sich einen Slot.**

@@ -19,8 +19,8 @@
 // Die Kachelzustände folgen der Ringback-Folge nach ISA-18.2:
 //
 //   normal → new (schnelles Blinken, Hupe) → ack (Dauerlicht)
-//          → clear (langsames Blinken, wenn die Ursache weg, aber nicht
-//                   quittiert wurde) → normal
+//          → clear (langsames Blinken, Hupe läuft weiter, weil unquittiert,
+//                   auch wenn die Ursache schon weg ist) → normal
 //
 // Dass Quittieren eine eigene Handlung ist, ist Absicht: unquittierte
 // Alarmsekunden gehen in die Wertung ein.
@@ -83,8 +83,15 @@ export class TripSystem {
         this.events.push({ t: s.t_sim, id: def.id, key: def.key, severity: def.severity, kind: 'off' });
       }
 
-      if (st.tile === 'new') { st.unackS += dt; horn = true; }
-      if (st.tile === 'clear') st.unackS += dt;
+      // Hupe UND Kachel-Blinken laufen fuer 'new' UND 'clear' -- eine kurz
+      // aufblitzende Stoerung, die von selbst wieder weg ist, bevor jemand
+      // quittiert, darf die Hupe nicht schon verstummen lassen. Vorher stand
+      // hier nur 'new': eine Sirene, die gerade erst zwei Sekunden lief,
+      // wurde mitten im Ton abgewuergt (silence()), sobald die Bedingung
+      // verschwand -- der seit 0.0.74 geplante Dauerton nach der Sirene kam
+      // dadurch praktisch nie an, weil viele Ausloesungen kuerzer stehen als
+      // die Sirene selbst laeuft.
+      if (st.tile === 'new' || st.tile === 'clear') { st.unackS += dt; horn = true; }
 
       if (st.latched && def.severity > worst) { worst = def.severity; worstId = def.id; }
     }

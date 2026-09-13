@@ -126,13 +126,6 @@ export class Horn {
     this._attention.audio.playbackRate = rate;
     if (!this._playing) {
       this._playing = true;
-      // TEMPORAERE DIAGNOSE (siehe CHANGELOG) -- bitte Konsolenausgabe
-      // melden, dann fliegt das wieder raus.
-      console.log('[horn] Episode startet, Sirene an', {
-        readyState: this._siren.audio.readyState,
-        paused: this._siren.audio.paused,
-        error: this._siren.audio.error,
-      });
       this._siren.start();
       return;
     }
@@ -142,25 +135,11 @@ export class Horn {
     // ist robuster als ein Ereignis, das bei jedem Aufruf neu genau einmal
     // richtig verdrahtet sein müsste -- und start() selbst ist idempotent,
     // ein wiederholter Aufruf hier tut also nichts, sobald der Dauerton läuft.
-    console.log('[horn] Poll', {
-      sirenEnded: this._siren.audio.ended,
-      sirenPaused: this._siren.audio.paused,
-      sirenCurrentTime: this._siren.audio.currentTime,
-      sirenDuration: this._siren.audio.duration,
-      attnPaused: this._attention.audio.paused,
-      attnReadyState: this._attention.audio.readyState,
-      attnError: this._attention.audio.error,
-      attnEnabled: this._attention.enabled,
-    });
-    if (this._siren.audio.ended) {
-      this._attention.start();
-      console.log('[horn] Dauerton start() gerufen, danach paused=', this._attention.audio.paused);
-    }
+    if (this._siren.audio.ended) this._attention.start();
   }
 
   /** Sirene und Dauerton abstellen, sobald keine Meldung mehr unquittiert ist. */
   silence() {
-    if (this._playing) console.log('[horn] silence()');
     this._playing = false;
     this._siren.stop();
     this._attention.stop();

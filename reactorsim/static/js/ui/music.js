@@ -76,16 +76,8 @@ export class MusicLoop {
   }
 
   start() {
-    if (!this.enabled || !this.audio.paused) {
-      // TEMPORAERE DIAGNOSE (siehe CHANGELOG).
-      console.log('[music] start() uebersprungen', this.audio.src, {
-        enabled: this.enabled, paused: this.audio.paused,
-      });
-      return;
-    }
-    this.audio.play().catch((err) => {
-      // TEMPORAERE DIAGNOSE (siehe CHANGELOG).
-      console.error('[music] play() abgelehnt', this.audio.src, err);
+    if (!this.enabled || !this.audio.paused) return;
+    this.audio.play().catch(() => {
       // Browser verweigert Autoplay ohne Geste -- beim naechsten Klick
       // irgendwo auf der Seite einmalig nachholen.
       const retry = () => { this.audio.play().catch(() => {}); };
