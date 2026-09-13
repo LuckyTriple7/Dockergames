@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.0.84
+
+- ✨ **Regelventil und Umleitung im Fließbild: Zustand jetzt klar erkennbar.**
+  Bisher unterschied sich "offen" (dunkles Grün) kaum von "zu" (dunkles Grau)
+  -- bei kleiner, aber echter Öffnung sah ein Ventil aus wie geschlossen.
+  "run" ist jetzt deutlich heller und dicker umrandet, "stopped" bewusst matt
+  (`mimic.css`).
+- ✨ **Prozentzahl direkt am Ventilsymbol.** Regelventil und Umleitung zeigen
+  jetzt ihre Stellung ("73 %" usw.) im Fließbild selbst, nicht nur als Farbe
+  -- bei allen drei Reaktortypen (`valve()` in `mimic.js`, optionaler
+  `pctId`-Parameter).
+- ✨ **Fluss-Animation bleibt bei kleinem, aber echtem Durchsatz sichtbar.**
+  Ihre Opazität hing bisher direkt am Durchsatz-Anteil -- bei einem fast
+  geschlossenen Regelventil war sie praktisch bei 0 und die Anlage sah aus,
+  als fördere sie hinter dem Reaktor gar nichts mehr. Ein Sockelwert
+  (`flowVis()`) sorgt jetzt dafür, dass jeder echte Fluss sichtbar bleibt;
+  nur ein wirklich geschlossenes Ventil zeigt weiterhin keine Animation.
+
 ## 0.0.83
 
 - ✨ **Mehrbenutzerbetrieb: weitere Konten über `REACTORSIM_USERS`.** Bisher

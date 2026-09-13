@@ -15,6 +15,14 @@ import { t, num } from './i18n.js';
 /** Temperatur auf 0..1 abbilden -- daraus mischt CSS die Rohrfarbe. */
 const norm = (v, lo, hi) => Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
 
+/** Sichtbarkeitsuntergrenze für die Fluss-Animation in den Rohren. Ihre
+ *  Opazität skaliert in CSS direkt mit --rs-w (siehe mimic.css) -- bei
+ *  echtem, aber sehr kleinem Durchsatz (Regelventil fast zu) wäre sie sonst
+ *  faktisch unsichtbar, und hinter dem Reaktor sähe es aus, als fördere die
+ *  Anlage gar nichts mehr. Nur wirklich kein Fluss (Ventil ganz zu) bleibt
+ *  unsichtbar. */
+const flowVis = (w) => (w > 0.005 ? Math.max(w, 0.22) : 0);
+
 /** Pumpensymbol: Kreis mit rotierendem Flügel. */
 function pump(x, y, id, label) {
   const body = svg('circle', { class: 'rs-comp', cx: x, cy: y, r: 11, 'data-mimic': id });
@@ -29,22 +37,28 @@ function pump(x, y, id, label) {
   ]);
 }
 
-/** Ventilsymbol: zwei Dreiecke, Zustand über data-state. */
-function valve(x, y, id, label, side = 'right') {
-  return svg('g', null, [
+/** Ventilsymbol: zwei Dreiecke, Zustand über data-state.
+ *
+ * `pctId` ist optional: nur die Farbe (offen/zu) reichte in der Praxis
+ * nicht, um auf einen Blick zu sagen, WIE weit ein Regelventil offen steht --
+ * bei kleiner, aber echter Öffnung sieht "offen" fast so aus wie "zu". Mit
+ * `pctId` bekommt das Symbol zusätzlich eine Prozentzahl direkt darunter
+ * (siehe update() der drei Fließbilder, die sie aus s.gov/s.bypass füllen).
+ */
+function valve(x, y, id, label, side = 'right', pctId) {
+  const labelX = side === 'left' ? x - 14 : x + 14;
+  const anchor = side === 'left' ? 'end' : 'start';
+  const nodes = [
     svg('path', {
       class: 'rs-comp', 'data-mimic': id,
       d: `M ${x - 9} ${y - 7} L ${x - 9} ${y + 7} L ${x} ${y} Z M ${x + 9} ${y - 7} L ${x + 9} ${y + 7} L ${x} ${y} Z`,
     }),
     // Beschriftung seitlich, nicht darueber: ueber dem Ventil laeuft die
     // Rohrleitung, und Text auf einer Leitung ist auf dem Handy unlesbar.
-    svg('text', {
-      class: 'rs-label',
-      x: side === 'left' ? x - 14 : x + 14,
-      y: y + 4,
-      'text-anchor': side === 'left' ? 'end' : 'start',
-    }, [label]),
-  ]);
+    svg('text', { class: 'rs-label', x: labelX, y: y + 4, 'text-anchor': anchor }, [label]),
+  ];
+  if (pctId) nodes.push(readout(labelX, y + 15, pctId, anchor));
+  return svg('g', null, nodes);
 }
 
 /**
@@ -167,8 +181,8 @@ export function buildPwrMimic(container) {
   // Regelventil und Umleitstation. Beschriftung des Regelventils rechts (zur
   // Turbine hin): links davon laeuft die Umleitung auf einer eigenen,
   // parallelen Steigleitung -- genau da, wo die Beschriftung sonst hinreicht.
-  g.push(valve(330, 88, 'gov', t('mimic_gov')));
-  g.push(valve(300, 140, 'bypass', t('mimic_bypass')));
+  g.push(valve(330, 88, 'gov', t('mimic_gov'), 'right', 'gov'));
+  g.push(valve(300, 140, 'bypass', t('mimic_bypass'), 'right', 'bypass'));
 
   // Turbine und Generator.
   g.push(svg('path', { class: 'rs-vessel', d: 'M 372 100 L 432 84 L 432 156 L 372 136 Z' }));
@@ -225,13 +239,13 @@ export function buildPwrMimic(container) {
       if (alarms) for (const [key, node] of comps) setAttr(node, 'data-alarm', alarms.get(key) || 0);
 
       const fPrim = Math.max(0, Math.min(1.1, s.W_core / sp.coolant.W0));
-      for (const n of flows.get('prim') || []) setVar(n, '--rs-w', fPrim.toFixed(3));
+      for (const n of flows.get('prim') || []) setVar(n, '--rs-w', flowVis(fPrim).toFixed(3));
       const fSteam = Math.max(0, Math.min(1.2, s.W_steam / sp.sg.W_steam0));
-      for (const n of flows.get('steam') || []) setVar(n, '--rs-w', fSteam.toFixed(3));
+      for (const n of flows.get('steam') || []) setVar(n, '--rs-w', flowVis(fSteam).toFixed(3));
       for (const n of flows.get('feed') || []) {
-        setVar(n, '--rs-w', Math.max(0, Math.min(1.2, s.W_fw / sp.sg.W_steam0)).toFixed(3));
+        setVar(n, '--rs-w', flowVis(Math.max(0, Math.min(1.2, s.W_fw / sp.sg.W_steam0))).toFixed(3));
       }
-      for (const n of flows.get('bypass') || []) setVar(n, '--rs-w', (s.bypass || 0).toFixed(3));
+      for (const n of flows.get('bypass') || []) setVar(n, '--rs-w', flowVis(s.bypass || 0).toFixed(3));
 
       const rcp = comps.get('rcp');
       if (rcp) {
@@ -261,6 +275,8 @@ export function buildPwrMimic(container) {
       setText(reads.get('tcold'), num(s.T_ci - 273.15, 1) + ' °C');
       setText(reads.get('pzr'), num(s.pzr_p, 1) + ' bar');
       setText(reads.get('sg'), num(s.p_sg, 1) + ' bar');
+      setText(reads.get('gov'), num(s.gov * 100, 0) + ' %');
+      setText(reads.get('bypass'), num((s.bypass || 0) * 100, 0) + ' %');
       setText(reads.get('gen'), num(s.P_e, 0) + ' MW');
       setText(reads.get('cond'), num(s.p_cond, 3) + ' bar');
     },
@@ -363,8 +379,8 @@ export function buildBwrMimic(container) {
   // des Regelventils rechts (zur Turbine hin): links davon laeuft die
   // Umleitung auf einer eigenen, parallelen Steigleitung -- genau da, wo die
   // Beschriftung sonst hinreicht.
-  g.push(valve(330, 88, 'gov', t('mimic_gov')));
-  g.push(valve(296, 140, 'bypass', t('mimic_bypass')));
+  g.push(valve(330, 88, 'gov', t('mimic_gov'), 'right', 'gov'));
+  g.push(valve(296, 140, 'bypass', t('mimic_bypass'), 'right', 'bypass'));
   g.push(svg('path', { class: 'rs-vessel', d: 'M 372 100 L 432 84 L 432 156 L 372 136 Z' }));
   g.push(svg('circle', { class: 'rs-comp', cx: 452, cy: 118, r: 14, 'data-mimic': 'gen' }));
   // Beschriftung seitlich am Generator, nicht darüber/darunter: dort liegen
@@ -408,15 +424,15 @@ export function buildBwrMimic(container) {
       if (alarms) for (const [key, node] of comps) setAttr(node, 'data-alarm', alarms.get(key) || 0);
 
       const fRec = Math.max(0, Math.min(1.2, s.W_core / sp.recirc.W0));
-      for (const n of flows.get('prim') || []) setVar(n, '--rs-w', fRec.toFixed(3));
+      for (const n of flows.get('prim') || []) setVar(n, '--rs-w', flowVis(fRec).toFixed(3));
       const fSteam = Math.max(0, Math.min(1.2, s.W_steam / sp.vessel.W_steam0));
-      for (const n of flows.get('steam') || []) setVar(n, '--rs-w', fSteam.toFixed(3));
+      for (const n of flows.get('steam') || []) setVar(n, '--rs-w', flowVis(fSteam).toFixed(3));
       for (const n of flows.get('feed') || []) {
-        setVar(n, '--rs-w', Math.max(0, Math.min(1.2, s.W_fw / sp.vessel.W_steam0)).toFixed(3));
+        setVar(n, '--rs-w', flowVis(Math.max(0, Math.min(1.2, s.W_fw / sp.vessel.W_steam0))).toFixed(3));
       }
-      for (const n of flows.get('bypass') || []) setVar(n, '--rs-w', (s.bypass || 0).toFixed(3));
+      for (const n of flows.get('bypass') || []) setVar(n, '--rs-w', flowVis(s.bypass || 0).toFixed(3));
       for (const n of flows.get('ic') || []) setVar(n, '--rs-w', s.icOpen ? '1.000' : '0.000');
-      for (const n of flows.get('srv') || []) setVar(n, '--rs-w', (s.srv || 0).toFixed(3));
+      for (const n of flows.get('srv') || []) setVar(n, '--rs-w', flowVis(s.srv || 0).toFixed(3));
 
       const rcp = comps.get('rcp');
       if (rcp) {
@@ -442,6 +458,8 @@ export function buildBwrMimic(container) {
 
       setText(reads.get('power'), num(d.power_th_pct, 0) + ' %');
       setText(reads.get('dome'), num(s.p_dome, 1) + ' bar');
+      setText(reads.get('gov'), num(s.gov * 100, 0) + ' %');
+      setText(reads.get('bypass'), num((s.bypass || 0) * 100, 0) + ' %');
       setText(reads.get('gen'), num(s.P_e, 0) + ' MW');
       setText(reads.get('cond'), num(s.p_cond, 3) + ' bar');
       setText(reads.get('icwater'), num(s.icWater * 100, 0) + ' %');
@@ -528,8 +546,8 @@ export function buildRbmkMimic(container) {
   // Turbine, Generator, Kondensator. Beschriftung des Regelventils rechts
   // (zur Turbine hin): links davon laeuft die Umleitung auf einer eigenen,
   // parallelen Steigleitung -- genau da, wo die Beschriftung sonst hinreicht.
-  g.push(valve(330, 88, 'gov', t('mimic_gov')));
-  g.push(valve(298, 140, 'bypass', t('mimic_bypass')));
+  g.push(valve(330, 88, 'gov', t('mimic_gov'), 'right', 'gov'));
+  g.push(valve(298, 140, 'bypass', t('mimic_bypass'), 'right', 'bypass'));
   g.push(svg('path', { class: 'rs-vessel', d: 'M 372 100 L 432 84 L 432 156 L 372 136 Z' }));
   g.push(svg('circle', { class: 'rs-comp', cx: 452, cy: 118, r: 14, 'data-mimic': 'gen' }));
   // Beschriftung seitlich am Generator, nicht darüber/darunter: dort liegen
@@ -576,13 +594,13 @@ export function buildRbmkMimic(container) {
       if (alarms) for (const [key, node] of comps) setAttr(node, 'data-alarm', alarms.get(key) || 0);
 
       const fPrim = Math.max(0, Math.min(1.2, s.W_core / sp.mcp.W0));
-      for (const n of flows.get('prim') || []) setVar(n, '--rs-w', fPrim.toFixed(3));
+      for (const n of flows.get('prim') || []) setVar(n, '--rs-w', flowVis(fPrim).toFixed(3));
       const fSteam = Math.max(0, Math.min(1.2, s.W_steam / sp.drum.W_steam0));
-      for (const n of flows.get('steam') || []) setVar(n, '--rs-w', fSteam.toFixed(3));
+      for (const n of flows.get('steam') || []) setVar(n, '--rs-w', flowVis(fSteam).toFixed(3));
       for (const n of flows.get('feed') || []) {
-        setVar(n, '--rs-w', Math.max(0, Math.min(1.2, s.W_fw / sp.drum.W_steam0)).toFixed(3));
+        setVar(n, '--rs-w', flowVis(Math.max(0, Math.min(1.2, s.W_fw / sp.drum.W_steam0))).toFixed(3));
       }
-      for (const n of flows.get('bypass') || []) setVar(n, '--rs-w', (s.bypass || 0).toFixed(3));
+      for (const n of flows.get('bypass') || []) setVar(n, '--rs-w', flowVis(s.bypass || 0).toFixed(3));
 
       const rcp = comps.get('rcp');
       if (rcp) {
@@ -607,6 +625,8 @@ export function buildRbmkMimic(container) {
       setText(reads.get('drum'), num(s.p_drum, 1) + ' bar');
       setText(reads.get('orm'), t('val_orm') + ' ' + num(d.orm, 0));
       setAttr(reads.get('orm'), 'data-sev', d.orm < 15 ? '3' : (d.orm < 30 ? '1' : '0'));
+      setText(reads.get('gov'), num(s.gov * 100, 0) + ' %');
+      setText(reads.get('bypass'), num((s.bypass || 0) * 100, 0) + ' %');
       setText(reads.get('gen'), num(s.P_e, 0) + ' MW');
       setText(reads.get('cond'), num(s.p_cond, 3) + ' bar');
     },

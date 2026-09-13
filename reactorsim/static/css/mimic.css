@@ -82,11 +82,15 @@
   [data-alarm="3"] { animation: none; }
 }
 
-/* Pumpen und Ventile: Zustand als Datenattribut, Farbe daraus. */
+/* Pumpen und Ventile: Zustand als Datenattribut, Farbe daraus.
+   "run" und "stopped" lagen sich frueher zu nahe (dunkles Gruen gegen
+   dunkles Grau) -- bei einem Ventil, das nur leicht offen steht, war auf den
+   ersten Blick kaum zu erkennen, ob es ueberhaupt etwas tut. Jetzt ist "run"
+   deutlich heller und dicker umrandet, "stopped" bewusst matt und schmal. */
 .rs-comp { fill: #16222e; stroke: #3a5064; stroke-width: 1.5; }
-.rs-comp[data-state="run"]     { fill: #14402c; stroke: var(--rs-ok); }
-.rs-comp[data-state="stopped"] { fill: #2a2a2a; stroke: #5a6672; }
-.rs-comp[data-state="tripped"] { fill: #401419; stroke: var(--rs-alarm); }
+.rs-comp[data-state="run"]     { fill: #155c3a; stroke: var(--rs-ok); stroke-width: 2.5; }
+.rs-comp[data-state="stopped"] { fill: #1a1e22; stroke: #4a545c; stroke-width: 1.2; opacity: .6; }
+.rs-comp[data-state="tripped"] { fill: #401419; stroke: var(--rs-alarm); stroke-width: 2.5; }
 
 .rs-spin {
   transform-box: fill-box;
