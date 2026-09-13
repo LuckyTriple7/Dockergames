@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.88
+
+- ✨ **Thermische Nennleistung auf dem Startbildschirm.** Die Reaktorkarten
+  zeigten bisher nur die elektrische Leistung (z.B. "1400 MWe"). Jetzt steht
+  die thermische Leistung davor ("3850 MWth · 1400 MWe · ...") -- DWR 3850,
+  SWR 3840, RBMK 3200 MWth (Wirkungsgrad 31-36 %, je Typ verschieden).
+
 ## 0.0.87
 
 - ✍️ **Alle 35 Meldetafel-Hilfetexte (DE+EN) neu geschrieben** -- Nutzer-
