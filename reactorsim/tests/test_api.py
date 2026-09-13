@@ -165,7 +165,7 @@ def test_score_with_log_is_verified_server_side_not_trusted(client):
         scenario='pwr_turbine_trip', duration_s=1200.0,
         energy_mwh_delivered=233.34, energy_mwh_demanded=466.67,
         deviation_mwh=223.333, violation_seconds={'1': 0, '2': 510, '3': 90},
-        alarm_seconds_unacked=1340, completed=False, difficulty=2)
+        alarm_seconds_unacked=1347, completed=False, difficulty=2)
     fake_summary = _summary(scenario='pwr_turbine_trip', duration_s=3600.0,
                             energy_mwh_delivered=999999.0, energy_mwh_demanded=1.0,
                             completed=True, deviation_mwh=0.0)
