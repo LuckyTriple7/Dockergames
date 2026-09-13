@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.0.85
+
+- 🐛 **Fluss-Animation im Fließbild auf hellen Dampfrohren praktisch
+  unsichtbar (0.0.84 reichte nicht).** Die helle gestrichelte Linie
+  (`--rs-flow`, hellblau) lag bei hohem Druck auf einem Dampfrohr, das durch
+  `--rs-steam-l` selbst schon fast weiß eingefärbt ist -- beide Töne lagen zu
+  nah beieinander, die Animation war zwar aktiv (Screenshot-Diagnose zeigte
+  die korrekte Opazität), aber am Bildschirm nicht zu erkennen. Jetzt liegt
+  unter der hellen Linie eine dunkle Kontur (`rs-flow-halo`, gleicher
+  Rhythmus, gleiches `--rs-w`), die auf jedem Rohrton sichtbar bleibt, dazu
+  eine kräftigere Flussfarbe (`#22d3ee` statt `#a9e7ff`). Per Playwright
+  gegen den laufenden Server verifiziert (RBMK, Regelventil 11 %, genau der
+  vom Nutzer gemeldete Fall).
+
 ## 0.0.84
 
 - ✨ **Regelventil und Umleitung im Fließbild: Zustand jetzt klar erkennbar.**

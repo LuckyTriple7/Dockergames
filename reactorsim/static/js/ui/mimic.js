@@ -105,8 +105,17 @@ function rodTracker(root, yTop, yBottom, fromTop) {
 
 function pipe(d, kind, flowId) {
   const nodes = [svg('path', { class: `rs-pipe rs-pipe-${kind}`, d })];
-  if (flowId) nodes.push(svg('path', { class: 'rs-flow', d, 'data-flow': flowId }));
-  return svg('g', null, nodes);
+  if (flowId) {
+    // Dunkle Kontur UNTER der hellen gestrichelten Linie: ohne sie verschwand
+    // der Fluss auf einem ohnehin hellen Dampfrohr (hoher Druck faerbt es fast
+    // weiss) praktisch komplett -- Rohr- und Flussfarbe lagen im selben
+    // blassen Ton. `--rs-w` steht auf der GRUPPE, nicht auf den einzelnen
+    // Strichen: beide erben ihn per CSS-Vererbung, ein Schreibvorgang je Takt
+    // reicht weiterhin fuer beide (siehe Dateikopf zur Schreib-Sparsamkeit).
+    nodes.push(svg('path', { class: 'rs-flow-halo', d }));
+    nodes.push(svg('path', { class: 'rs-flow', d }));
+  }
+  return svg('g', flowId ? { 'data-flow': flowId } : null, nodes);
 }
 
 function readout(x, y, id, anchor = 'start') {
