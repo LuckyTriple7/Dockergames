@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8
+
+- ⏪ Revert 0.1.7: `game_attention.mp3`-Tausch zurückgenommen, alter Ton
+  wieder da.
+
 ## 0.1.7
 
 - 🔊 Meldeton "Dauerlicht/Quittierung" (`game_attention.mp3`) ausgetauscht.
