@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.94
+
+- 🔇 **Fix: Ton-Hauptschalter (Mute) liess zwei Klaenge stumm ungeschaltet
+  durch.** Der Schalter-Klick bei jeder Bedienung (Staebe, Automatik/Hand,
+  Pumpen -- controls.js) und der Geigerzaehler-Alarm riefen `playClip()`
+  direkt auf, ohne je den Mute-Zustand zu pruefen -- anders als Hupe,
+  Musik und Stabfahrgeraeusch, die schon vorher ihr eigenes `enabled`
+  hatten. `playClip()` hat jetzt selbst einen Hauptschalter
+  (`setMuted()`, gesetzt in derselben Stelle wie alle anderen
+  Ton-Einstellungen), der Mute-Knopf schaltet jetzt wirklich alles ab.
+
 ## 0.0.93
 
 - 🐛 **Fix: Hintergrundbilder aus 0.0.92 unsichtbar.** Kamen als

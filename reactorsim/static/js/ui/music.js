@@ -11,6 +11,18 @@
 
 const BASE = (window.RS_CFG ? `/s/${window.RS_CFG.version}` : '') + '/audio/';
 
+// Hauptschalter fuer playClip() -- main.js ruft setMuted() aus
+// applyAudioPrefs() (der EINEN Stelle fuer den Tonzustand, siehe dort).
+// Ohne das ignorierten Schalterklicks (controls.js) und der Geigerzaehler-
+// Alarm (main.js onAlert) den Mute-Knopf komplett: sie riefen playClip()
+// direkt auf, ohne je einen enabled-Zustand zu pruefen -- anders als Horn
+// (annunciator.js), das schon vorher sein eigenes `enabled` abfragte. Ein
+// zentraler Schalter HIER statt an jeder Aufrufstelle, aus demselben Grund
+// wie beim Klick-Sound selbst: eine vergessene Pruefung ist sonst nur eine
+// Frage der Zeit.
+let muted = false;
+export function setMuted(v) { muted = !!v; }
+
 /**
  * Einmaliger Clip, feuert und vergisst -- fuer SCRAM, Kernschmelze und die
  * akustische Vorwarnung vor einem geplanten Ereignis. Eigenes Audio-Objekt
@@ -18,6 +30,7 @@ const BASE = (window.RS_CFG ? `/s/${window.RS_CFG.version}` : '') + '/audio/';
  * gegenseitig abschneiden.
  */
 export function playClip(name, volume = 1) {
+  if (muted) return;
   try {
     const a = new Audio(BASE + name);
     a.volume = volume;

@@ -14,7 +14,7 @@ import { api } from './net/api.js';
 import { save as saveGame, load as loadGame } from './net/persist.js';
 import { GLOSSARY } from './ui/glossary.js';
 import { SHORTCUTS } from './ui/shortcuts.js';
-import { MusicLoop, playClip } from './ui/music.js';
+import { MusicLoop, playClip, setMuted } from './ui/music.js';
 import { STATUS_STATS, sanitizeStatusKeys } from './ui/statusStats.js';
 import { enableDragReorder } from './ui/dragReorder.js';
 import { attachRecorder } from './game/recorder.js';
@@ -72,6 +72,10 @@ app.prefsPromise = api.readPrefs().then((r) => {
 function applyAudioPrefs() {
   const a = app.prefs.audio || {};
   const on = (key) => !a.muted && a[key] !== false;
+  // Hauptschalter fuer ALLE ueber playClip() abgespielten Klaenge (Schalter-
+  // Klick in controls.js, Geigerzaehler-Alarm hier unten) -- die kannten den
+  // Mute-Knopf vorher gar nicht, siehe Kommentar in music.js.
+  setMuted(!!a.muted);
   app.introMusic.enabled = on('music');
   app.bgMusic.enabled = on('music');
   if (app.horn) app.horn.enabled = on('horn');
