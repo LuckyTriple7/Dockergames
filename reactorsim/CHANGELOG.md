@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.0
+
+- 🔧 **Fix: Mouseover-Umsetzung aus 0.0.99 war falsch.** Namen erschienen
+  wieder an einer festen Stelle im SVG statt neben dem Mauszeiger, UND die
+  Messwerte (Temperatur, Druck, Prozent, MW) waren bis zum Hover unsichtbar
+  -- fuer eine Leitwarte inakzeptabel, die Zahlen muessen ohne Maus
+  durchgehend ablesbar sein. Jetzt: Messwerte sind wieder IMMER sichtbar
+  wie vor 0.0.99, nur der Bauteilname (Reaktor, Pumpe, Druckhalter, …)
+  kommt als echtes Tooltip direkt neben dem Mauszeiger (klappt am rechten/
+  unteren Fensterrand automatisch auf die andere Seite um) -- damit kann
+  ein Name nie mehr mit irgendetwas kollidieren, ganz gleich wo er
+  auftaucht.
+
 ## 0.0.99
 
 - 🖼️ **Fließbild-Beschriftungen grundlegend umgebaut: Name und Messwert nur

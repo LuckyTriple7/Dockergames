@@ -24,17 +24,60 @@ const norm = (v, lo, hi) => Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
 const flowVis = (w) => (w > 0.005 ? Math.max(w, 0.22) : 0);
 
 /**
- * Buendelt Bauteil-Grafik und seine Beschriftung/Anzeigen zu EINEM
- * Hover-Ziel. Name und Messwert (.rs-label/.rs-read) liegen unsichtbar
- * bereit und erscheinen erst, wenn die Maus ueber irgendeinem Kind dieser
- * Gruppe steht (siehe .rs-hover in mimic.css) -- vorher standen alle
- * Beschriftungen dauerhaft im Bild und liefen sich bei drei eng gepackten
- * Fließbildern gegenseitig ins Gehege. Mit Hover kann nie mehr als eine
- * gleichzeitig sichtbar sein, ganz gleich wie eng zwei Bauteile beieinander
- * liegen.
+ * Buendelt Bauteil-Grafik und seine Beschriftung/Anzeige zu EINEM Hover-Ziel.
+ * Der Name (.rs-label) steht nie im Bild selbst -- er ist reiner Textinhalt,
+ * den wireHoverTooltips() abliest und als Tooltip neben dem Mauszeiger zeigt
+ * (siehe .rs-label in mimic.css). Messwerte (.rs-read) bleiben immer
+ * sichtbar, die Warte braucht sie ohne Maus. Vorher standen beide dauerhaft
+ * an einer festen Bildposition und liefen sich bei drei eng gepackten
+ * Fließbildern gegenseitig ins Gehege -- ein Tooltip an der Mausposition
+ * kann mit nichts mehr kollidieren.
  */
 function hoverGroup(nodes) {
   return svg('g', { class: 'rs-hover' }, nodes);
+}
+
+// ── Namens-Tooltip ───────────────────────────────────────────────────────
+//
+// EIN HTML-Element fuer alle drei Fließbilder (lazy gebaut, nie mehr als
+// eines gleichzeitig sichtbar) statt SVG-Text an fester Position -- folgt
+// dem Mauszeiger in Bildschirm-Pixeln, unabhaengig davon, wie das SVG per
+// viewBox skaliert im Container sitzt.
+let tipEl = null;
+function tipNode() {
+  if (!tipEl) {
+    tipEl = document.createElement('div');
+    tipEl.className = 'rs-mimic-tip';
+    tipEl.hidden = true;
+    document.body.append(tipEl);
+  }
+  return tipEl;
+}
+
+/** Setzt jedes .rs-hover-Bauteil im uebergebenen SVG als Ausloeser fuer den
+ *  Tooltip -- EIN Listener-Paar auf der Wurzel statt eines je Bauteil,
+ *  gleiche Schreib-Sparsamkeit wie beim Rest der Datei. */
+function wireHoverTooltips(root) {
+  root.addEventListener('pointermove', (ev) => {
+    const group = ev.target.closest('.rs-hover');
+    const label = group && group.querySelector('.rs-label');
+    const tip = tipNode();
+    if (!label) { tip.hidden = true; return; }
+    tip.textContent = label.textContent;
+    tip.hidden = false;
+    // 14px Versatz nach rechts/unten, damit der Zeiger selbst den Text
+    // nicht verdeckt -- an den beiden Raendern, an denen das Fließbild
+    // typischerweise klebt (rechter/unterer Fensterrand, siehe z.B. den
+    // Generator ganz rechts im Bild), auf die andere Seite des Zeigers
+    // klappen, statt ueber den sichtbaren Bereich hinauszuragen.
+    const w = tip.offsetWidth;
+    const h = tip.offsetHeight;
+    const left = ev.clientX + 14 + w > window.innerWidth ? ev.clientX - 14 - w : ev.clientX + 14;
+    const top = ev.clientY + 14 + h > window.innerHeight ? ev.clientY - 14 - h : ev.clientY + 14;
+    tip.style.left = `${Math.max(0, left)}px`;
+    tip.style.top = `${Math.max(0, top)}px`;
+  });
+  root.addEventListener('pointerleave', () => { tipNode().hidden = true; });
 }
 
 /** Pumpensymbol: Kreis mit rotierendem Flügel. */
@@ -269,6 +312,7 @@ export function buildPwrMimic(container) {
 
   for (const node of g) root.append(node);
   container.replaceChildren(root);
+  wireHoverTooltips(root);
 
   const reads = new Map();
   for (const node of root.querySelectorAll('[data-read]')) reads.set(node.dataset.read, node);
@@ -476,6 +520,7 @@ export function buildBwrMimic(container) {
 
   for (const node of g) root.append(node);
   container.replaceChildren(root);
+  wireHoverTooltips(root);
 
   const reads = new Map();
   for (const n of root.querySelectorAll('[data-read]')) reads.set(n.dataset.read, n);
@@ -662,6 +707,7 @@ export function buildRbmkMimic(container) {
 
   for (const node of g) root.append(node);
   container.replaceChildren(root);
+  wireHoverTooltips(root);
 
   const reads = new Map();
   for (const n of root.querySelectorAll('[data-read]')) reads.set(n.dataset.read, n);
