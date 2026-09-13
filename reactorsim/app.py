@@ -15,6 +15,7 @@ import logging
 import os
 import secrets
 import signal
+import subprocess
 
 from urllib.parse import quote
 
@@ -43,6 +44,12 @@ LOCALES_PATH = _BASE + '/locales'
 STATIC_PATH = _BASE + '/static'
 SCENARIO_PATH = STATIC_PATH + '/data/scenarios'
 VERSION_PATH = _BASE + '/VERSION'
+VERIFY_SCRIPT = _BASE + '/verify_run.mjs'
+# Ein Lauf rechnet in Node in Sekundenbruchteilen (siehe tests/test-replay.mjs)
+# -- selbst das laengste Szenario (6h) noch deutlich darunter. Grosszuegig
+# bemessen gegen einen langsamen Container beim Start, nicht gegen die
+# eigentliche Rechenzeit.
+VERIFY_TIMEOUT_S = 20
 
 PORT = int(os.environ.get('REACTORSIM_PORT', '17779'))
 
@@ -412,6 +419,37 @@ def scores_list():
     return jsonify({'scores': STORE.list_scores(reactor, scenario, limit)})
 
 
+def _verify_run(reactor: str, scenario_file: str, action_log: list) -> dict | None:
+    """Lauf serverseitig nachrechnen (verify_run.mjs unter Node) statt der
+    gemeldeten Kennzahlen nur auf Plausibilität zu prüfen.
+
+    @return die nachgerechnete Zusammenfassung (dieselbe Form wie
+    RunState.summary()), oder None bei jedem Fehler -- Zeitüberschreitung,
+    Absturz, kaputtes Protokoll. Ein Fehler hier ist immer eine Ablehnung,
+    nie ein Rückfall auf die Klientenangabe: wer ein Protokoll mitschickt,
+    verspricht damit, dass es sich nachrechnen lässt.
+    """
+    payload = json.dumps({'reactor': reactor, 'scenarioFile': scenario_file, 'log': action_log})
+    try:
+        proc = subprocess.run(
+            ['node', VERIFY_SCRIPT], input=payload, capture_output=True,
+            text=True, timeout=VERIFY_TIMEOUT_S,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.error("Nachrechnung nicht gestartet: %s", exc.__class__.__name__)
+        return None
+    if proc.returncode != 0:
+        log.info("Nachrechnung abgelehnt: %s", (proc.stdout or proc.stderr or '').strip()[:200])
+        return None
+    try:
+        data = json.loads(proc.stdout)
+    except ValueError:
+        log.error("Nachrechnung lieferte kein JSON")
+        return None
+    summary = data.get('summary') if isinstance(data, dict) else None
+    return summary if isinstance(summary, dict) else None
+
+
 @app.route('/api/highscores', methods=['POST'])
 def scores_add():
     """Der Client schickt Kennzahlen, NIE einen Punktestand.
@@ -446,6 +484,21 @@ def scores_add():
     scn = SCENARIO_BY_ID[scenario]
     if scn.get('reactor') != reactor:
         return jsonify({'error': 'reactor_mismatch'}), 400
+
+    # Protokoll mitgeschickt (siehe game/recorder.js) -- dann selbst
+    # nachrechnen statt der Zusammenfassung zu vertrauen, und die vom Client
+    # gemeldeten Kennzahlen komplett durch das Ergebnis ersetzen. Ein
+    # geladener Spielstand hat kein Protokoll (main.js boot()), dann bleibt
+    # es bei der reinen Plausibilitätsprüfung wie bisher -- validate_summary
+    # läuft in JEDEM Fall noch einmal darüber, auch über eine nachgerechnete
+    # Zusammenfassung: billige zweite Absicherung, falls verify_run.mjs
+    # selbst einen Fehler hätte.
+    action_log = body.get('log')
+    if isinstance(action_log, list):
+        verified = _verify_run(reactor, scn['file'], action_log)
+        if verified is None:
+            return jsonify({'error': 'verification_failed'}), 400
+        summary = verified
 
     why = scoring.validate_summary(summary, scn, REACTOR_P0[reactor])
     if why:

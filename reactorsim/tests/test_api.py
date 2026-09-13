@@ -148,6 +148,50 @@ def test_difficulty_is_filled_in_when_missing(client):
     assert r.get_json()['score'] == scoring.score({**summary, 'difficulty': 2})['score']
 
 
+def test_score_with_log_is_verified_server_side_not_trusted(client):
+    """Wird ein Protokoll mitgeschickt (siehe game/recorder.js), rechnet der
+    Server den Lauf selbst nach (verify_run.mjs, Node) und ERSETZT die
+    gemeldeten Kennzahlen komplett -- ein Client, der ein leeres Protokoll
+    (keine Bedienhandlung) mit einer erfundenen Zusammenfassung kombiniert,
+    bekommt trotzdem die ehrliche Wertung fuer "eine Stunde lang nichts
+    getan", nicht seine erfundenen Zahlen.
+
+    pwr_turbine_trip ohne jeden Eingriff: Turbine faellt ab, niemand fuehrt
+    Speisewasser oder Turbine nach, die Netzabweichung reisst irgendwann die
+    Frist -- deterministisch, siehe tests/test-replay.mjs fuer denselben Lauf
+    unter Node."""
+    import scoring
+    real_summary = _summary(
+        scenario='pwr_turbine_trip', duration_s=1200.0,
+        energy_mwh_delivered=233.34, energy_mwh_demanded=466.67,
+        deviation_mwh=223.333, violation_seconds={'1': 0, '2': 510, '3': 90},
+        alarm_seconds_unacked=1340, completed=False, difficulty=2)
+    fake_summary = _summary(scenario='pwr_turbine_trip', duration_s=3600.0,
+                            energy_mwh_delivered=999999.0, energy_mwh_demanded=1.0,
+                            completed=True, deviation_mwh=0.0)
+    r = client.post('/api/highscores', json={'name': 'Schummler', 'summary': fake_summary, 'log': []})
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    # completed steht in STORE.add_score()'s entry direkt, aus der
+    # tatsaechlich verwendeten Zusammenfassung -- False beweist, dass nicht
+    # die erfundene ("completed": True) durchging.
+    assert data['entry']['completed'] is False
+    assert data['score'] == scoring.score(real_summary)['score']
+    assert data['score'] != scoring.score(fake_summary)['score']
+
+
+def test_score_verification_failure_is_rejected_not_trusted(client, monkeypatch):
+    """Schlaegt die Nachrechnung selbst fehl (hier erzwungen: Skript fehlt),
+    darf das NICHT auf die Klientenangabe zurueckfallen -- wer ein Protokoll
+    mitschickt, verspricht damit, dass es sich nachrechnen laesst."""
+    import app as appmod
+    monkeypatch.setattr(appmod, 'VERIFY_SCRIPT', str(_HERE) + '/does-not-exist.mjs')
+    r = client.post('/api/highscores',
+                    json={'name': 'X', 'summary': _summary(), 'log': []})
+    assert r.status_code == 400
+    assert r.get_json()['error'] == 'verification_failed'
+
+
 def test_security_headers_are_set(client):
     """Der Dienst haengt auf einem offenen LAN-Port. Ohne frame-ancestors
     laesst sich das Anmeldeformular in einen fremden Rahmen setzen."""

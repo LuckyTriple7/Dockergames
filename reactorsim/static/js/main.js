@@ -18,6 +18,8 @@ import { MusicLoop, playClip } from './ui/music.js';
 import { STATUS_STATS, sanitizeStatusKeys } from './ui/statusStats.js';
 import { Geiger } from './ui/geiger.js';
 import { enableDragReorder } from './ui/dragReorder.js';
+import { attachRecorder } from './game/recorder.js';
+import { record } from './game/coreActions.js';
 
 // Panel-Buchstaben fuer die Fenster-Tastenkuerzel (siehe initControls():
 // Tastatur am Rechner). Ungewandeltes Zeichen statt Kachel-Position, damit
@@ -210,8 +212,12 @@ function initStart() {
     try { window.localStorage.setItem('rs-name', name); } catch { /* privates Fenster */ }
     const msg = $('#rs-debrief-msg');
     // Der Punktestand wird bewusst NICHT mitgeschickt -- der Server rechnet ihn
-    // aus denselben Kennzahlen selbst nach.
-    api.submitScore(name, result.summary).then((r) => {
+    // aus denselben Kennzahlen selbst nach. Das Protokoll (falls vorhanden --
+    // ein geladener Spielstand hat keins, siehe boot()) lässt ihn zusätzlich
+    // die Kennzahlen selbst nachrechnen, statt sie nur auf Plausibilität zu
+    // prüfen (game/replay.js, verify_run.mjs).
+    const log = app.engine.recorder ? app.engine.recorder.serialize() : null;
+    api.submitScore(name, result.summary, log).then((r) => {
       if (r.ok) {
         setText(msg, t('debrief_sent'));
         $('#rs-debrief-submit').hidden = true;
@@ -298,9 +304,7 @@ function initStart() {
       scramHoldTimer = window.setTimeout(() => {
         scramHoldTimer = 0;
         $('#rs-scram').dataset.armed = '0';
-        if (app.horn) app.horn.scram();
-        app.engine.scram('manual');
-        setSpeed(1);
+        triggerScram();
       }, 1000);
     }
   });
@@ -481,9 +485,7 @@ function initControls() {
       return;
     }
     disarm();
-    if (app.horn) app.horn.scram();
-    app.engine.scram('manual');
-    setSpeed(1);
+    triggerScram();
   });
 
   $('#rs-menu').addEventListener('click', leaveToMenu);
@@ -868,6 +870,16 @@ function restart() {
   boot(app.lastReactor, app.lastScenarioDef, null, app.lastCold);
 }
 
+/** Zwei-Klick-Knopf UND Strg+Z gehalten (siehe initStart()) rufen dieselbe
+ *  Stelle. record() (game/coreActions.js) zeichnet die Handlung auf UND
+ *  loest sie aus -- dieselbe Stelle, die auch die Server-Nachrechnung
+ *  (game/replay.js) fuer 'scram' anspringt. */
+function triggerScram() {
+  if (app.horn) app.horn.scram();
+  record(app.engine, 'scram', null);
+  setSpeed(1);
+}
+
 /** Menü-Knopf UND Strg+X (siehe initStart()) rufen dieselbe Stelle -- ein
  *  laufendes Szenario (nicht das freie Spiel) gilt als abgebrochen, statt
  *  einfach zu verschwinden. */
@@ -1068,6 +1080,14 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
     // bisher ganz ohne Alarm aus, sobald die Anforderung laenger verfehlt war.
     extraTrips: scenarioDef ? gridDeviationTrips(scenarioDef) : [],
   });
+  // Zeichnet jede Bedienhandlung auf (game/coreActions.js record(), plus
+  // panels.js' recordingKit() für die typspezifische Bedienung) -- Grundlage
+  // der Server-Nachrechnung beim Einreichen einer Wertung, siehe
+  // '#rs-debrief-send' weiter unten. Wird bei einem geladenen Spielstand
+  // wieder verworfen (siehe loadGame()-Aufruf am Ende dieser Funktion): ein
+  // Sprung auf einen gespeicherten Zustand lässt sich nicht aus Schritten
+  // plus Protokoll nachrechnen.
+  attachRecorder(app.engine);
   app.session = new Session(app.engine, scenarioDef);
   app.session.onEnd = (result, failed) => showDebrief(result, failed);
   // Geigerzaehler-Vorwarnung, 2-5 Minuten vor einem geplanten Ereignis --
@@ -1148,7 +1168,14 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
     // Session-Konstruktor) -- persist.js restore() ueberspringt es dann
     // einfach, wie bei jedem Feld ohne Gegenstueck.
     loadGame(app.engine, loadSlot, app.session && app.session.run).then((err) => {
-      if (err) flash($('#rs-save'), t('load_failed'));
+      if (err) { flash($('#rs-save'), t('load_failed')); return; }
+      // Ein geladener Spielstand springt auf einen fremden Zustand -- das
+      // Protokoll bis hierher (leer oder nicht) reicht dann nicht mehr, um
+      // den Lauf aus Schritten plus Handlungen nachzurechnen. app.engine.
+      // recorder wird dadurch null; api.submitScore() schickt dann kein
+      // Protokoll mit, und der Server faellt auf die reine
+      // Plausibilitaetspruefung zurueck (siehe scoring.py).
+      app.engine.recorder = null;
     });
   }
 }

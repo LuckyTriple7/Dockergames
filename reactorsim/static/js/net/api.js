@@ -44,7 +44,11 @@ export const api = {
     q.set('limit', String(limit));
     return request('GET', `/api/highscores?${q}`);
   },
-  submitScore: (name, summary) => request('POST', '/api/highscores', { name, summary }),
+  // `log` ist optional (null bei einem geladenen Spielstand, siehe main.js
+  // boot()) -- das aufgezeichnete Protokoll erlaubt dem Server, den Lauf
+  // selbst nachzurechnen statt der Zusammenfassung nur auf Plausibilität zu
+  // vertrauen (siehe scoring.py, verify_run.mjs).
+  submitScore: (name, summary, log) => request('POST', '/api/highscores', { name, summary, log }),
   readPrefs: () => request('GET', '/api/prefs'),
   writePrefs: (blob) => request('PUT', '/api/prefs', blob),
 };

@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.0.76
+
+- ✨ **Serverseitige Nachrechnung statt reiner Plausibilitätsprüfung**
+  (Backlog "Serverseitige Nachrechnung statt Plausibilitätsprüfung").
+  Bisher prüfte `scoring.validate_summary()` nur, ob gemeldete Kennzahlen aus
+  *irgendeinem* Lauf stammen könnten -- jetzt rechnet der Server den Lauf,
+  wenn möglich, selbst nach und ersetzt die gemeldeten Kennzahlen komplett
+  durch das Ergebnis.
+  - `game/recorder.js`: zeichnet jede Bedienhandlung mit der Anzahl der
+    bisherigen Rechenschritte auf (fester Zeitschritt, kein Echtzeitstempel
+    nötig). `attachRecorder(engine)` haengt sich einmal an `engine.step()`.
+  - `game/coreActions.js`: die Handlungen, die jeder Reaktortyp hat (Stäbe,
+    Pumpen, Lastanforderung, Turbinenregler/Speisewasser, SCRAM, Quittieren,
+    Rückstellen, Turbine zuschalten) -- eine Funktion je Handlung, DOM-frei,
+    deshalb im Browser UND unter Node importierbar.
+  - `game/replayKit.js`: tauscht den Kit, den `hooks.uiControls()` bekommt
+    (siehe Dateikopf `plants/pwr.js`) -- `recordingKit()` zeichnet auf UND
+    baut echte Bedienelemente (Browser), `captureKit()` baut keine
+    Oberfläche und sammelt nur die Mutations-Funktionen (Server). Die
+    typspezifische Bedienung (Borsäure, Frischdampf-Absperrung, ...) steht
+    dadurch weiterhin nur einmal in der jeweiligen Typdatei.
+  - `game/replay.js`: baut dieselbe Engine, spielt das Protokoll durch
+    dieselbe `Session`/`RunState`-Maschine (unveränderter Wortlaut der
+    Wertung) noch einmal durch, liefert dieselbe Form wie
+    `RunState.summary()`. `verify_run.mjs` (neu, Repo-Wurzel) ist die dünne
+    Kommandozeilenhülle darum, die `app.py` per Subprocess unter Node
+    aufruft.
+  - `ui/panels.js`/`main.js`: jede Bedienhandlung läuft jetzt über
+    `record()`/`recordingKit()` statt die Engine direkt anzufassen --
+    dieselbe Wirkung, nur mit Aufzeichnung nebenbei.
+  - Ein geladener Spielstand (main.js `loadGame()`) verwirft das Protokoll
+    (`engine.recorder = null`): ein Sprung auf einen gespeicherten Zustand
+    lässt sich nicht aus Schritten plus Protokoll nachrechnen. Solche Läufe
+    fallen weiterhin auf die reine Plausibilitätsprüfung zurück, wie bisher.
+  - `Dockerfile`: `nodejs` ergänzt, `verify_run.mjs` wird mit ins Image
+    kopiert.
+  - 3 neue JS-Tests (`tests/test-replay.mjs`, beweisen Bitgleichheit
+    zwischen Live-Lauf und Nachrechnung) und 2 neue Python-Tests
+    (`tests/test_api.py`, End-zu-End über den echten Node-Subprozess).
+    Volle Suite: 65 Python + 93 JS, alle grün.
+  - Bekannte Grenze, bewusst nicht in diesem Schritt gelöst: ein sehr langer
+    Lauf mit vielen Schieber-Bewegungen kann das 256-KB-Anfragelimit
+    (`MAX_CONTENT_LENGTH`) erreichen -- die Übermittlung schlägt dann fehl,
+    genau wie jeder andere API-Fehler auch (keine Sonderbehandlung nötig,
+    aber auch keine besonders freundliche Meldung dafür).
+  - Rest von Backlog-Punkt 2 ("Wiedergabe eines Laufs") bleibt offen -- siehe
+    BACKLOG.md, jetzt mit den hier gelegten Bausteinen.
+
 ## 0.0.75
 
 - ✨ **Acht Tastenkürzel öffnen ein Panel als Fenster** (nur Desktop, wie ein

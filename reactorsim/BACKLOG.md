@@ -5,31 +5,21 @@ nur was beim Arbeiten aufgefallen ist und noch nicht dran war.
 
 ## Erweiterungen
 
-### Serverseitige Nachrechnung statt Plausibilitätsprüfung
+### Wiedergabe eines Laufs mit Bild
 
-Der Punktestand wird schon heute auf dem Server gerechnet und nie vom Client
-übernommen (`scoring.py`), und seit 0.0.54 kommt auch der Schwierigkeitsgrad
-aus der Szenariodatei statt aus der Anfrage. Die **Kennzahlen** selbst bleiben
-aber fälschbar, solange die Simulation im Browser läuft --
-`scoring.validate_summary()` prüft nur, ob sie aus *irgendeinem* Lauf stammen
-könnten, nicht ob aus *diesem*.
+Die Nachrechnung (siehe CHANGELOG 0.0.76) hat die Bausteine schon gelegt:
+`game/recorder.js` zeichnet jede Bedienhandlung mit Schrittzahl auf,
+`game/replay.js` spielt sie ohne DOM durch dieselbe Engine noch einmal durch.
+Was fehlt, ist nur noch die Bildausgabe obendrauf -- dieselbe Engine, derselbe
+Ablauf, nur mit `ui/panels.js`/`ui/render.js` statt `captureKit()`, und einer
+eigenen Wiedergabegeschwindigkeit statt Echtzeit. Passt zu dem, was das Spiel
+zeigen will: nicht das Ende, sondern den Weg dorthin. Die Auswertung könnte an
+jeder Meldung in der Zeitleiste anspringen, statt nur am Anfang zu starten.
 
-Die Bausteine für die echte Antwort liegen schon da:
-
-* `sim/state.js` `hash()` -- bitgenauer Zustandshash, FNV-1a über die Doubles
-* `rng.js` -- gesäter Zufall, kein `Math.random` in der ganzen Simulation
-* fester Zeitschritt `DT = 0,05` s, unabhängig vom Zeitraffer
-
-Fehlt: ein aufgezeichnetes Eingabeprotokoll (`{t_sim, Handlung, Wert}`) und ein
-Node-Prozess im Container, der den Lauf nachspielt und den Endhash vergleicht.
-Damit wäre eine Bestenliste erst wirklich belastbar.
-
-### Wiedergabe eines Laufs
-
-Fällt als Nebenprodukt der Nachrechnung ab -- dasselbe Eingabeprotokoll,
-dieselbe Engine, nur mit Bildausgabe. Passt zu dem, was das Spiel zeigen will:
-nicht das Ende, sondern den Weg dorthin. Die Auswertung könnte an jeder
-Meldung in der Zeitleiste anspringen.
+Offene Fragen, bewusst noch nicht entschieden: eigene Seite oder Modal über
+dem Leitstand; woher die Wiedergabe ihr Protokoll bekommt (eigener Endpunkt
+`/api/highscores/<id>/log`? nur die eigenen Läufe, oder jeder Bestenlisten-
+Eintrag?); ob während der Wiedergabe Ton laufen soll.
 
 ### Simulation in einen Web Worker
 

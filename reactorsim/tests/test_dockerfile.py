@@ -86,6 +86,14 @@ def test_dev_only_files_stay_out():
         assert not _covered(name, targets), f'{name} landet im Image'
 
 
+def test_verify_run_is_copied():
+    """app.py schiebt einen eingereichten Lauf per Subprocess an dieses
+    Skript weiter (scores_add() -> _verify_run()) -- fehlt es im Image,
+    schlaegt jede Wertung mit Protokoll fehl, ganz ohne Hinweis beim Bauen."""
+    targets = _copy_targets()
+    assert _covered('verify_run.mjs', targets), 'verify_run.mjs fehlt im Dockerfile'
+
+
 def test_templates_and_locales_are_copied():
     targets = _copy_targets()
     for rel in ('templates/index.html', 'locales/de.json', 'locales/en.json',

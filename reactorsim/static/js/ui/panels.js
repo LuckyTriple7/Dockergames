@@ -15,6 +15,8 @@ import {
 } from './controls.js';
 import { MIMICS } from './mimic.js';
 import { runHelper } from '../game/helper.js';
+import { record } from '../game/coreActions.js';
+import { recordingKit } from '../game/replayKit.js';
 
 const U = (key) => ' ' + t(key);
 
@@ -153,20 +155,11 @@ export function buildPanels(engine, render, geiger, helperEnabled) {
   // Siedewasserreaktor gar keiner -- dort ist der Umwälzstrom das Stellglied.
   // Deshalb zeigt der Schalter auf ctx.rodAutoCtl und nicht fest auf ctx.rodCtl.
   const rodCtl = ctx.rodAutoCtl;
+  // Die eigentliche Umschaltlogik (samt RBMK-Sonderfall) steht jetzt in
+  // coreActions.js CORE_ACTIONS.rod_auto -- dieselbe Stelle, die auch die
+  // Server-Nachrechnung (game/replay.js) fuer diese Handlung anspringt.
   const rodAuto = rodCtl
-    ? autoSwitch(sp.rodAutoKey || 'ctl_rod_auto', rodCtl.auto, (v) => {
-        // Stossfrei, wie im Dateikopf von controllers.js versprochen: der
-        // RBMK-Leistungsregler (PowerController) traegt sein setpoint als
-        // festes Feld, einmalig bei Rundenbeginn gesetzt (rbmk.js hooks.init)
-        // und seither nie aktualisiert. Ohne diese Zeile sprang er beim
-        // Einschalten auf den Sollwert von Rundenbeginn zurueck, egal wie weit
-        // die Leistung seither manuell oder durch Xenon gewandert war -- bei
-        // niedriger Ist-Leistung zog er dann hart in die falsche Richtung.
-        // RodController (PWR) regelt live auf setpoint(load), hat kein
-        // eingefrorenes Feld und braucht das nicht -- daher der typeof-Test.
-        if (v && typeof rodCtl.setpoint === 'number') rodCtl.setpoint = s.n;
-        rodCtl.auto = v;
-      })
+    ? autoSwitch(sp.rodAutoKey || 'ctl_rod_auto', rodCtl.auto, (v) => record(engine, 'rod_auto', v))
     : null;
   // Motorengeraeusch der Stabfahrt: pulse() haelt die Schleife am Laufen,
   // solange jogRod() im Ein-Taktrhythmus (Klick-Wiederholung oder gehaltene
@@ -176,17 +169,18 @@ export function buildPanels(engine, render, geiger, helperEnabled) {
   // Eigene Funktion statt Inline-Callback: der Tastaturkurzbefehl (Strg+Pfeil
   // hoch/runter, siehe main.js) fährt dieselben Stäbe, ohne über die Knöpfe zu
   // gehen -- isControlsPaused() sperrt hier direkt, weil dieser Weg an
-  // jogButtons' eigener Pause-Sperre vorbei ruft.
+  // jogButtons' eigener Pause-Sperre vorbei ruft. Die eigentliche Stabbewegung
+  // steht in coreActions.js CORE_ACTIONS.rod_jog; record() zeichnet die
+  // Handlung auf (siehe game/recorder.js) UND fuehrt sie aus.
   const jogRod = (dir) => {
     if (isControlsPaused()) return;
     rodSound.pulse();
-    if (rodCtl && rodCtl.auto) { rodCtl.auto = false; rodAuto.set(false); }
-    s.rodDmd[0] = Math.max(0, Math.min(1, s.rodDmd[0] + dir * 0.005));
-    if (sp.rodBanksMoveTogether) {
-      for (let i = 1; i < s.rodDmd.length; i++) {
-        s.rodDmd[i] = Math.max(0, Math.min(1, s.rodDmd[i] + dir * 0.005));
-      }
-    }
+    record(engine, 'rod_jog', dir);
+    // Sofortige Sichtsynchronisierung -- render.add('text', ...) holt den
+    // Automatik/Hand-Zustand zwar ohnehin jedes Bild nach, aber ohne diese
+    // Zeile stuende der Schalter fuer den Bruchteil einer Sekunde noch auf
+    // Automatik, obwohl CORE_ACTIONS.rod_jog ihn laengst auf Hand gestellt hat.
+    if (rodAuto) rodAuto.set(false);
   };
   const rodJog = jogButtons('ctl_rods', jogRod);
   $('#rs-rod-ctl').replaceChildren(
@@ -198,9 +192,7 @@ export function buildPanels(engine, render, geiger, helperEnabled) {
   // eine Umwaelzpumpe. Frueher stand hier ctx.pumps.length, und der
   // Siedewasserreaktor stuerzte beim Aufbau der Oberflaeche ab.
   const pumpStates0 = engine.derive().pumpStates || [];
-  const pumps = pumpRow(pumpStates0.length, (i) => {
-    if (hooks.togglePump) hooks.togglePump(s, sp, ctx, i);
-  });
+  const pumps = pumpRow(pumpStates0.length, (i) => record(engine, 'pump_toggle', i));
   $('#rs-pumps').replaceChildren(pumps.node);
 
   // Turbinenventil und Speisewasser als Regelstationen: Umschalter plus
@@ -212,23 +204,23 @@ export function buildPanels(engine, render, geiger, helperEnabled) {
     labelKey: 'ctl_gov_valve', min: 0, max: 100, step: 1, unitKey: 'unit_percent',
     hint: 'hint_gov',
     read: () => ctxPos(ctx.govValve) * 100,
-    write: (v) => { ctx.govCtl.manual = v / 100; },
+    write: (v) => record(engine, 'gov_write', v),
     isAuto: () => ctx.govCtl.auto,
-    setAuto: (v) => { ctx.govCtl.auto = v; },
+    setAuto: (v) => record(engine, 'gov_auto', v),
   });
   const fwStation = station({
     labelKey: 'ctl_fw_flow', min: 0, max: 130, step: 1, unitKey: 'unit_percent',
     hint: 'hint_fw',
     read: () => (s.W_fw / fwNominal(sp)) * 100,
-    write: (v) => { ctx.fwCtl.manual = v / 100; },
+    write: (v) => record(engine, 'fw_write', v),
     isAuto: () => ctx.fwCtl.auto,
-    setAuto: (v) => { ctx.fwCtl.auto = v; },
+    setAuto: (v) => record(engine, 'fw_auto', v),
   });
 
   const demand = slider({
     labelKey: 'ctl_demand', min: 0, max: Math.round(sp.P0_e), step: 5,
     value: Math.round(s.P_demand), digits: 0, unitKey: 'unit_mwe',
-    onInput: (v) => { s.P_demand = v; },
+    onInput: (v) => record(engine, 'demand_set', v),
   });
   // Nach einem Turbinenschnellschluss bleibt der Generator sonst für den
   // Rest des Laufs bei null -- weder s.turbineTripped noch der Regler geben
@@ -236,16 +228,25 @@ export function buildPanels(engine, render, geiger, helperEnabled) {
   // immer da, aber erst nach einem Trip wirklich etwas zu drücken.
   const turbineResume = el('button.rs-btn.rs-btn-primary', { type: 'button', disabled: true },
     [t('btn_turbine_resume')]);
-  turbineResume.addEventListener('click', () => { if (!isControlsPaused()) engine.resumeTurbine(); });
+  turbineResume.addEventListener('click', () => { if (!isControlsPaused()) record(engine, 'turbine_resume', null); });
   $('#rs-grid-ctl').replaceChildren(demand.node, turbineResume);
 
   // Typspezifische Bedienung. Ein Druckwasserreaktor braucht Bor und einen
   // Druckhalter, ein Siedewasserreaktor den Umwaelzstrom und die
   // Frischdampf-Absperrung -- beides hier fest zu verdrahten hiesse, die
   // Oberflaeche bei jedem neuen Typ aufzuschneiden.
-  const extras = (hooks.uiControls ? hooks.uiControls(s, sp, ctx, {
-    autoSwitch, station, slider, buttonGroup,
-  }) : []) || [];
+  //
+  // recordingKit() schaltet sich dazwischen: jede Bedienhandlung wird zuerst
+  // aufgezeichnet (siehe game/recorder.js), bevor sie an die echten, DOM
+  // bauenden Fabriken unten durchgereicht wird. game/replay.js benutzt fuer
+  // dieselbe Schnittstelle einen Kit ohne Oberflaeche (captureKit), um genau
+  // diese Handlungen ohne DOM nachzuspielen -- die Mutationslogik selbst
+  // steht deshalb nur hier in der Typdatei, kein zweites Mal.
+  const uiKit = recordingKit(
+    { autoSwitch, station, slider, buttonGroup },
+    (id, v) => { if (engine.recorder) engine.recorder.record(id, v); },
+  );
+  const extras = (hooks.uiControls ? hooks.uiControls(s, sp, ctx, uiKit) : []) || [];
   const mounts = {
     core: $('#rs-rod-ctl'), primary: $('#rs-pumps'),
     secondary: $('#rs-sec-ctl'), grid: $('#rs-grid-ctl'), chem: $('#rs-chem-ctl'),
@@ -406,17 +407,14 @@ export function buildPanels(engine, render, geiger, helperEnabled) {
   const horn = new Horn();
   let hornNext = 0;
 
-  $('#rs-ack').addEventListener('click', () => { horn.unlock(); engine.trips.ack(); });
+  $('#rs-ack').addEventListener('click', () => { horn.unlock(); record(engine, 'ack', null); });
   // "Rückstellen" räumt nicht nur die Meldetafel auf, sondern gibt bei
   // stehendem SCRAM auch den Reaktorschutz frei -- sonst blieben die Stäbe
   // nach einer Schnellabschaltung für den Rest des Laufs auf "ganz rein"
   // verriegelt, ganz gleich was der Bediener an den Stäben einstellt. Wie bei
   // der Meldetafel gilt: eine noch anstehende Ursache lässt sich nicht
   // wegdrücken, resetScram() gibt in dem Fall nur false zurück.
-  $('#rs-alarm-reset').addEventListener('click', () => {
-    engine.trips.reset();
-    engine.resetScram();
-  });
+  $('#rs-alarm-reset').addEventListener('click', () => record(engine, 'reset', null));
 
   // ── Nachführung ────────────────────────────────────────────────────────────
   const statusBar = $('#rs-status-alarm');

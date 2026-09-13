@@ -5,7 +5,11 @@ LABEL org.opencontainers.image.description="Nuclear power plant control room sim
 LABEL org.opencontainers.image.source="https://github.com/LuckyTriple7/Dockergames"
 LABEL org.opencontainers.image.licenses="MIT"
 
-RUN apk add --no-cache curl
+# nodejs: fuer verify_run.mjs (app.py scores_add()) -- rechnet einen
+# eingereichten Lauf serverseitig nach, statt den gemeldeten Kennzahlen zu
+# vertrauen. Kein npm/package-lock noetig, das Skript hat keine
+# Abhaengigkeiten ausserhalb der ohnehin mitgelieferten static/js-Module.
+RUN apk add --no-cache curl nodejs
 
 WORKDIR /app
 
@@ -18,6 +22,7 @@ COPY auth.py .
 COPY persist.py .
 COPY scoring.py .
 COPY atomic_io.py .
+COPY verify_run.mjs .
 COPY VERSION .
 
 # Verzeichnisse als Ganzes: unter static/js liegen dutzende ES-Module, eine
