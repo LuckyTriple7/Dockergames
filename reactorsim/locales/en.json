@@ -29,6 +29,7 @@
   "tab_alarms": "Alarms",
   "tab_chemistry": "Chemistry",
   "status_power_th": "Thermal power",
+  "status_power_th_mw": "Thermal power (MW)",
   "status_power_e": "Generator",
   "status_demand": "Demand",
   "status_tavg": "T average",

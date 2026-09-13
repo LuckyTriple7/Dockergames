@@ -15,6 +15,11 @@
 
 export const STATUS_STATS = [
   { key: 'power_th_pct', labelKey: 'status_power_th' },
+  // Dieselbe Groesse als MW statt Prozent -- fuer wen ein absoluter Wert
+  // leichter zu lesen ist als der Anteil an der Nennleistung. Beide stehen
+  // permanent im Katalog, nicht als Umschalter an EINER Kachel: wer beide
+  // sehen will (z.B. zum Umrechnen der Nennleistung), waehlt einfach beide.
+  { key: 'power_th_mw', labelKey: 'status_power_th_mw' },
   { key: 'power_e', labelKey: 'status_power_e' },
   { key: 'demand', labelKey: 'status_demand' },
   { key: 'rho_pcm', labelKey: 'val_reactivity' },

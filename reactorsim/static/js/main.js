@@ -1009,7 +1009,7 @@ function loadScores(reactor, scenario) {
 // Fehler wie die doppelten Rundinstrumente aus 0.0.30).
 let statusTiles = null;
 
-/** Alle 44 moeglichen Kacheln einmal bauen (verdeckt) -- einmal je
+/** Alle 46 moeglichen Kacheln einmal bauen (verdeckt) -- einmal je
  *  Rundenstart, weil buildPanels() gleich danach seine Wertebindungen aus
  *  genau diesem DOM einsammelt. */
 function buildStatusBar() {

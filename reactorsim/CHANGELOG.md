@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.86
+
+- ✨ **Therm. Leistung auch als MW-Wert waehlbar.** Die Kopfzeile zeigte
+  Thermische Leistung bisher nur in Prozent der Nennleistung. Neuer Eintrag
+  "Therm. Leistung (MW)" im Einstellungen-Dialog (Zahnrad) -- zusaetzlich zum
+  Prozentwert waehlbar, nicht als Ersatz dafuer, und wie jede Kopfzeilen-
+  Auswahl je Reaktortyp getrennt gespeichert.
+
 ## 0.0.85
 
 - 🐛 **Fluss-Animation im Fließbild auf hellen Dampfrohren praktisch

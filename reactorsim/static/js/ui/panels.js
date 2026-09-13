@@ -449,6 +449,11 @@ export function buildPanels(engine, render, geiger, helperEnabled) {
     // einzigen immer sichtbaren Zeile genauso ruhig aus wie im Normalbetrieb.
     put('power_th_pct', num(d.power_th_pct, 1) + U('unit_percent'),
         d.power_th_pct >= 110 ? 3 : (d.power_th_pct >= 100 ? 1 : 0));
+    // Dieselbe Schwelle wie oben, nur an der Prozentzahl gemessen statt am
+    // MW-Wert selbst -- die Nennleistung unterscheidet sich je Reaktortyp
+    // (sp.P0_th), der Grenzwert in Prozent nicht.
+    put('power_th_mw', num(d.P_th, 0) + U('unit_mwth'),
+        d.power_th_pct >= 110 ? 3 : (d.power_th_pct >= 100 ? 1 : 0));
     put('power_e', num(s.P_e, 0) + U('unit_mwe'),
         s.turbineTripped ? 2 : (!s.breaker && s.P_demand > 0 ? 1 : 0));
     put('demand', num(s.P_demand, 0) + U('unit_mwe'));
