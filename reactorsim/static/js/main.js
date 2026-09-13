@@ -111,8 +111,25 @@ function initStart() {
   // starten (introMusic.start() ist idempotent).
   const splash = $('#rs-splash');
   if (splash) {
+    // Logo erscheint erst nach 5s (siehe .rs-splash-logo in base.css), der
+    // ROT blinkende Hinweis erst danach zusammen mit ihm -- vorher steht nur
+    // das Hintergrundbild da. Ein Klick VOR Ablauf der 5s ueberspringt nur
+    // diese Wartezeit (das ist das "beschleunigen"); ein Klick DANACH, wenn
+    // beides schon da ist, blendet wie gehabt das ganze Banner aus.
+    const logo = splash.querySelector('.rs-splash-logo');
+    const hint = splash.querySelector('.rs-splash-hint');
+    let appeared = false;
+    const showLogo = () => {
+      if (appeared) return;
+      appeared = true;
+      clearTimeout(appearTimer);
+      if (logo) logo.classList.add('rs-visible');
+      if (hint) hint.classList.add('rs-visible');
+    };
+    const appearTimer = setTimeout(showLogo, 5000);
+
     const dismissSplash = () => { splash.hidden = true; app.introMusic.start(); };
-    splash.addEventListener('click', dismissSplash);
+    splash.addEventListener('click', () => { appeared ? dismissSplash() : showLogo(); });
     splash.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); dismissSplash(); }
     });

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.0.92
+
+- 🖼️ **Startbanner und Reaktorauswahl bekommen Hintergrundbilder.** Splash
+  zeigt jetzt `splash.png` als Foto-Hintergrund, die Reaktorauswahl
+  `background.png` -- beide mit dunklem Schleier drueber, damit Text und
+  Karten lesbar bleiben.
+- Das Logo auf dem Splash erscheint nicht mehr sofort, sondern blendet erst
+  5s nach dem Laden langsam ein. Ein Klick auf den Splash VOR Ablauf der 5s
+  ueberspringt nur diese Wartezeit; danach blendet ein Klick wie gehabt das
+  ganze Banner aus.
+- Der Hinweistext "zum Start klicken" ist bis dahin unsichtbar und blinkt
+  erst zusammen mit dem Logo ROT auf, statt wie bisher die ganze Zeit leise
+  zu pulsieren.
+
 ## 0.0.91
 
 - 🔧 **Wertungsformel grundlegend umgebaut.** `violation_seconds`

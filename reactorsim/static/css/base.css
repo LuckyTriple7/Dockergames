@@ -124,8 +124,13 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* --rs-splash-bg kommt als Inline-Style vom Template (siehe index.html) --
+     so bleibt das Bild ueber die versionierte /s/<ver>/-Route cache-gebustet,
+     obwohl diese CSS-Datei selbst nicht durch Jinja laeuft. Dunkler Schleier
+     darueber, sonst versinken Logo/Text im Foto. */
   background:
-    radial-gradient(1200px 600px at 50% -10%, #14263a 0%, transparent 60%),
+    linear-gradient(#080b10a8, #080b10e6),
+    var(--rs-splash-bg, none) center/cover no-repeat,
     var(--rs-bg);
   cursor: pointer;
 }
@@ -135,7 +140,13 @@ button {
   height: 128px;
   border-radius: 50%;
   box-shadow: 0 0 60px #2f6fb355;
+  /* Erscheint erst 5s nach dem Laden, siehe initStart() in main.js (setzt
+     rs-visible per setTimeout). Ein Klick auf den Splash vor Ablauf der 5s
+     ruft dieselbe Klasse sofort auf -- das ist das "beschleunigen". */
+  opacity: 0;
+  transition: opacity 1.4s ease;
 }
+.rs-splash-logo.rs-visible { opacity: 1; }
 .rs-splash-title {
   margin: 20px 0 0;
   font-size: 34px;
@@ -153,13 +164,21 @@ button {
 }
 .rs-splash-hint {
   margin-top: 28px;
-  color: var(--rs-fg-mute);
   font-size: 13px;
   letter-spacing: .1em;
   text-transform: uppercase;
-  animation: rs-splash-pulse 1.8s ease-in-out infinite;
+  color: var(--rs-alarm);
+  /* Bleibt unsichtbar, bis das Logo da ist (main.js setzt rs-visible
+     zusammen mit dem Logo) -- vorher stand hier ein leiser Dauer-Pulse,
+     jetzt ein hartes Rot-Blinken erst NACH dem Logo. */
+  visibility: hidden;
+  opacity: 0;
 }
-@keyframes rs-splash-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+.rs-splash-hint.rs-visible {
+  visibility: visible;
+  animation: rs-splash-blink-red 1s steps(1, end) infinite;
+}
+@keyframes rs-splash-blink-red { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
 
 /* ── Startbildschirm ──────────────────────────────────────────────────────── */
 
@@ -167,8 +186,10 @@ button {
   position: fixed;
   inset: 0;
   overflow-y: auto;
+  /* --rs-start-bg: siehe Kommentar bei .rs-splash, gleiches Prinzip. */
   background:
-    radial-gradient(1200px 600px at 50% -10%, #14263a 0%, transparent 60%),
+    linear-gradient(#080b10b8, #080b10ee),
+    var(--rs-start-bg, none) center/cover no-repeat,
     var(--rs-bg);
   padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
 }
