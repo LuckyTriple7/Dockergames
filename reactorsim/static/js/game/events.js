@@ -95,8 +95,20 @@ const EVENTS = {
     key: 'ev_recirc_runback',
     severity: 2,
     apply(e, args) {
-      if (e.state.recircDmd !== undefined) {
-        e.state.recircDmd = (args && args.to) || 0.5;
+      if (e.state.recircDmd === undefined) return;
+      const to = (args && args.to) || 0.5;
+      // Ohne over_s bleibt es beim sofortigen Sollwert wie bisher (siehe
+      // bwr_flow_control.json) -- dort ist es eine geplante Lastfuehrung,
+      // kein Defekt. MIT over_s (siehe bwr_instability.json) sinkt der
+      // Durchsatz stattdessen schleichend ueber die angegebene Zeit: das
+      // gibt dem Spieler Gelegenheit, die gefaehrliche Kombination aus
+      // hoher Leistung und niedrigem Durchsatz selbst zu verursachen (oder
+      // rechtzeitig gegenzusteuern), statt von einem abrupten Sprung
+      // ueberrumpelt zu werden. Weitergefuehrt in stepEvents() unten.
+      if (args && args.over_s) {
+        e.ctx.recircRunback = { from: e.state.recircDmd, to, t0: e.state.t_sim, dur: args.over_s };
+      } else {
+        e.state.recircDmd = to;
       }
     },
   },
@@ -183,6 +195,22 @@ export function stepEvents(e, dt) {
 
   if (ctx.msivStuck && s.msiv !== undefined) {
     s.msiv = 0;
+  }
+
+  // Schleichender Umwaelzstrom-Abfall (siehe recirc_runback oben mit
+  // over_s) -- laeuft ueber mehrere Minuten statt in einem Schritt.
+  // Danach (frac >= 1) wird recircDmd ein letztes Mal gesetzt und die
+  // Rampe geloescht: ab da hat der Spieler wieder die volle Handregelung,
+  // genau wie beim sofortigen Sollwert ohne over_s.
+  if (ctx.recircRunback && s.recircDmd !== undefined) {
+    const rb = ctx.recircRunback;
+    const frac = (s.t_sim - rb.t0) / rb.dur;
+    if (frac >= 1) {
+      s.recircDmd = rb.to;
+      ctx.recircRunback = null;
+    } else if (frac > 0) {
+      s.recircDmd = rb.from + (rb.to - rb.from) * frac;
+    }
   }
 
   // Das Abblaseventil klemmt offen -- aber das Blockventil davor sperrt es

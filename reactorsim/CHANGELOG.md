@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.4
+
+- 📝 **Szenario-Einweisungen nach technischem Gegencheck geschärft.**
+  - DWR Lastfolge: "Reaktivität dann nur noch über Borsäure" überstellt --
+    eine klemmende Stabgruppe macht nicht die gesamte übrige Stabregelung
+    unbrauchbar. Jetzt: "weitere Reaktivitätsführung muss überwiegend über
+    Borierung/Deborierung erfolgen".
+  - DWR Turbinenschnellschluss & SWR Frischdampf-Absperrung: Text macht
+    jetzt explizit, dass eine reale Anlage hier automatisch schnell-
+    abschalten würde, dieses Spiel die Entscheidung aber bewusst dem
+    Spieler überlässt (Design gilt durchgängig im ganzen Spiel, siehe
+    bereits bestehender Hinweis bei der SWR-Dichtewellen-Instabilität) --
+    keine neue Auto-RESA-Logik, nur ehrliche Einweisung.
+  - SWR Dichtewellen-Instabilität: der Umwälzstrom-Abfall (`recirc_runback`)
+    lief bisher als Sollwert-Sprung, den die Pumpe in ~6s nachfährt --
+    jetzt ein echter, schleichender Abfall über 5 Minuten (`over_s` im
+    Ereignis, siehe events.js), das gibt mehr Zeit, die gefährliche
+    Kombination aus hoher Leistung und niedrigem Durchsatz selbst
+    herbeizuführen oder rechtzeitig gegenzusteuern. `bwr_flow_control.json`
+    (dieselbe Ereignis-ID, geplante Lastführung statt Defekt) bleibt beim
+    sofortigen Sollwert -- eigener Test dafür in test-bwr.mjs.
+
 ## 0.1.3
 
 - 🔧 **Fix: Spielstand vergaß Quittierstatus und Ereignisprotokoll.**

@@ -24,7 +24,8 @@
       "t": "rand(600,1200)",
       "id": "recirc_runback",
       "args": {
-        "to": 0.4
+        "to": 0.4,
+        "over_s": 300
       }
     }
   ],

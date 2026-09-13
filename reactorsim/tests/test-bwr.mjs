@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { createEngine } from '../static/js/sim/engine.js';
 import * as bwr from '../static/js/plants/bwr.js';
 import * as pwr from '../static/js/plants/pwr.js';
+import { getEvent, stepEvents } from '../static/js/game/events.js';
 
 const DT = 0.05;
 const boot = (opts = {}) => {
@@ -76,6 +77,37 @@ test('Umwaelzstrom ist das Leistungsstellglied', () => {
   s.recircDmd = 1.0;
   run(e, 900);
   assert.ok(Math.abs(s.n / n0 - 1) < 0.03, `nicht umkehrbar: ${(s.n * 100).toFixed(1)} %`);
+});
+
+test('recirc_runback: mit over_s schleichend, ohne over_s sofort', () => {
+  // bwr_instability.json (over_s gesetzt) vs. bwr_flow_control.json (kein
+  // over_s) teilen sich dasselbe Ereignis -- beide Verhalten muessen
+  // nebeneinander funktionieren, siehe Kommentar in events.js.
+  const e1 = boot();
+  const s1 = e1.state;
+  const dmd0 = s1.recircDmd;
+  getEvent('recirc_runback').apply(e1, { to: 0.4, over_s: 300 });
+  assert.equal(s1.recircDmd, dmd0, 'Sollwert sprang sofort, obwohl over_s gesetzt ist');
+
+  for (let i = 0, n = Math.round(150 / DT); i < n; i++) { e1.step(DT); stepEvents(e1, DT); }
+  const mid = s1.recircDmd;
+  assert.ok(mid < dmd0 - 0.2 && mid > 0.4 + 0.05,
+    `nach der Haelfte der Rampe sollte recircDmd etwa mittig liegen, ist ${mid.toFixed(3)}`);
+
+  for (let i = 0, n = Math.round(200 / DT); i < n; i++) { e1.step(DT); stepEvents(e1, DT); }
+  assert.ok(Math.abs(s1.recircDmd - 0.4) < 1e-9, `Rampe erreichte nicht 0.4: ${s1.recircDmd}`);
+
+  // Nach Rampenende hat der Spieler die Handregelung zurueck -- stepEvents()
+  // darf recircDmd nicht laenger ueberschreiben.
+  s1.recircDmd = 0.9;
+  stepEvents(e1, DT);
+  assert.equal(s1.recircDmd, 0.9, 'Rampe schrieb recircDmd nach ihrem Ende weiter fest');
+
+  // Ohne over_s (wie bwr_flow_control.json) bleibt es beim sofortigen
+  // Sollwert -- keine Regression durch die neue Rampe.
+  const e2 = boot();
+  getEvent('recirc_runback').apply(e2, { to: 0.5 });
+  assert.equal(e2.state.recircDmd, 0.5, 'sofortiger Sollwert ohne over_s ist kaputt');
 });
 
 test('Frischdampf-Absperrung gibt POSITIVE Reaktivitaet', () => {
