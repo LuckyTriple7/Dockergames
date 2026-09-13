@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.93
+
+- 🐛 **Fix: Hintergrundbilder aus 0.0.92 unsichtbar.** Kamen als
+  Inline-Style (`style="--rs-splash-bg: url(...)"`) aus dem Template --
+  die serverseitige CSP (`style-src 'self' <nonce>`, kein `unsafe-inline`)
+  blockt jedes `style="..."`-Attribut ohne Nonce, der Browser hat die
+  Regel also stillschweigend verworfen. Jetzt liegt der Bildpfad fest in
+  `base.css` (`url("/static/img/...")`), das faellt unter `img-src`, nicht
+  `style-src`.
+
 ## 0.0.92
 
 - 🖼️ **Startbanner und Reaktorauswahl bekommen Hintergrundbilder.** Splash

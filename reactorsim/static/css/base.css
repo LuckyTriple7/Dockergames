@@ -124,13 +124,17 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* --rs-splash-bg kommt als Inline-Style vom Template (siehe index.html) --
-     so bleibt das Bild ueber die versionierte /s/<ver>/-Route cache-gebustet,
-     obwohl diese CSS-Datei selbst nicht durch Jinja laeuft. Dunkler Schleier
-     darueber, sonst versinken Logo/Text im Foto. */
+  /* Bildpfad fest verdrahtet statt per Inline-Style aus dem Template --
+     CSP verbietet style="..." ohne Nonce (style-src 'self' <nonce>, siehe
+     app.py), ein Inline-Custom-Property waere also stillschweigend
+     geblockt. url() in einer externen CSS-Datei faellt unter img-src, nicht
+     style-src, und /static/... liefert dasselbe Bild wie /s/<ver>/... nur
+     ohne Versions-Cachebust (fuer ein selten getauschtes Hintergrundfoto
+     kein Verlust). Dunkler Schleier drueber, sonst versinken Logo/Text im
+     Foto. */
   background:
     linear-gradient(#080b10a8, #080b10e6),
-    var(--rs-splash-bg, none) center/cover no-repeat,
+    url("/static/img/splash.png") center/cover no-repeat,
     var(--rs-bg);
   cursor: pointer;
 }
@@ -186,10 +190,10 @@ button {
   position: fixed;
   inset: 0;
   overflow-y: auto;
-  /* --rs-start-bg: siehe Kommentar bei .rs-splash, gleiches Prinzip. */
+  /* Siehe Kommentar bei .rs-splash: fester Pfad statt Inline-Style wegen CSP. */
   background:
     linear-gradient(#080b10b8, #080b10ee),
-    var(--rs-start-bg, none) center/cover no-repeat,
+    url("/static/img/background.png") center/cover no-repeat,
     var(--rs-bg);
   padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
 }

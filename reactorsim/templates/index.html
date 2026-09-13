@@ -28,8 +28,7 @@
      auf. Klick/Enter/Leertaste blendet nur das Banner aus und startet die
      Musik, dieselbe erste-Nutzergeste-Regel wie beim Reaktortyp-Klick
      danach (siehe app.introMusic.start() in main.js). -->
-<div class="rs-splash" id="rs-splash" role="button" tabindex="0" aria-label="{{ t.splash_hint }}"
-     style="--rs-splash-bg: url('/s/{{ app_version }}/img/splash.png');">
+<div class="rs-splash" id="rs-splash" role="button" tabindex="0" aria-label="{{ t.splash_hint }}">
   <div class="rs-splash-inner">
     <img class="rs-splash-logo" src="/s/{{ app_version }}/img/icon.png" alt="" width="128" height="128">
     <h1 class="rs-splash-title">{{ t.app_title }}<span>{{ t.app_subtitle }}</span></h1>
@@ -38,7 +37,7 @@
 </div>
 
 <!-- ── Startbildschirm ──────────────────────────────────────────────────── -->
-<div class="rs-start" id="rs-start" style="--rs-start-bg: url('/s/{{ app_version }}/img/background.png');">
+<div class="rs-start" id="rs-start">
   <div class="rs-start-inner">
     <div class="rs-start-brand">
       <img class="rs-start-logo" src="/s/{{ app_version }}/img/icon.png" alt="" width="56" height="56">
