@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.12
+
+- 🔧 **Fix: Quittieren/Rückstellen fehlten im vergrößerten Meldetafel-
+  Fenster.** Der Kachel-Kopf mit diesen beiden Knöpfen blieb bisher am
+  Ursprungsplatz stehen, wenn die Meldetafel per Klick auf den Titel als
+  eigenes Fenster geöffnet wurde (`openPanelWindow()`/`closePanelWindow()`
+  in main.js verschieben bisher nur `.rs-panel-body`) -- im Fenster selbst
+  liess sich dann nichts quittieren oder zurückstellen. Die Knöpfe wandern
+  jetzt mit ins Fenster (verschoben, nicht geklont) und zurück beim
+  Schließen.
+
 ## 0.1.11
 
 - 🐛 **Fix: ausgefallene Pumpe liess sich einfach wieder anklicken --

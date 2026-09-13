@@ -414,7 +414,12 @@ button {
   border-bottom: 1px solid var(--rs-line);
 }
 .rs-modal-panel-head h2 { margin: 0; font: inherit; color: inherit; }
-.rs-modal-panel-head .rs-btn { margin-left: auto; }
+/* Direktes Kind, nicht jeder Nachfahre: sonst hätten Quittieren/Rückstellen
+   (siehe .rs-panel-h-actions, das jetzt bei geöffnetem Fenster mit hierher
+   zieht, siehe openPanelWindow() in main.js) ihren eigenen margin-left:auto
+   BINNEN ihrer eigenen Gruppe bekommen und sich dort gegeneinander
+   verschoben, statt als Gruppe gemeinsam nach rechts zu wandern. */
+.rs-modal-panel-head > .rs-btn { margin-left: auto; }
 .rs-panel-window-slot { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 
 /* ── Grundlagen-Glossar ───────────────────────────────────────────────────── */

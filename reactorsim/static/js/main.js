@@ -606,13 +606,21 @@ function initControls() {
   const panelWindowBox = $('.rs-modal-box', panelWindow);
   const panelWindowSlot = $('#rs-panel-window-slot');
   const panelWindowTitle = $('#rs-panel-window-title');
+  const panelWindowClose = $('#rs-panel-window-close');
   const desktopMQ = matchMedia('(min-width: 1024px)');
-  let openPanel = null; // { section, body, placeholder }
+  let openPanel = null; // { section, body, placeholder, actions, actionsPlaceholder }
 
   const closePanelWindow = () => {
     if (!openPanel) return;
     openPanel.section.insertBefore(openPanel.body, openPanel.placeholder);
     openPanel.placeholder.remove();
+    // Kopfzeilen-Knoepfe (Quittieren/Rückstellen bei der Meldetafel) zurueck
+    // an ihren Platz im Kachel-Kopf -- nur verschoben, nicht geklont, siehe
+    // openPanelWindow() unten, sonst blieben sie doppelt oder gar nicht mehr
+    // verdrahtet.
+    if (openPanel.actions) {
+      openPanel.actionsPlaceholder.replaceWith(openPanel.actions);
+    }
     openPanel = null;
     panelWindow.hidden = true;
     panelWindowSlot.replaceChildren();
@@ -626,7 +634,18 @@ function initControls() {
     const placeholder = document.createComment('rs-panel-window-slot');
     section.insertBefore(placeholder, body);
     panelWindowSlot.append(body);
-    openPanel = { section, body, placeholder };
+    // Eigene Bedienknöpfe im Kachel-Kopf (bisher nur die Meldetafel:
+    // Quittieren/Rückstellen) müssen mit ins Fenster -- sonst blieben sie im
+    // Ursprungsplatz zurück, während Meldeliste und Protokoll schon im
+    // Fenster stehen, und liessen sich von dort aus nicht mehr bedienen.
+    const actions = $('.rs-panel-h-actions', section);
+    let actionsPlaceholder = null;
+    if (actions) {
+      actionsPlaceholder = document.createComment('rs-panel-h-actions-slot');
+      actions.replaceWith(actionsPlaceholder);
+      panelWindowClose.before(actions);
+    }
+    openPanel = { section, body, placeholder, actions, actionsPlaceholder };
     // .rs-panel-flush nimmt der Kachel ihr Innenpolster -- die Klasse muss mit
     // ins Fenster wandern, sonst bekommt z.B. das Fließbild plötzlich Rand.
     panelWindowBox.classList.toggle('rs-panel-flush', section.classList.contains('rs-panel-flush'));
