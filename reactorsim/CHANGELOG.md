@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.72
+
+- 🐛 **Lange Einweisung ohne Scrollbalken -- Knöpfe unerreichbar.** Betraf
+  vor allem die RBMK-Kaltstart-Einweisung ("Kaltstart nach Revision"): der
+  Text ist der längste aller Einweisungen, aber `#rs-brief` fehlte die
+  `rs-modal-wide`-Klasse (Höhendeckel + `overflow-y: auto`), die Glossar,
+  Alarmhilfe & Co. längst haben. Der Dialog lief einfach über den sichtbaren
+  Bildschirm hinaus, ohne jede Möglichkeit zu scrollen -- "Los"/"Zurück"
+  standen unten drunter, nicht anklickbar.
+
 ## 0.0.71
 
 - ✨ **Automatischer Helfer bei Meldungen** (`game/helper.js`), optional,

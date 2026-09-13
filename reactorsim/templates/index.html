@@ -361,7 +361,11 @@
 
 <!-- ── Einweisung ───────────────────────────────────────────────────────── -->
 <div class="rs-modal" id="rs-brief" hidden>
-  <div class="rs-modal-box">
+  <!-- rs-modal-wide: deckelt die Hoehe und scrollt den Text -- ohne das lief
+       eine lange Einweisung (z.B. RBMK-Kaltstart) ueber den sichtbaren
+       Bildschirm hinaus, ohne Scrollbalken, und die Knoepfe unten waren
+       nicht mehr erreichbar. -->
+  <div class="rs-modal-box rs-modal-wide">
     <h2 id="rs-brief-title">{{ t.brief_title }}</h2>
     <p id="rs-brief-text"></p>
     <div class="rs-brief-meta" id="rs-brief-meta"></div>
