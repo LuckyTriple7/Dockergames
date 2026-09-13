@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.0.73
+
+- ✍️ **Alle 9 Szenario-Einweisungen überarbeitet** (`scn_*_brief` in
+  `locales/de.json` und `locales/en.json`), Wortlaut vom Nutzer geliefert.
+  Nur die Fließtexte geändert, Titel (`scn_*_title`) unangetastet. Beim
+  Einpflegen der englischen Fassung mussten die in Anführungszeichen
+  genannten Bedienelemente noch auf die tatsächlichen englischen
+  UI-Beschriftungen umgestellt werden (z. B. „Blockventil“ → "Block valve",
+  „Steuerstäbe → Ziehen“ → "Control rods → Withdraw") -- sonst hätte
+  `test_help_texts_only_name_controls_that_exist` (läuft auch auf
+  `_brief`-Schlüsseln) fehlgeschlagen, weil die deutschen Namen im
+  englischen Sprachpaket nirgends existieren.
+
 ## 0.0.72
 
 - 🐛 **Lange Einweisung ohne Scrollbalken -- Knöpfe unerreichbar.** Betraf
