@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.10
+
+- 🔧 RBMK "Ausfall einer Umwälzpumpengruppe": Schwierigkeit ★★★→★★
+  korrigiert. Ein Ereignis, eine durchgehende Aufgabe (Leistung per Hand
+  halten), keine ORM-Krise, keine Xenon-Dynamik -- strukturell naeher an
+  SWR "Lastfolge über Umwälzstrom" (★★) als an den anderen beiden
+  RBMK-Dreisternern (Nachtschicht/Kaltstart: je drei gleichzeitige
+  Komplikationen). Die 3 in 0.1.6 war ein Fehlschluss aus "jetzt nicht
+  mehr trivial" auf "also drei Sterne".
+
 ## 0.1.9
 
 - 🔊 Geigerzähler-Alarmton (`geiger_game_alert.mp3`) ausgetauscht.

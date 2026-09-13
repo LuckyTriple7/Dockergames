@@ -1,7 +1,7 @@
 {
   "id": "rbmk_mcp_loss",
   "reactor": "rbmk",
-  "difficulty": 3,
+  "difficulty": 2,
   "title_key": "scn_rbmk_mcp_title",
   "brief_key": "scn_rbmk_mcp_brief",
   "duration_s": 3600,
