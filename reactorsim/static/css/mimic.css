@@ -110,3 +110,15 @@
    von gut einer halben Stunde haben. */
 .rs-tube { stroke: #4a6377; stroke-width: 2; }
 .rs-vessel { fill: color-mix(in oklab, #6b4a2a calc(var(--rs-gr, 0) * 45%), #101a24); }
+
+/* Steuerstäbe: eine Linie je Gruppe, die Spitze folgt der Einfahrtiefe
+   (mimic.js rodLine()/rodTracker()) -- hell genug, um sich sowohl gegen den
+   dunklen Kern bei 0 % als auch gegen den orange glühenden bei Volllast
+   abzuheben. Blinkt kurz auf (dieselbe Animation wie eine Auslösung), wenn
+   sich die Stellung gerade ändert -- sonst geht eine Stabbewegung im
+   ohnehin vollen Bild leicht unter. */
+.rs-rod { stroke: #cfd9e2; stroke-width: 3; stroke-linecap: round; }
+.rs-rod[data-moving="1"] { animation: rs-mimic-blink .5s steps(2, jump-none) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .rs-rod[data-moving="1"] { animation: none; opacity: .5; }
+}

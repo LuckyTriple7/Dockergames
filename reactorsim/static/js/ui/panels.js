@@ -596,7 +596,7 @@ export function buildPanels(engine, render, geiger, helperEnabled) {
     // zählt mit: die Ursache ist zwar weg, aber noch nicht quittiert, und
     // genau das soll am Bauteil noch sichtbar sein.
     const alarmComponents = sp.alarmComponents || {};
-    render.add('mimic', () => {
+    render.add('mimic', (_state, now) => {
       const alarms = new Map();
       for (const tile of engine.trips.tiles()) {
         if (tile.tile === 'normal') continue;
@@ -604,7 +604,9 @@ export function buildPanels(engine, render, geiger, helperEnabled) {
         if (!key) continue;
         if (!alarms.has(key) || alarms.get(key) < tile.severity) alarms.set(key, tile.severity);
       }
-      mimic.update(s, engine.derive(), sp, alarms);
+      // now: fuer das kurze Aufblinken der Steuerstab-Anzeige bei Bewegung
+      // (siehe mimic.js rodTracker()).
+      mimic.update(s, engine.derive(), sp, alarms, now);
     });
   }
 

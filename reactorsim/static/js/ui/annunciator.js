@@ -99,12 +99,6 @@ export class Horn {
     this._siren.audio.loop = false;
     this._attention = new MusicLoop('game_attention.mp3', 0.35);
     this._playing = false;
-    // 'ended' feuert nur, wenn die Sirene natuerlich durchgelaufen ist, nicht
-    // bei silence()->stop() (das pausiert nur) -- der _playing-Check fängt
-    // trotzdem den seltenen Fall ab, dass beides im selben Augenblick passiert.
-    this._siren.audio.addEventListener('ended', () => {
-      if (this.enabled && this._playing) this._attention.start();
-    });
   }
 
   // main.js weist `app.horn.enabled = ...` direkt zu (Stats-Dialog) -- der
@@ -130,9 +124,18 @@ export class Horn {
     const rate = severity >= 3 ? 1.15 : 1.0;
     this._siren.audio.playbackRate = rate;
     this._attention.audio.playbackRate = rate;
-    if (this._playing) return;
-    this._playing = true;
-    this._siren.start();
+    if (!this._playing) {
+      this._playing = true;
+      this._siren.start();
+      return;
+    }
+    // Sirene ist einmal durchgelaufen (kein Loop, siehe Konstruktor) -- jetzt
+    // der Dauerton, bis quittiert wird. Abfrage statt 'ended'-Ereignis: alarm()
+    // wird ohnehin einmal je Sekunde gerufen (siehe panels.js hornNext), das
+    // ist robuster als ein Ereignis, das bei jedem Aufruf neu genau einmal
+    // richtig verdrahtet sein müsste -- und start() selbst ist idempotent,
+    // ein wiederholter Aufruf hier tut also nichts, sobald der Dauerton läuft.
+    if (this._siren.audio.ended) this._attention.start();
   }
 
   /** Sirene und Dauerton abstellen, sobald keine Meldung mehr unquittiert ist. */

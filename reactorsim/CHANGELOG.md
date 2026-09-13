@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.0.77
+
+- ✨ **Steuerstab-Anzeige im Anlagenfließbild** (`ui/mimic.js`). Bisher zeigte
+  keiner der drei Typen, wo die Stäbe stehen -- jetzt je zwei Linien im
+  Kernkasten (Regel- und Abschaltgruppe), Spitze folgt `s.rod[i]`. Fahrrichtung
+  typgerecht: DWR/RBMK von oben, SWR von unten (siehe Dateikopf `plants/bwr.js`).
+  Blinkt kurz auf, wenn sich die Stellung ändert (`rs-mimic-blink`
+  wiederverwendet) -- macht nebenbei eine klemmende Gruppe (`alarm_rod_stuck`)
+  im Bild sichtbar: die klemmende Linie bewegt sich nicht mit, die andere
+  schon.
+- 🐛 **Meldehupe: Dauerton nach der Sirene kam nie.** Die zweistufige Hupe aus
+  0.0.74 (Sirene einmal, danach `game_attention.mp3` bis zum Quittieren)
+  hing am `ended`-Ereignis der Sirene, um umzuschalten -- kam bei einem
+  Spieler nie an, vermutlich eine Eigenheit der Aufnahme oder des Browsers
+  beim Ereignis selbst. `Horn.alarm()` fragt jetzt `this._siren.audio.ended`
+  direkt ab, statt auf das Ereignis zu warten -- robuster, weil `alarm()`
+  ohnehin einmal je Sekunde aus dem Renderlauf gerufen wird (siehe
+  `panels.js` `hornNext`), eine Abfrage dort braucht keine korrekt
+  verdrahtete Einmal-Registrierung.
+
 ## 0.0.76
 
 - ✨ **Serverseitige Nachrechnung statt reiner Plausibilitätsprüfung**

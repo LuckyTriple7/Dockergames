@@ -47,6 +47,48 @@ function valve(x, y, id, label, side = 'right') {
   ]);
 }
 
+/**
+ * Steuerstab: eine Linie, die zwischen Wurzel (fest) und Spitze (Einfahrtiefe)
+ * wandert -- ein Kanal stellvertretend für die ganze Gruppe, wie die
+ * Rohrleitungen auch nur einen Strang zeichnen. Zwei Linien je Kern (Regel-
+ * und Abschaltgruppe) zeigen dabei mehr als eine gemittelte Fläche: bleibt
+ * eine stehen, während die andere fährt, sieht man eine klemmende Gruppe
+ * (alarm_rod_stuck) im Bild, nicht nur auf der Meldetafel.
+ *
+ * y1 bleibt auf der Wurzel stehen, y2 setzt update() jeden Takt neu -- fromTop
+ * legt fest, ob der Stab von oben (DWR/RBMK) oder von unten (SWR, siehe
+ * bwr.js) einfährt.
+ */
+function rodLine(x, yTop, yBottom, bank, fromTop) {
+  const anchor = fromTop ? yTop : yBottom;
+  return svg('line', { class: 'rs-rod', x1: x, x2: x, y1: anchor, y2: anchor, 'data-rod': bank });
+}
+
+/** Sammelt die von rodLine() gebauten Linien und liefert eine update()-
+ *  Funktion, die sie nach s.rod[bank] ausrichtet -- dieselbe Rechnung für
+ *  alle drei Typen, hier nur einmal. */
+function rodTracker(root, yTop, yBottom, fromTop) {
+  const lines = [...root.querySelectorAll('.rs-rod')].map((line) => ({
+    line, bank: Number(line.dataset.rod), lastFrac: null, moveUntil: 0,
+  }));
+  return (s, nowMs) => {
+    for (const r of lines) {
+      const frac = Math.max(0, Math.min(1, (s.rod && s.rod[r.bank]) || 0));
+      const tip = fromTop ? yTop + frac * (yBottom - yTop) : yBottom - frac * (yBottom - yTop);
+      setAttr(r.line, 'y2', tip.toFixed(1));
+      // Kurz aufblinken, wenn sich die Stellung gerade ändert -- sonst geht
+      // eine Stabbewegung im ohnehin vollen Bild leicht unter. moveUntil haelt
+      // das Blinken bei durchgehender Fahrt (Automatik, Xenon-Ausgleich) auch
+      // durchgehend an, statt bei jedem Bild einzeln an- und auszugehen.
+      if (r.lastFrac !== null && Math.abs(frac - r.lastFrac) > 1e-5) {
+        r.moveUntil = nowMs + 400;
+      }
+      r.lastFrac = frac;
+      setAttr(r.line, 'data-moving', nowMs < r.moveUntil ? '1' : '0');
+    }
+  };
+}
+
 function pipe(d, kind, flowId) {
   const nodes = [svg('path', { class: `rs-pipe rs-pipe-${kind}`, d })];
   if (flowId) nodes.push(svg('path', { class: 'rs-flow', d, 'data-flow': flowId }));
@@ -92,6 +134,10 @@ export function buildPwrMimic(container) {
   // Reaktordruckbehälter.
   g.push(svg('rect', { class: 'rs-vessel', 'data-mimic': 'core', x: 64, y: 92, width: 56, height: 96, rx: 22 }));
   g.push(svg('rect', { class: 'rs-core', x: 76, y: 112, width: 32, height: 56, rx: 4 }));
+  // Steuerstäbe: Regel- und Abschaltgruppe (rodBanks[0]/[1] in pwr.js), fahren
+  // von oben ein.
+  g.push(rodLine(86, 112, 168, 0, true));
+  g.push(rodLine(98, 112, 168, 1, true));
   g.push(svg('text', { class: 'rs-label', x: 92, y: 252, 'text-anchor': 'middle' },
     [t('mimic_core')]));
   g.push(readout(92, 106, 'power', 'middle'));
@@ -162,15 +208,17 @@ export function buildPwrMimic(container) {
   }
   const sgLevel = root.querySelector('.rs-sg-level');
   const pzrLevel = root.querySelector('.rs-pzr-level');
+  const trackRods = rodTracker(root, 112, 168, true);
 
   return {
     root,
-    update(s, d, sp, alarms) {
+    update(s, d, sp, alarms, nowMs) {
       // Farben: kalt 250 °C, heiß 340 °C.
       setVar(root, '--rs-t-hot', norm(s.T_co - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-t-cold', norm(s.T_ci - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-n', Math.max(0, Math.min(1, s.n)).toFixed(3));
       setVar(root, '--rs-steam-l', norm(s.p_sg, 20, 80).toFixed(3));
+      trackRods(s, nowMs);
       // Welches Bauteil eine anstehende Meldung betrifft, steht in der
       // Meldetafel schon -- hier nur noch dasselbe am Bild zeigen, damit man
       // es nicht erst im Alarme-Reiter suchen muss.
@@ -279,6 +327,10 @@ export function buildBwrMimic(container) {
   g.push(svg('rect', { class: 'rs-vessel', 'data-mimic': 'rpv', x: 106, y: 40, width: 76, height: 180, rx: 34 }));
   g.push(svg('rect', { class: 'rs-sg-level', x: 110, y: 96, width: 68, height: 120, rx: 30 }));
   g.push(svg('rect', { class: 'rs-core', x: 124, y: 150, width: 40, height: 56, rx: 4 }));
+  // Steuerstäbe fahren beim SWR von UNTEN ein (siehe Dateikopf bwr.js) --
+  // fromTop=false, die Wurzel sitzt unten am Kernboden.
+  g.push(rodLine(136, 150, 206, 0, false));
+  g.push(rodLine(152, 150, 206, 1, false));
   g.push(svg('path', {
     class: 'rs-comp', 'data-mimic': 'sep',
     d: 'M 122 64 L 166 64 L 158 86 L 130 86 Z',
@@ -343,14 +395,16 @@ export function buildBwrMimic(container) {
     if (list) list.push(n); else flows.set(id, [n]);
   }
   const level = root.querySelector('.rs-sg-level');
+  const trackRods = rodTracker(root, 150, 206, false);
 
   return {
     root,
-    update(s, d, sp, alarms) {
+    update(s, d, sp, alarms, nowMs) {
       setVar(root, '--rs-t-hot', norm(s.T_co - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-t-cold', norm(s.T_ci - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-n', Math.max(0, Math.min(1, s.n)).toFixed(3));
       setVar(root, '--rs-steam-l', norm(s.p_dome, 20, 85).toFixed(3));
+      trackRods(s, nowMs);
       if (alarms) for (const [key, node] of comps) setAttr(node, 'data-alarm', alarms.get(key) || 0);
 
       const fRec = Math.max(0, Math.min(1.2, s.W_core / sp.recirc.W0));
@@ -434,6 +488,12 @@ export function buildRbmkMimic(container) {
       class: 'rs-tube', x1: x, y1: 92, x2: x, y2: 200,
     }));
   }
+  // Steuerstäbe: Regel- und Abschaltgruppe (rodBanksMoveTogether -- fahren im
+  // Normalbetrieb zusammen, siehe rbmk.js -- aber eine klemmende Gruppe
+  // (alarm_rod_stuck) bleibt hier trotzdem einzeln sichtbar). Fahren von
+  // oben ein, in zwei der sieben Kanäle oben gezeichnet.
+  g.push(rodLine(97, 92, 200, 0, true));
+  g.push(rodLine(141, 92, 200, 1, true));
   // Linksbuendig an der Kernkante statt mittig: mittig stiess die Beschriftung
   // mit "Recirc pump" zusammen, seit die Pumpe an die untere Schleifenecke
   // gerueckt ist (siehe dort).
@@ -500,10 +560,11 @@ export function buildRbmkMimic(container) {
     if (list) list.push(n); else flows.set(id, [n]);
   }
   const level = root.querySelector('.rs-sg-level');
+  const trackRods = rodTracker(root, 92, 200, true);
 
   return {
     root,
-    update(s, d, sp, alarms) {
+    update(s, d, sp, alarms, nowMs) {
       setVar(root, '--rs-t-hot', norm(s.T_co - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-t-cold', norm(s.T_ci - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-n', Math.max(0, Math.min(1, s.n)).toFixed(3));
@@ -511,6 +572,7 @@ export function buildRbmkMimic(container) {
       // Der Graphitblock glüht eigenständig -- er hängt an seiner eigenen,
       // sehr langen Zeitkonstante und nicht an der Leistung von eben.
       setVar(root, '--rs-gr', norm(s.T_gr - 273.15, 300, 800).toFixed(3));
+      trackRods(s, nowMs);
       if (alarms) for (const [key, node] of comps) setAttr(node, 'data-alarm', alarms.get(key) || 0);
 
       const fPrim = Math.max(0, Math.min(1.2, s.W_core / sp.mcp.W0));
