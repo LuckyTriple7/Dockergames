@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.0.78
+
+- 🐛 **Meldehupe: Dauerton kam wirklich nie, jetzt gefunden.** 0.0.77s Fix
+  (Abfrage statt Ereignis) traf nicht die Ursache. Der eigentliche Fehler:
+  `Horn.unlock()` spielte testweise auch den Dauerton (`game_attention.mp3`)
+  einmal an, um ihn fuer Autoplay freizuschalten -- und `unlock()` haengt am
+  Ack- UND am SCRAM-Knopf, also genau den Knoepfen, auf die ein Spieler
+  klickt, WAEHREND eine Meldung laeuft. `audio.play()` setzt `paused` sofort
+  synchron auf false, noch bevor die zurückgegebene Promise sich auflöst --
+  fiel dieser Klick mit dem Moment zusammen, in dem `alarm()` nach
+  Sirenenende den Dauerton ECHT starten wollte, sah `MusicLoop.start()`
+  "läuft schon" und tat nichts; `unlock()`s eigenes `.then(stop())` legte ihn
+  gleich darauf wieder still. Kein Fehler in der Konsole, weil beide
+  `play()`-Aufrufe technisch erfolgreich waren -- reines Zeitfenster-Problem.
+  `unlock()` schaltet jetzt nur noch die Sirene frei; der Dauerton braucht
+  das nicht, er startet ohnehin nur aus `alarm()` heraus, genau wie die
+  Sirene selbst auch nie eigens freigeschaltet werden musste.
+
 ## 0.0.77
 
 - ✨ **Steuerstab-Anzeige im Anlagenfließbild** (`ui/mimic.js`). Bisher zeigte

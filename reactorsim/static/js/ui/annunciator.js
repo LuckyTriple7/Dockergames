@@ -155,11 +155,22 @@ export class Horn {
     if (this.enabled) playClip('game_over.mp3');
   }
 
-  /** Muss aus einer Benutzergeste heraus laufen, sonst bleibt der Ton stumm.
-   *  Beide Elemente einmalig anspielen -- der Dauerton startet spaeter aus
-   *  einem 'ended'-Ereignis heraus, nicht aus einer neuen Geste. */
+  /**
+   * Muss aus einer Benutzergeste heraus laufen, sonst bleibt der Ton stumm.
+   * NUR die Sirene anspielen, nicht den Dauerton: unlock() wird von Ack- und
+   * SCRAM-Knopf gerufen -- genau den Knoepfen, auf die ein Spieler klickt,
+   * WAEHREND eine Meldung laeuft. War hier `_attention.audio.play()` mit
+   * dabei, setzte das dessen `paused` sofort auf false (synchron, noch vor
+   * der Promise-Aufloesung); traf das mit dem Moment zusammen, in dem
+   * alarm() den Dauerton nach Sirenenende ECHT starten wollte, sah start()
+   * "laeuft schon" und tat nichts -- unlock()s eigenes .then(stop()) legte
+   * ihn gleich darauf wieder still. Der Dauerton kam dadurch nie hoerbar an,
+   * ganz ohne Fehler. Die Sirene braucht die eigene Freischaltung hier
+   * trotzdem (erster Ton der Episode, kommt sonst evtl. zu spaet), der
+   * Dauerton nicht: er startet ohnehin nur aus alarm() heraus, genau wie
+   * die Sirene selbst auch nie eigens freigeschaltet werden musste.
+   */
   unlock() {
     this._siren.audio.play().then(() => this._siren.stop()).catch(() => {});
-    this._attention.audio.play().then(() => this._attention.stop()).catch(() => {});
   }
 }
