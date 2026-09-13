@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.95
+
+- 💾 **Spielstände hängen jetzt an ihrer eigenen Reaktor-Karte.** Bisher
+  stand ein Eintrag je Reaktortyp in EINER gemeinsamen Liste unten auf dem
+  Startbildschirm; ein RBMK-Stand sah dort aus, als könnte er zwischen
+  DWR/SWR untergehen. Jeder Stand erscheint jetzt direkt unter seiner
+  eigenen Karte (DWR/SWR/RBMK) und bleibt dort sichtbar, ganz unabhängig
+  davon, welche Karte man gerade anklickt -- nichts geht verloren, nur
+  anders sortiert.
+
 ## 0.0.94
 
 - 🔇 **Fix: Ton-Hauptschalter (Mute) liess zwei Klaenge stumm ungeschaltet

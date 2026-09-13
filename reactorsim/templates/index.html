@@ -47,24 +47,37 @@
 
     <h2 class="rs-start-headline">{{ t.start_headline }}</h2>
     <div class="rs-start-cards">
-      <button class="rs-card" data-reactor="pwr" type="button">
-        <span class="rs-card-badge rs-card-badge-pwr">{{ t.reactor_pwr_short }}</span>
-        <span class="rs-card-name">{{ t.reactor_pwr }}</span>
-        <span class="rs-card-tag">{{ t.reactor_pwr_tag }}</span>
-        <span class="rs-card-desc">{{ t.reactor_pwr_desc }}</span>
-      </button>
-      <button class="rs-card" data-reactor="bwr" type="button">
-        <span class="rs-card-badge rs-card-badge-bwr">{{ t.reactor_bwr_short }}</span>
-        <span class="rs-card-name">{{ t.reactor_bwr }}</span>
-        <span class="rs-card-tag">{{ t.reactor_bwr_tag }}</span>
-        <span class="rs-card-desc">{{ t.reactor_bwr_desc }}</span>
-      </button>
-      <button class="rs-card" data-reactor="rbmk" type="button">
-        <span class="rs-card-badge rs-card-badge-rbmk">{{ t.reactor_rbmk_short }}</span>
-        <span class="rs-card-name">{{ t.reactor_rbmk }}</span>
-        <span class="rs-card-tag">{{ t.reactor_rbmk_tag }}</span>
-        <span class="rs-card-desc">{{ t.reactor_rbmk_desc }}</span>
-      </button>
+      <div class="rs-card-group">
+        <button class="rs-card" data-reactor="pwr" type="button">
+          <span class="rs-card-badge rs-card-badge-pwr">{{ t.reactor_pwr_short }}</span>
+          <span class="rs-card-name">{{ t.reactor_pwr }}</span>
+          <span class="rs-card-tag">{{ t.reactor_pwr_tag }}</span>
+          <span class="rs-card-desc">{{ t.reactor_pwr_desc }}</span>
+        </button>
+        <!-- Von main.js gefuellt, ein Eintrag je Spielstand DIESES Typs
+             (Slot "auto-pwr-..."/"manual-pwr-...") -- eigener Stand je
+             Karte statt einer gemeinsamen Liste unten, damit ein RBMK-Stand
+             nicht zwischen DWR/SWR untergeht. -->
+        <div class="rs-card-resume" id="rs-card-resume-pwr" hidden></div>
+      </div>
+      <div class="rs-card-group">
+        <button class="rs-card" data-reactor="bwr" type="button">
+          <span class="rs-card-badge rs-card-badge-bwr">{{ t.reactor_bwr_short }}</span>
+          <span class="rs-card-name">{{ t.reactor_bwr }}</span>
+          <span class="rs-card-tag">{{ t.reactor_bwr_tag }}</span>
+          <span class="rs-card-desc">{{ t.reactor_bwr_desc }}</span>
+        </button>
+        <div class="rs-card-resume" id="rs-card-resume-bwr" hidden></div>
+      </div>
+      <div class="rs-card-group">
+        <button class="rs-card" data-reactor="rbmk" type="button">
+          <span class="rs-card-badge rs-card-badge-rbmk">{{ t.reactor_rbmk_short }}</span>
+          <span class="rs-card-name">{{ t.reactor_rbmk }}</span>
+          <span class="rs-card-tag">{{ t.reactor_rbmk_tag }}</span>
+          <span class="rs-card-desc">{{ t.reactor_rbmk_desc }}</span>
+        </button>
+        <div class="rs-card-resume" id="rs-card-resume-rbmk" hidden></div>
+      </div>
     </div>
 
     <h2 class="rs-start-headline" id="rs-scn-headline" hidden>{{ t.start_scenarios }}</h2>
@@ -87,11 +100,6 @@
     <div class="rs-start-actions">
       <button class="rs-btn rs-btn-primary" id="rs-start-go" type="button" disabled>{{ t.start_free_play }}</button>
     </div>
-
-    <!-- Ein Eintrag je Reaktortyp (Slot "auto-<typ>"), von main.js gefuellt --
-         wer bei DWR und SWR jeweils gespeichert hat, sieht und trifft die
-         Wahl hier, nicht erst nach dem Draufklicken. -->
-    <div class="rs-resume-list" id="rs-resume-list" hidden></div>
 
     <div class="rs-start-foot">
       <!-- Hauptschalter für den Ton, schon auf dem Startbildschirm. Vorher

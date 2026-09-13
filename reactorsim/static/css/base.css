@@ -233,6 +233,13 @@ button {
   .rs-start-cards { grid-template-columns: repeat(3, 1fr); }
 }
 
+/* Buendelt Karte + ihre eigenen Spielstaende in EINER Grid-Spalte --
+   .rs-card bleibt selbst ein <button> (ganze Karte waehlbar), die
+   Fortsetzen-Zeilen haengen als Geschwister-Elemente darunter, nicht
+   DARIN: ein <button> darf kein zweites <button> enthalten (Fortsetzen +
+   Loeschen je Stand). */
+.rs-card-group { display: grid; gap: 8px; align-content: start; }
+
 .rs-card {
   text-align: left;
   display: grid;
@@ -282,7 +289,9 @@ button {
 }
 .rs-start-hint { color: var(--rs-fg-mute); font-size: 12px; }
 
-.rs-resume-list { display: grid; gap: 8px; margin-top: 20px; }
+/* Sitzt unter der zugehoerigen .rs-card in derselben .rs-card-group, siehe
+   dort. */
+.rs-card-resume { display: grid; gap: 6px; }
 .rs-resume-row { display: flex; gap: 8px; align-items: stretch; }
 .rs-resume-row .rs-btn:first-child { flex: 1; text-align: left; }
 

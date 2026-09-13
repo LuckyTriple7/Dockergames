@@ -7,7 +7,7 @@ import { buildPanels } from './ui/panels.js';
 import { setControlsPaused } from './ui/controls.js';
 import { Loop } from './loop.js';
 import { createEngine } from './sim/engine.js';
-import { getPlant, isAvailable } from './plants/index.js';
+import { getPlant, isAvailable, PLANT_IDS } from './plants/index.js';
 import { Session, PHASE } from './game/session.js';
 import { gridDeviationTrips } from './game/scenario.js';
 import { api } from './net/api.js';
@@ -329,13 +329,19 @@ function initStart() {
   refreshResumeList();
 }
 
-/** Fortsetzen-Liste neu vom Server holen -- nicht nur beim allerersten
+/** Fortsetzen-Zeilen neu vom Server holen -- nicht nur beim allerersten
  *  Laden: ein Spielstand von eben (Knopf "Speichern") oder ein geloeschter
  *  muss beim naechsten Blick auf den Startbildschirm stimmen, siehe
  *  toMenu(). Der Szenariotitel braucht die einmalig geholte Szenarienliste,
- *  sonst zeigt der Hinweis nur die rohe ID. */
+ *  sonst zeigt der Hinweis nur die rohe ID.
+ *
+ *  Ein Container je Reaktortyp (#rs-card-resume-<id>, siehe index.html),
+ *  direkt unter dessen eigener Karte -- nicht mehr eine gemeinsame Liste
+ *  unten fuer alle Typen. Wer RBMK gespielt hat und danach die DWR-Karte
+ *  anschaut, soll den RBMK-Stand trotzdem noch sehen: er steht unveraendert
+ *  bei der RBMK-Karte, ganz ohne von der Auswahl abzuhaengen. */
 function refreshResumeList() {
-  const list = $('#rs-resume-list');
+  const containers = new Map(PLANT_IDS.map((id) => [id, $('#rs-card-resume-' + id)]));
   Promise.all([app.scenariosPromise, api.listSaves()]).then(([, r]) => {
     const saves = (r.ok && r.data && r.data.saves) || [];
     // Ein Slot je Reaktortyp ("auto-<typ>"), nicht mehr der eine gemeinsame
@@ -347,14 +353,21 @@ function refreshResumeList() {
     // an der Beschriftung unterscheidbar.
     const autos = saves.filter((x) => x.slot
       && (x.slot.startsWith('auto-') || x.slot.startsWith('manual-')));
-    list.replaceChildren(...autos.map((sv) => {
+    for (const box of containers.values()) { if (box) box.replaceChildren(); }
+    for (const sv of autos) {
+      const container = containers.get(sv.reactor);
+      if (!container) continue; // unbekannter/kuenftiger Typ -- keine Karte dafuer da
       const scn = sv.scenario && app.scenarios.find((x) => x.id === sv.scenario);
       const labelKey = sv.slot.startsWith('manual-') ? 'btn_resume_named_manual' : 'btn_resume_named';
-      const btn = el('button.rs-btn', { type: 'button' }, [t(labelKey, {
+      const btn = el('button.rs-btn.rs-btn-sm', { type: 'button' }, [t(labelKey, {
         reactor: t('reactor_' + sv.reactor),
         scenario: sv.scenario ? t(scn ? scn.title_key : 'scn_unknown') : t('scn_free'),
         when: new Date(sv.saved_at * 1000).toLocaleString(),
       })]);
+      // Reactor stimmt hier immer mit der Karte ueberein (Container-Wahl
+      // oben), disabled bleibt trotzdem als Absicherung fuer einen Typ, der
+      // spaeter aus PLANTS verschwindet, ohne dass alte Staende geloescht
+      // wurden.
       btn.disabled = !isAvailable(sv.reactor);
       // Ein Szenario-Stand muss beim Fortsetzen wieder MIT seiner
       // Szenario-Definition booten (Bedarfskurve, Ereignisse, Wertung) --
@@ -379,9 +392,9 @@ function refreshResumeList() {
           })
           .catch(() => boot(sv.reactor, null, sv.slot));
       });
-      return el('div.rs-resume-row', null, [btn, makeDeleteSaveButton(sv.slot)]);
-    }));
-    list.hidden = !autos.length;
+      container.append(el('div.rs-resume-row', null, [btn, makeDeleteSaveButton(sv.slot)]));
+    }
+    for (const [, container] of containers) { if (container) container.hidden = !container.childElementCount; }
   });
 }
 
