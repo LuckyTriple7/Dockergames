@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.9
+
+- 🔊 Geigerzähler-Alarmton (`geiger_game_alert.mp3`) ausgetauscht.
+
 ## 0.1.8
 
 - ⏪ Revert 0.1.7: `game_attention.mp3`-Tausch zurückgenommen, alter Ton
