@@ -23,6 +23,20 @@ const norm = (v, lo, hi) => Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
  *  unsichtbar. */
 const flowVis = (w) => (w > 0.005 ? Math.max(w, 0.22) : 0);
 
+/**
+ * Buendelt Bauteil-Grafik und seine Beschriftung/Anzeigen zu EINEM
+ * Hover-Ziel. Name und Messwert (.rs-label/.rs-read) liegen unsichtbar
+ * bereit und erscheinen erst, wenn die Maus ueber irgendeinem Kind dieser
+ * Gruppe steht (siehe .rs-hover in mimic.css) -- vorher standen alle
+ * Beschriftungen dauerhaft im Bild und liefen sich bei drei eng gepackten
+ * Fließbildern gegenseitig ins Gehege. Mit Hover kann nie mehr als eine
+ * gleichzeitig sichtbar sein, ganz gleich wie eng zwei Bauteile beieinander
+ * liegen.
+ */
+function hoverGroup(nodes) {
+  return svg('g', { class: 'rs-hover' }, nodes);
+}
+
 /** Pumpensymbol: Kreis mit rotierendem Flügel. */
 function pump(x, y, id, label) {
   const body = svg('circle', { class: 'rs-comp', cx: x, cy: y, r: 11, 'data-mimic': id });
@@ -31,7 +45,7 @@ function pump(x, y, id, label) {
     d: `M ${x - 7} ${y} L ${x + 7} ${y} M ${x} ${y - 7} L ${x} ${y + 7}`,
     stroke: '#7fa6c4', 'stroke-width': 1.6, fill: 'none',
   });
-  return svg('g', null, [
+  return hoverGroup([
     body, vane,
     svg('text', { class: 'rs-label', x, y: y + 22, 'text-anchor': 'middle' }, [label]),
   ]);
@@ -58,7 +72,7 @@ function valve(x, y, id, label, side = 'right', pctId) {
     svg('text', { class: 'rs-label', x: labelX, y: y + 4, 'text-anchor': anchor }, [label]),
   ];
   if (pctId) nodes.push(readout(labelX, y + 15, pctId, anchor));
-  return svg('g', null, nodes);
+  return hoverGroup(nodes);
 }
 
 /**
@@ -154,55 +168,67 @@ export function buildPwrMimic(container) {
   // Speisewasser zurück zum Dampferzeuger.
   g.push(pipe('M 372 232 L 268 232 L 268 168', 'feed', 'feed'));
 
-  // Reaktordruckbehälter.
-  g.push(svg('rect', { class: 'rs-vessel', 'data-mimic': 'core', x: 64, y: 92, width: 56, height: 96, rx: 22 }));
-  g.push(svg('rect', { class: 'rs-core', x: 76, y: 112, width: 32, height: 56, rx: 4 }));
-  // Steuerstäbe: Regel- und Abschaltgruppe (rodBanks[0]/[1] in pwr.js), fahren
-  // von oben ein.
-  g.push(rodLine(86, 112, 168, 0, true));
-  g.push(rodLine(98, 112, 168, 1, true));
-  g.push(svg('text', { class: 'rs-label', x: 92, y: 252, 'text-anchor': 'middle' },
-    [t('mimic_core')]));
-  g.push(readout(92, 106, 'power', 'middle'));
+  // Reaktordruckbehälter -- Gehäuse, Kern, Stäbe, Name/Leistung UND die
+  // Strangtemperaturen (thot/tcold) in EINEM Hover-Ziel: das sind die
+  // Messwerte DIESES Bauteils, nicht der duennen Rohrleitung, auf der sie
+  // vorher lose herumstanden.
+  g.push(hoverGroup([
+    svg('rect', { class: 'rs-vessel', 'data-mimic': 'core', x: 64, y: 92, width: 56, height: 96, rx: 22 }),
+    svg('rect', { class: 'rs-core', x: 76, y: 112, width: 32, height: 56, rx: 4 }),
+    // Steuerstäbe: Regel- und Abschaltgruppe (rodBanks[0]/[1] in pwr.js),
+    // fahren von oben ein.
+    rodLine(86, 112, 168, 0, true),
+    rodLine(98, 112, 168, 1, true),
+    svg('text', { class: 'rs-label', x: 92, y: 252, 'text-anchor': 'middle' }, [t('mimic_core')]),
+    readout(92, 106, 'power', 'middle'),
+    readout(100, 54, 'thot'),
+    readout(100, 202, 'tcold'),
+  ]));
 
   // Druckhalter.
-  g.push(svg('rect', { class: 'rs-vessel', 'data-mimic': 'pzr', x: 136, y: 8, width: 28, height: 34, rx: 12 }));
-  g.push(svg('rect', { class: 'rs-pzr-level', x: 138, y: 10, width: 24, height: 30, rx: 10 }));
-  g.push(svg('text', { class: 'rs-label', x: 180, y: 14, 'text-anchor': 'start' },
-    [t('mimic_pzr')]));
-  g.push(readout(170, 26, 'pzr'));
+  g.push(hoverGroup([
+    svg('rect', { class: 'rs-vessel', 'data-mimic': 'pzr', x: 136, y: 8, width: 28, height: 34, rx: 12 }),
+    svg('rect', { class: 'rs-pzr-level', x: 138, y: 10, width: 24, height: 30, rx: 10 }),
+    svg('text', { class: 'rs-label', x: 180, y: 14, 'text-anchor': 'start' }, [t('mimic_pzr')]),
+    readout(170, 26, 'pzr'),
+  ]));
 
   // Hauptkühlmittelpumpe.
   g.push(pump(172, 208, 'rcp', t('mimic_rcp')));
 
-  // Dampferzeuger.
-  g.push(svg('rect', { class: 'rs-vessel', 'data-mimic': 'sg', x: 218, y: 46, width: 56, height: 130, rx: 22 }));
-  // Beschriftung tief unter dem Behaelter: das Speisewasserrohr faellt bei
-  // x=268 -- innerhalb der Behälterbreite -- senkrecht bis y=232 zum
-  // Speisewasserkopf durch, jede Position naeher am Behaelter liegt auf
-  // dieser Leitung.
-  g.push(svg('text', { class: 'rs-label', x: 246, y: 246, 'text-anchor': 'middle' },
-    [t('mimic_sg')]));
-  g.push(readout(246, 120, 'sg', 'middle'));
-  // Trennlinie bei x=240: links davon liegen die Anschluesse des Primaerstrangs
-  // (heiss bei x=224/y=62, kalt bei x=224/y=168, siehe oben), rechts davon die
-  // des Sekundaerkreises (Frischdampf bei x=246, Speisewasser bei x=268) --
-  // Fuellstand und Rohrbuendel bleiben unten dadurch strikt auf ihrer Seite,
-  // niemand kann das Bild so lesen, als mischten sich beide Wasser.
-  g.push(svg('line', { class: 'rs-sg-divider', x1: 240, y1: 50, x2: 240, y2: 172 }));
-  // Füllstandsbalken im Dampferzeuger -- NUR die Sekundaerseite rechts der
-  // Trennlinie, siehe oben.
-  g.push(svg('rect', { class: 'rs-sg-level', x: 244, y: 60, width: 26, height: 112, rx: 10 }));
-  // Rohrbuendel: das Primaerwasser laeuft durch diese Rohre und wird vom
-  // Sekundaerwasser nur von AUSSEN umspuelt, nie vermischt -- derselbe Punkt,
-  // den die Ruecksprache zum Fließbild ausdruecklich vermisst hat. Eigene
-  // data-Kennung braucht es nicht: --rs-t-hot/--rs-t-cold sitzen schon auf der
-  // Wurzel (siehe update()) und faerben es wie die Straenge selbst automatisch
-  // mit; 'prim' als Fluss-Kennung laesst zusaetzlich denselben Fluss-Strich
-  // durchlaufen wie auf dem Heiss-/Kaltstrang.
-  g.push(pipe('M 228 58 L 228 150', 'hot', 'prim'));
-  g.push(pipe('M 228 150 L 236 150', 'cold', null));
-  g.push(pipe('M 236 150 L 236 58', 'cold', 'prim'));
+  // Dampferzeuger: Gehäuse, Trennlinie, Rohrbündel (Primärseite) und
+  // Füllstand (Sekundärseite) -- alles EIN Hover-Ziel, auch wenn nur der
+  // Name und der Sekundärdruck eine Zahl zeigen.
+  g.push(hoverGroup([
+    svg('rect', { class: 'rs-vessel', 'data-mimic': 'sg', x: 218, y: 46, width: 56, height: 130, rx: 22 }),
+    // Trennlinie bei x=240: links davon liegen die Anschluesse des
+    // Primaerstrangs (heiss bei x=224/y=62, kalt bei x=224/y=168, siehe
+    // oben), rechts davon die des Sekundaerkreises (Frischdampf bei x=246,
+    // Speisewasser bei x=268) -- Fuellstand und Rohrbuendel bleiben dadurch
+    // strikt auf ihrer Seite, niemand kann das Bild so lesen, als
+    // mischten sich beide Wasser.
+    svg('line', { class: 'rs-sg-divider', x1: 240, y1: 50, x2: 240, y2: 172 }),
+    // Füllstandsbalken im Dampferzeuger -- NUR die Sekundaerseite rechts
+    // der Trennlinie, siehe oben.
+    svg('rect', { class: 'rs-sg-level', x: 244, y: 60, width: 26, height: 112, rx: 10 }),
+    // Rohrbuendel: das Primaerwasser laeuft durch diese Rohre und wird vom
+    // Sekundaerwasser nur von AUSSEN umspuelt, nie vermischt -- derselbe
+    // Punkt, den die Ruecksprache zum Fließbild ausdruecklich vermisst
+    // hat. Eigene data-Kennung braucht es nicht: --rs-t-hot/--rs-t-cold
+    // sitzen schon auf der Wurzel (siehe update()) und faerben es wie die
+    // Straenge selbst automatisch mit; 'prim' als Fluss-Kennung laesst
+    // zusaetzlich denselben Fluss-Strich durchlaufen wie auf dem
+    // Heiss-/Kaltstrang.
+    pipe('M 228 58 L 228 150', 'hot', 'prim'),
+    pipe('M 228 150 L 236 150', 'cold', null),
+    pipe('M 236 150 L 236 58', 'cold', 'prim'),
+    // Beschriftung tief unter dem Behaelter: das Speisewasserrohr faellt
+    // bei x=268 -- innerhalb der Behälterbreite -- senkrecht bis y=232
+    // zum Speisewasserkopf durch, jede Position naeher am Behaelter liegt
+    // auf dieser Leitung.
+    svg('text', { class: 'rs-label', x: 246, y: 246, 'text-anchor': 'middle' }, [t('mimic_sg')]),
+    readout(246, 120, 'sg', 'middle'),
+  ]));
 
   // Regelventil und Umleitstation. Beschriftung des Regelventils rechts (zur
   // Turbine hin): links davon laeuft die Umleitung auf einer eigenen,
@@ -210,24 +236,29 @@ export function buildPwrMimic(container) {
   g.push(valve(330, 88, 'gov', t('mimic_gov'), 'right', 'gov'));
   g.push(valve(300, 140, 'bypass', t('mimic_bypass'), 'right', 'bypass'));
 
-  // Turbine und Generator.
+  // Turbine -- rein dekorativ, keine eigene Beschriftung/Anzeige.
   g.push(svg('path', { class: 'rs-vessel', d: 'M 372 100 L 432 84 L 432 156 L 372 136 Z' }));
-  g.push(svg('circle', { class: 'rs-comp', cx: 452, cy: 118, r: 14, 'data-mimic': 'gen' }));
-  // Beschriftung seitlich am Generator, nicht darüber/darunter: dort liegen
-  // Turbinenkontur (bis x=432) und das Abdampfrohr (senkrecht bei x=452).
-  // Rechtsbündig und mit Rand vor dem viewBox-Rand bei 520: "Generator" reicht
-  // linksbündig ab x=470 sonst über den Rand hinaus -- unsichtbar, solange der
-  // Container breiter als das Seitenverhältnis war und die SVG links/rechts
-  // Rand ließ, sichtbar abgeschnitten, sobald sie exakt in der Breite sitzt.
-  g.push(svg('text', { class: 'rs-label', x: 516, y: 96, 'text-anchor': 'end' },
-    [t('mimic_gen')]));
-  g.push(readout(516, 142, 'gen', 'end'));
+
+  // Generator.
+  g.push(hoverGroup([
+    svg('circle', { class: 'rs-comp', cx: 452, cy: 118, r: 14, 'data-mimic': 'gen' }),
+    // Beschriftung seitlich am Generator, nicht darüber/darunter: dort
+    // liegen Turbinenkontur (bis x=432) und das Abdampfrohr (senkrecht bei
+    // x=452). Rechtsbündig und mit Rand vor dem viewBox-Rand bei 520:
+    // "Generator" reicht linksbündig ab x=470 sonst über den Rand hinaus --
+    // unsichtbar, solange der Container breiter als das Seitenverhältnis
+    // war und die SVG links/rechts Rand ließ, sichtbar abgeschnitten,
+    // sobald sie exakt in der Breite sitzt.
+    svg('text', { class: 'rs-label', x: 516, y: 96, 'text-anchor': 'end' }, [t('mimic_gen')]),
+    readout(516, 142, 'gen', 'end'),
+  ]));
 
   // Kondensator.
-  g.push(svg('rect', { class: 'rs-vessel', x: 372, y: 196, width: 60, height: 36, rx: 8 }));
-  g.push(svg('text', { class: 'rs-label', x: 402, y: 248, 'text-anchor': 'middle' },
-    [t('mimic_cond')]));
-  g.push(readout(402, 218, 'cond', 'middle'));
+  g.push(hoverGroup([
+    svg('rect', { class: 'rs-vessel', x: 372, y: 196, width: 60, height: 36, rx: 8 }),
+    svg('text', { class: 'rs-label', x: 402, y: 248, 'text-anchor': 'middle' }, [t('mimic_cond')]),
+    readout(402, 218, 'cond', 'middle'),
+  ]));
 
   // Speisewasserpumpe: sitzt an der Ecke der Speisewasserleitung, wo sie vom
   // Kondensator kommend nach oben zum Dampferzeuger abbiegt (wie die
@@ -235,10 +266,6 @@ export function buildPwrMimic(container) {
   // Bild scheinbar von allein bergauf, das hat die Rückmeldung zum Fließbild
   // zu Recht bemängelt.
   g.push(pump(268, 232, 'fw', t('mimic_fw')));
-
-  // Temperaturen an den Strängen.
-  g.push(readout(100, 54, 'thot'));
-  g.push(readout(100, 202, 'tcold'));
 
   for (const node of g) root.append(node);
   container.replaceChildren(root);
@@ -377,32 +404,33 @@ export function buildBwrMimic(container) {
   // Druckbehälter mit Abscheider oben und Kern unten. Ein Bauteil im Bild,
   // deshalb auch eine gemeinsame Kennung -- der Siedewasserreaktor zeichnet
   // Kern, Fallraum und Dampfraum nicht getrennt wie der Druckwasserreaktor.
-  g.push(svg('rect', { class: 'rs-vessel', 'data-mimic': 'rpv', x: 106, y: 40, width: 76, height: 180, rx: 34 }));
-  g.push(svg('rect', { class: 'rs-sg-level', x: 110, y: 96, width: 68, height: 120, rx: 30 }));
-  g.push(svg('rect', { class: 'rs-core', x: 124, y: 150, width: 40, height: 56, rx: 4 }));
-  // Steuerstäbe fahren beim SWR von UNTEN ein (siehe Dateikopf bwr.js) --
-  // fromTop=false, die Wurzel sitzt unten am Kernboden.
-  g.push(rodLine(136, 150, 206, 0, false));
-  g.push(rodLine(152, 150, 206, 1, false));
-  g.push(svg('path', {
-    class: 'rs-comp', 'data-mimic': 'sep',
-    d: 'M 122 64 L 166 64 L 158 86 L 130 86 Z',
-  }));
-  g.push(svg('text', { class: 'rs-label', x: 144, y: 236, 'text-anchor': 'middle' },
-    [t('mimic_rpv')]));
-  g.push(readout(144, 140, 'power', 'middle'));
-  // 6px mehr als frueher: die Anzeige sass sonst auf der Frischdampfleitung
-  // direkt unter ihr.
-  g.push(readout(190, 66, 'dome'));
+  // Alles inklusive Abscheider (sep) und Domdruck (dome) EIN Hover-Ziel:
+  // beides gehoert sichtbar zu diesem einen Bauteil.
+  g.push(hoverGroup([
+    svg('rect', { class: 'rs-vessel', 'data-mimic': 'rpv', x: 106, y: 40, width: 76, height: 180, rx: 34 }),
+    svg('rect', { class: 'rs-sg-level', x: 110, y: 96, width: 68, height: 120, rx: 30 }),
+    svg('rect', { class: 'rs-core', x: 124, y: 150, width: 40, height: 56, rx: 4 }),
+    // Steuerstäbe fahren beim SWR von UNTEN ein (siehe Dateikopf bwr.js) --
+    // fromTop=false, die Wurzel sitzt unten am Kernboden.
+    rodLine(136, 150, 206, 0, false),
+    rodLine(152, 150, 206, 1, false),
+    svg('path', { class: 'rs-comp', 'data-mimic': 'sep', d: 'M 122 64 L 166 64 L 158 86 L 130 86 Z' }),
+    svg('text', { class: 'rs-label', x: 144, y: 236, 'text-anchor': 'middle' }, [t('mimic_rpv')]),
+    readout(144, 140, 'power', 'middle'),
+    readout(190, 66, 'dome'),
+  ]));
 
-  // Notkondensator-Wärmetauscher: statisches Kästchen wie Kondensator/Turbine,
-  // nur das Isolierventil davor zeigt auf/zu per data-state. Sitzt im
-  // negativen Raum oben (siehe viewBox) -- dort ist Platz, seit das Ventil
-  // hochgerutscht ist.
-  g.push(svg('rect', { class: 'rs-vessel', x: 188, y: -10, width: 64, height: 18, rx: 3 }));
-  // Fuellstand ueber dem Kaestchen statt daneben: daneben laeuft das
-  // Sicherheitsventil-Steigrohr (x=280) mitten durch die Zahl.
-  g.push(readout(220, -16, 'icwater', 'middle'));
+  // Notkondensator-Wärmetauscher: statisches Kästchen, Füllstand direkt
+  // darüber -- eigenes kleines Hover-Ziel, getrennt vom Isolierventil
+  // davor (das traegt den Namen "Notkondensator" schon selbst, siehe
+  // valve() unten). Sitzt im negativen Raum oben (siehe viewBox) -- dort
+  // ist Platz, seit das Ventil hochgerutscht ist.
+  g.push(hoverGroup([
+    svg('rect', { class: 'rs-vessel', x: 188, y: -10, width: 64, height: 18, rx: 3 }),
+    // Fuellstand ueber dem Kaestchen statt daneben: daneben laeuft das
+    // Sicherheitsventil-Steigrohr (x=280) mitten durch die Zahl.
+    readout(220, -16, 'icwater', 'middle'),
+  ]));
   // Beschriftung links vom Ventil: rechts davon laeuft bis zur Turbine
   // dieselbe Steigleitung, durch die sonst "Notkondensator" liefe.
   g.push(valve(220, 22, 'ic', t('mimic_ic'), 'left'));
@@ -412,27 +440,33 @@ export function buildBwrMimic(container) {
   // sonst lief die Beschriftung darunter auf demselben Rohr weiter.
   g.push(pump(74, 206, 'rcp', t('mimic_recirc')));
 
-  // Regelventil, Umleitung, Turbine, Generator, Kondensator. Beschriftung
-  // des Regelventils rechts (zur Turbine hin): links davon laeuft die
-  // Umleitung auf einer eigenen, parallelen Steigleitung -- genau da, wo die
-  // Beschriftung sonst hinreicht.
+  // Regelventil und Umleitung.
   g.push(valve(330, 88, 'gov', t('mimic_gov'), 'right', 'gov'));
   g.push(valve(296, 140, 'bypass', t('mimic_bypass'), 'right', 'bypass'));
+
+  // Turbine -- rein dekorativ, keine eigene Beschriftung/Anzeige.
   g.push(svg('path', { class: 'rs-vessel', d: 'M 372 100 L 432 84 L 432 156 L 372 136 Z' }));
-  g.push(svg('circle', { class: 'rs-comp', cx: 452, cy: 118, r: 14, 'data-mimic': 'gen' }));
-  // Beschriftung seitlich am Generator, nicht darüber/darunter: dort liegen
-  // Turbinenkontur (bis x=432) und das Abdampfrohr (senkrecht bei x=452).
-  // Rechtsbündig und mit Rand vor dem viewBox-Rand bei 520: "Generator" reicht
-  // linksbündig ab x=470 sonst über den Rand hinaus -- unsichtbar, solange der
-  // Container breiter als das Seitenverhältnis war und die SVG links/rechts
-  // Rand ließ, sichtbar abgeschnitten, sobald sie exakt in der Breite sitzt.
-  g.push(svg('text', { class: 'rs-label', x: 516, y: 96, 'text-anchor': 'end' },
-    [t('mimic_gen')]));
-  g.push(readout(516, 142, 'gen', 'end'));
-  g.push(svg('rect', { class: 'rs-vessel', x: 372, y: 196, width: 60, height: 36, rx: 8 }));
-  g.push(svg('text', { class: 'rs-label', x: 402, y: 248, 'text-anchor': 'middle' },
-    [t('mimic_cond')]));
-  g.push(readout(402, 218, 'cond', 'middle'));
+
+  // Generator.
+  g.push(hoverGroup([
+    svg('circle', { class: 'rs-comp', cx: 452, cy: 118, r: 14, 'data-mimic': 'gen' }),
+    // Beschriftung seitlich am Generator, nicht darüber/darunter: dort
+    // liegen Turbinenkontur (bis x=432) und das Abdampfrohr (senkrecht bei
+    // x=452). Rechtsbündig und mit Rand vor dem viewBox-Rand bei 520:
+    // "Generator" reicht linksbündig ab x=470 sonst über den Rand hinaus --
+    // unsichtbar, solange der Container breiter als das Seitenverhältnis
+    // war und die SVG links/rechts Rand ließ, sichtbar abgeschnitten,
+    // sobald sie exakt in der Breite sitzt.
+    svg('text', { class: 'rs-label', x: 516, y: 96, 'text-anchor': 'end' }, [t('mimic_gen')]),
+    readout(516, 142, 'gen', 'end'),
+  ]));
+
+  // Kondensator.
+  g.push(hoverGroup([
+    svg('rect', { class: 'rs-vessel', x: 372, y: 196, width: 60, height: 36, rx: 8 }),
+    svg('text', { class: 'rs-label', x: 402, y: 248, 'text-anchor': 'middle' }, [t('mimic_cond')]),
+    readout(402, 218, 'cond', 'middle'),
+  ]));
 
   // Speisewasserpumpe: sitzt an der Ecke der Speisewasserleitung, wo sie vom
   // Kondensator kommend nach oben zum Behaelter abbiegt -- wie beim DWR
@@ -548,72 +582,77 @@ export function buildRbmkMimic(container) {
   // Speisewasser in die Trommel.
   g.push(pipe('M 372 232 L 216 232 L 216 104', 'feed', 'feed'));
 
-  // Graphitblock mit Druckröhren.
-  g.push(svg('rect', { class: 'rs-vessel', 'data-mimic': 'core', x: 72, y: 78, width: 92, height: 136, rx: 6 }));
-  g.push(svg('rect', { class: 'rs-core', x: 80, y: 92, width: 76, height: 108, rx: 3 }));
+  // Graphitblock mit Druckröhren -- inklusive Abschaltreserve (ORM), auch
+  // wenn die Beschriftung selbst schon "ORM …" traegt (siehe Kommentar
+  // unten): sie gehoert inhaltlich zu diesem Bauteil, nicht zu irgendeinem
+  // anderen Hover-Ziel in der Naehe.
+  const coreNodes = [
+    svg('rect', { class: 'rs-vessel', 'data-mimic': 'core', x: 72, y: 78, width: 92, height: 136, rx: 6 }),
+    svg('rect', { class: 'rs-core', x: 80, y: 92, width: 76, height: 108, rx: 3 }),
+  ];
   for (let i = 0; i < 7; i++) {
     const x = 86 + i * 11;
-    g.push(svg('line', {
-      class: 'rs-tube', x1: x, y1: 92, x2: x, y2: 200,
-    }));
+    coreNodes.push(svg('line', { class: 'rs-tube', x1: x, y1: 92, x2: x, y2: 200 }));
   }
   // Steuerstäbe: Regel- und Abschaltgruppe (rodBanksMoveTogether -- fahren im
   // Normalbetrieb zusammen, siehe rbmk.js -- aber eine klemmende Gruppe
   // (alarm_rod_stuck) bleibt hier trotzdem einzeln sichtbar). Fahren von
   // oben ein, in zwei der sieben Kanäle oben gezeichnet.
-  g.push(rodLine(97, 92, 200, 0, true));
-  g.push(rodLine(141, 92, 200, 1, true));
-  // Linksbuendig an der Kernkante statt mittig: mittig stiess die Beschriftung
-  // mit "Recirc pump" zusammen, seit die Pumpe an die untere Schleifenecke
-  // gerueckt ist (siehe dort).
-  g.push(svg('text', { class: 'rs-label', x: 72, y: 230, 'text-anchor': 'start' },
-    [t('mimic_channels')]));
+  coreNodes.push(rodLine(97, 92, 200, 0, true));
+  coreNodes.push(rodLine(141, 92, 200, 1, true));
+  coreNodes.push(svg('text', { class: 'rs-label', x: 72, y: 230, 'text-anchor': 'start' }, [t('mimic_channels')]));
   // y=94 statt 86: die Steigleitung faellt bei x=118 -- derselben Mitte --
   // bis y=78 herunter, 86 sass ihr noch im Weg. Tiefer stehen ein paar
   // Kanalstriche im Weg statt der Leitung, das stoert beim Lesen nicht.
-  g.push(readout(118, 94, 'power', 'middle'));
-  // Graphittemperatur stand hier früher als bloße Zahl -- bei 35 Minuten
-  // Zeitkonstante sieht sie über eine ganze Schicht praktisch unbewegt aus
-  // und dazu direkt unter der Beschriftung "Reaktorkern", als gehörte sie
-  // dazu. Die Abschaltreserve ist am selben Fleck die Zahl, die wirklich
-  // Auskunft gibt -- sie bewegt sich mit jedem Stabzug und ist bei diesem Typ
-  // die eigentliche Sicherheitsgröße (siehe ORM im Grundlagen-Glossar). Der
-  // Text ist bewusst selbst beschriftet ("ORM …"), damit die Nähe zur
-  // "Reaktorkern"-Beschriftung keine falsche Zuordnung mehr nahelegt.
-  g.push(readout(60, 246, 'orm'));
+  coreNodes.push(readout(118, 94, 'power', 'middle'));
+  // Die Abschaltreserve ist bei diesem Typ die eigentliche Sicherheitsgröße
+  // (siehe ORM im Grundlagen-Glossar), nicht die traege Graphittemperatur --
+  // die stand hier frueher als blosse Zahl und ist bei 35 Minuten
+  // Zeitkonstante ueber eine ganze Schicht praktisch unbewegt. Der Text ist
+  // bewusst selbst beschriftet ("ORM …"), nicht nur eine nackte Zahl.
+  coreNodes.push(readout(60, 246, 'orm'));
+  g.push(hoverGroup(coreNodes));
 
   // Trommelabscheider.
-  g.push(svg('rect', { class: 'rs-vessel', 'data-mimic': 'drum', x: 186, y: 30, width: 60, height: 76, rx: 28 }));
-  g.push(svg('rect', { class: 'rs-sg-level', x: 190, y: 62, width: 52, height: 40, rx: 20 }));
-  g.push(svg('text', { class: 'rs-label', x: 252, y: 36, 'text-anchor': 'start' },
-    [t('mimic_drum')]));
-  g.push(readout(216, 74, 'drum', 'middle'));
+  g.push(hoverGroup([
+    svg('rect', { class: 'rs-vessel', 'data-mimic': 'drum', x: 186, y: 30, width: 60, height: 76, rx: 28 }),
+    svg('rect', { class: 'rs-sg-level', x: 190, y: 62, width: 52, height: 40, rx: 20 }),
+    svg('text', { class: 'rs-label', x: 252, y: 36, 'text-anchor': 'start' }, [t('mimic_drum')]),
+    readout(216, 74, 'drum', 'middle'),
+  ]));
 
   // Hauptumwälzpumpen. Sitzt an der unteren Ecke der Schleife (wie bei
   // PWR/BWR), nicht mehr mittig auf der geraden Leitung -- sonst lief die
   // Beschriftung darunter auf demselben Rohr weiter.
   g.push(pump(182, 214, 'rcp', t('mimic_recirc')));
 
-  // Turbine, Generator, Kondensator. Beschriftung des Regelventils rechts
-  // (zur Turbine hin): links davon laeuft die Umleitung auf einer eigenen,
-  // parallelen Steigleitung -- genau da, wo die Beschriftung sonst hinreicht.
+  // Regelventil und Umleitung.
   g.push(valve(330, 88, 'gov', t('mimic_gov'), 'right', 'gov'));
   g.push(valve(298, 140, 'bypass', t('mimic_bypass'), 'right', 'bypass'));
+
+  // Turbine -- rein dekorativ, keine eigene Beschriftung/Anzeige.
   g.push(svg('path', { class: 'rs-vessel', d: 'M 372 100 L 432 84 L 432 156 L 372 136 Z' }));
-  g.push(svg('circle', { class: 'rs-comp', cx: 452, cy: 118, r: 14, 'data-mimic': 'gen' }));
-  // Beschriftung seitlich am Generator, nicht darüber/darunter: dort liegen
-  // Turbinenkontur (bis x=432) und das Abdampfrohr (senkrecht bei x=452).
-  // Rechtsbündig und mit Rand vor dem viewBox-Rand bei 520: "Generator" reicht
-  // linksbündig ab x=470 sonst über den Rand hinaus -- unsichtbar, solange der
-  // Container breiter als das Seitenverhältnis war und die SVG links/rechts
-  // Rand ließ, sichtbar abgeschnitten, sobald sie exakt in der Breite sitzt.
-  g.push(svg('text', { class: 'rs-label', x: 516, y: 96, 'text-anchor': 'end' },
-    [t('mimic_gen')]));
-  g.push(readout(516, 142, 'gen', 'end'));
-  g.push(svg('rect', { class: 'rs-vessel', x: 372, y: 196, width: 60, height: 36, rx: 8 }));
-  g.push(svg('text', { class: 'rs-label', x: 402, y: 248, 'text-anchor': 'middle' },
-    [t('mimic_cond')]));
-  g.push(readout(402, 218, 'cond', 'middle'));
+
+  // Generator.
+  g.push(hoverGroup([
+    svg('circle', { class: 'rs-comp', cx: 452, cy: 118, r: 14, 'data-mimic': 'gen' }),
+    // Beschriftung seitlich am Generator, nicht darüber/darunter: dort
+    // liegen Turbinenkontur (bis x=432) und das Abdampfrohr (senkrecht bei
+    // x=452). Rechtsbündig und mit Rand vor dem viewBox-Rand bei 520:
+    // "Generator" reicht linksbündig ab x=470 sonst über den Rand hinaus --
+    // unsichtbar, solange der Container breiter als das Seitenverhältnis
+    // war und die SVG links/rechts Rand ließ, sichtbar abgeschnitten,
+    // sobald sie exakt in der Breite sitzt.
+    svg('text', { class: 'rs-label', x: 516, y: 96, 'text-anchor': 'end' }, [t('mimic_gen')]),
+    readout(516, 142, 'gen', 'end'),
+  ]));
+
+  // Kondensator.
+  g.push(hoverGroup([
+    svg('rect', { class: 'rs-vessel', x: 372, y: 196, width: 60, height: 36, rx: 8 }),
+    svg('text', { class: 'rs-label', x: 402, y: 248, 'text-anchor': 'middle' }, [t('mimic_cond')]),
+    readout(402, 218, 'cond', 'middle'),
+  ]));
 
   // Speisewasserpumpe: sitzt an der Ecke der Speisewasserleitung, wo sie vom
   // Kondensator kommend nach oben zur Trommel abbiegt -- wie bei DWR/SWR

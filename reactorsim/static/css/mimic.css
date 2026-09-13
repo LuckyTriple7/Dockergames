@@ -81,6 +81,30 @@
 .rs-read[data-sev="1"] { fill: var(--rs-warn); }
 .rs-read[data-sev="3"] { fill: var(--rs-alarm); }
 
+/* Name und Messwert bleiben unsichtbar, bis die Maus ueber dem zugehoerigen
+   Bauteil steht (siehe hoverGroup() in mimic.js) -- bei drei eng gepackten
+   Fließbildern liefen sich dauerhaft eingeblendete Beschriftungen sonst
+   zuverlaessig gegenseitig ins Gehege, ganz gleich wie sorgfaeltig man jede
+   einzelne Position justiert. Mit Hover kann nie mehr als eine Beschriftung
+   gleichzeitig sichtbar sein. pointer-events:none auf dem Text selbst,
+   damit ein bereits eingeblendetes Label die Maus nicht "festhaelt" und das
+   Bauteil darunter blockiert. */
+.rs-hover .rs-label, .rs-hover .rs-read {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .1s ease;
+}
+.rs-hover:hover .rs-label, .rs-hover:hover .rs-read {
+  opacity: 1;
+}
+/* Cursor-Hinweis: sonst sieht ein Bauteil ohne eingeblendetes Label genauso
+   aus wie reine Dekoration (Turbinenkontur, Rohrleitung) -- der Cursor
+   verraet schon beim ersten Antippen, dass hier noch etwas kommt. */
+.rs-hover:hover { cursor: help; }
+@media (prefers-reduced-motion: reduce) {
+  .rs-hover .rs-label, .rs-hover .rs-read { transition: none; }
+}
+
 /* Welches Bauteil eine anstehende Meldung trägt -- dieselbe Zuordnung wie die
    Meldetafel, nur am Bild statt in der Liste. Schwere 1 Hinweis, 2 Warnung,
    3 Auslösung, gleiche Farben wie überall sonst; die Auslösung blinkt

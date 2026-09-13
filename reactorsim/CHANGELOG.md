@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.0.99
+
+- 🖼️ **Fließbild-Beschriftungen grundlegend umgebaut: Name und Messwert nur
+  noch per Mouseover statt dauerhaft im Bild.** Bei drei eng gepackten
+  Fließbildern (DWR/SWR/RBMK) liefen sich dauerhaft eingeblendete Texte
+  zuverlaessig gegenseitig ins Gehege, ganz gleich wie sorgfaeltig jede
+  einzelne Position von Hand justiert wurde -- das ließ sich mit fixen
+  Koordinaten nicht mehr zufriedenstellend loesen. Jetzt liegt Name und
+  Messwert jedes Bauteils (Reaktor, Druckhalter, Dampferzeuger/
+  Trommelabscheider, Pumpen, Ventile, Generator, Kondensator, …)
+  unsichtbar bereit und erscheint erst, wenn die Maus darueber steht --
+  damit kann nie mehr als eine Beschriftung gleichzeitig sichtbar sein,
+  Ueberlagerung ist strukturell ausgeschlossen statt nur wegjustiert.
+  Betrifft alle drei Reaktortypen gleichermaßen.
+- 🔧 **Fix: Reaktorkarten auf dem Startbildschirm unterschiedlich groß.**
+  Seit den Spielstaenden je Karte (0.0.95) war `.rs-card` kein direktes
+  Grid-Kind von `.rs-start-cards` mehr und sackte auf seine eigene
+  Inhaltshoehe zusammen -- DWR/SWR/RBMK sahen sichtbar unterschiedlich groß
+  aus. Per CSS-Subgrid teilen sich alle drei Karten jetzt wieder dieselbe
+  Zeilenhoehe, ganz gleich wie lang Beschreibung oder Spielstandsliste sind.
+
 ## 0.0.98
 
 - 🖼️ **RBMK-Fließbild: Speisewasserpumpe ergänzt, Kern klarer beschriftet.**
