@@ -1366,6 +1366,13 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
       // restore() oben schon veraendert hat) -- nur das Log-Panel muss
       // einmalig nachgetragen werden, es haengt nur an, statt neu zu lesen.
       if (app.engine.ctx.history.length) built.annun.log(app.engine.ctx.history);
+      // Diese Session/dieses Scenario ist frisch gebaut (siehe oben, vor
+      // dem Laden) und weiss nichts von schon vergangenen Ereignissen --
+      // ohne catchUp() feuerte jedes davon beim naechsten Bild ein zweites
+      // Mal: doppelte Protokollzeilen, dazu bei einer laufenden Stoerung
+      // (z.B. "Pumpe ausgefallen") ein kurzes Aus-und-wieder-An auf der
+      // Meldetafel samt Hupe, obwohl sie schon quittiert war.
+      if (app.session.scenario) app.session.scenario.catchUp(app.engine.state.t_sim);
     });
   }
 }

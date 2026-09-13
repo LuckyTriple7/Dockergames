@@ -89,6 +89,26 @@ export class Scenario {
     for (const e of this.events) if (!e.fired && e.t > t) return e;
     return null;
   }
+
+  /**
+   * Nach dem Laden eines Spielstands: Ereignisse, deren Zeitpunkt schon
+   * vergangen ist, als bereits ausgelöst markieren, OHNE sie erneut
+   * anzuwenden -- ihre Wirkung steckt schon im geladenen Zustand (state/
+   * components/malfunctions, siehe net/persist.js). Ohne das feuerte jedes
+   * vergangene Ereignis beim nächsten Bild ein zweites Mal: doppelte
+   * Protokollzeilen, und bei einer Meldung wie "Pumpe ausgefallen"
+   * zusätzlich ein kurzes Aus-und-wieder-An auf der Meldetafel samt Hupe,
+   * weil die zugrunde liegende Bedingung für einen Sekundenbruchteil neu
+   * bewertet wurde (dieselbe Instanz kennt "schon gefeuert" ja nicht mehr --
+   * jeder Rundenstart, auch das Fortsetzen, baut eine frische Scenario-
+   * Instanz).
+   */
+  catchUp(t) {
+    for (const e of this.events) {
+      if (!e.fired && t >= e.t) e.fired = true;
+      if (!e.alertFired && t >= e.alertAt) e.alertFired = true;
+    }
+  }
 }
 
 /**

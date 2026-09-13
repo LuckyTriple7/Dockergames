@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.15
+
+- 🐛 **Fix: der eigentliche Grund hinter 0.1.14 -- vergangene Szenario-
+  Ereignisse feuerten nach JEDEM Laden erneut, nicht nur, weil ihre
+  ctx-Merker fehlten.** `Session`/`Scenario` werden bei jedem Rundenstart
+  frisch gebaut (auch beim Fortsetzen, main.js `boot()`), noch BEVOR der
+  Spielstand angewendet wird -- die neue `Scenario`-Instanz weiss darum
+  nichts von Ereignissen, die in einer früheren Sitzung schon liefen.
+  Sprang `t_sim` durchs Laden über deren Zeitpunkt, feuerte
+  `scenario.due()` sie beim nächsten Bild einfach noch einmal: doppelte
+  Protokollzeilen (sichtbar durch das rollende Log-Gedächtnis aus 0.1.3),
+  und bei einer laufenden Meldung wie "Pumpe ausgefallen" zusätzlich ein
+  Aus-und-wieder-An auf der Meldetafel samt Hupe -- 0.1.14 allein reichte
+  dafür nicht, weil es nur die ctx-Merker selbst sicherte, nicht das
+  erneute Feuern des Ereignisses verhinderte.
+  Neues `Scenario.catchUp(t)` (game/scenario.js) markiert nach dem Laden
+  alle bereits vergangenen Ereignisse als erledigt, OHNE sie anzuwenden --
+  ihre Wirkung steckt schon im geladenen Zustand. Geprüft per Nachbau des
+  kompletten Ablaufs über echte `Session`/`Scenario`-Objekte: Protokoll
+  bleibt unverändert, Meldung bleibt "ack", keine Hupe.
+
 ## 0.1.14
 
 - 🐛 **Fix: "Pumpe ausgefallen" (und jede andere laufende Störung) verlor
