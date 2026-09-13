@@ -181,6 +181,13 @@ export function buildPanels(engine, render, helperEnabled) {
   const rhoIds = engine.reactivity.parts.map((p) => p.id).filter((id) => id !== 'excess');
   const rho = reactivityBars([...rhoIds, 'total']);
   $('#rs-rho').replaceChildren(rho.node);
+  // Vollausschlag der Balken: Standard 3000 pcm (siehe reactivityBars()) traf
+  // beim RBMK genau den Gleichgewichtswert der Xenon-Vergiftung im
+  // Volllastbetrieb (xenon_worth_pcm) -- der Balken stand von Anfang an am
+  // Anschlag, ganz ohne Störung, und hätte einen echten Xenon-Brunnen (siehe
+  // Nachtschicht-Szenario) gar nicht mehr zeigen können. 50 % Reserve über dem
+  // größten bekannten Einzelwert dieses Typs, damit oben noch Luft bleibt.
+  const rhoScale = Math.max(3000, (sp.feedback.xenon_worth_pcm || 0) * 1.5);
 
   // ── Bedienung ──────────────────────────────────────────────────────────────
   // Welcher Regler die Stäbe führt, ist typabhängig: beim Druckwasserreaktor
@@ -609,7 +616,7 @@ export function buildPanels(engine, render, helperEnabled) {
     put('h2_mass', s.h2Mass === undefined ? t('state_none') : num(s.h2Mass, 1) + U('unit_kg'),
         s.h2Mass === undefined ? undefined : (s.h2Mass > 40 ? 3 : (s.h2Mass > 15 ? 1 : 0)));
 
-    rho.set(d.breakdown, d.rho);
+    rho.set(d.breakdown, d.rho, rhoScale);
     pumps.set(d.pumpStates || [], d.pumpStuckList);
     demand.set(Math.round(s.P_demand));
     turbineResume.disabled = !s.turbineTripped || s.scram.active;

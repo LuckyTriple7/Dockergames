@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.13
+
+- 🔧 **Fix: Reaktivitätsbilanz-Balken beim RBMK stand am Volllast-
+  Gleichgewicht schon dauerhaft am Anschlag.** Der feste Vollausschlag
+  von 3000 pcm (`reactivityBars()`) traf beim RBMK exakt den Gleichgewichts-
+  wert der Xenon-Vergiftung (`xenon_worth_pcm: 3000`) -- der Balken war
+  von der ersten Sekunde jedes Laufs an maximal ausgeschlagen, ganz ohne
+  Störung, und hätte einen echten Xenon-Brunnen (Nachtschicht-Szenario)
+  gar nicht mehr zeigen können. Vollausschlag ist jetzt 50 % über dem
+  größten bekannten Einzelwert des jeweiligen Typs (`xenon_worth_pcm`),
+  mindestens aber weiterhin 3000 -- betrifft auch DWR/SWR, deren
+  Gleichgewichtswerte (2800/2600 pcm) vorher ebenfalls nahe am Anschlag
+  lagen, nur nicht ganz so knapp.
+
 ## 0.1.12
 
 - 🔧 **Fix: Quittieren/Rückstellen fehlten im vergrößerten Meldetafel-
