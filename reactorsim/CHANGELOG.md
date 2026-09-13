@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.0.87
+
+- ✍️ **Alle 35 Meldetafel-Hilfetexte (DE+EN) neu geschrieben** -- Nutzer-
+  Ueberarbeitung, klarere Sprache, durchgehend "Konkret tun" / "Actions"
+  statt uneinheitlicher Formulierungen. In der englischen Fassung dabei alle
+  in Anfuehrungszeichen genannten Bedienelemente von den deutschen
+  Original-Bezeichnungen auf die tatsaechlichen englischen UI-Beschriftungen
+  umgestellt (98 Stellen, automatisch anhand von locales/en.json abgeglichen)
+  und zwei falsch benannte Querverweise korrigiert ("Pressure low",
+  "Dome pressure high"). test_help_texts_only_name_controls_that_exist
+  (tests/test_locales.py) prueft das jetzt wieder gruen fuer beide Sprachen.
+
 ## 0.0.86
 
 - ✨ **Therm. Leistung auch als MW-Wert waehlbar.** Die Kopfzeile zeigte
