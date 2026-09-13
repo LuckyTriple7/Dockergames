@@ -145,6 +145,18 @@ export class Horn {
     this._attention.stop();
   }
 
+  /**
+   * Bestätigung beim Quittieren: der Dauerton (game_attention.mp3) spielt
+   * einmal komplett durch als eigener, einmaliger Klang -- unabhängig davon,
+   * ob die Sirene selbst je durchgelaufen ist. Wird VOR silence() gerufen
+   * (siehe panels.js '#rs-ack'), deshalb noch mit dem alten _playing-Stand:
+   * ohne anstehende Meldung (z.B. Doppelklick auf Quittieren) bleibt es
+   * stumm, statt grundlos zu spielen.
+   */
+  ack() {
+    if (this._playing && this.enabled) playClip('game_attention.mp3', 0.35);
+  }
+
   /** Schnellabschaltung -- einmaliger Clip, kein Loop. */
   scram() {
     if (this.enabled) playClip('game_scram.mp3');

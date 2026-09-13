@@ -407,7 +407,7 @@ export function buildPanels(engine, render, geiger, helperEnabled) {
   const horn = new Horn();
   let hornNext = 0;
 
-  $('#rs-ack').addEventListener('click', () => { horn.unlock(); record(engine, 'ack', null); });
+  $('#rs-ack').addEventListener('click', () => { horn.unlock(); horn.ack(); record(engine, 'ack', null); });
   // "Rückstellen" räumt nicht nur die Meldetafel auf, sondern gibt bei
   // stehendem SCRAM auch den Reaktorschutz frei -- sonst blieben die Stäbe
   // nach einer Schnellabschaltung für den Rest des Laufs auf "ganz rein"

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.82
+
+- ✨ **Bestätigungston beim Quittieren.** 0.0.81 stellte sicher, dass der
+  Dauerton (`game_attention.mp3`) nach der Sirene ankommt -- quittiert der
+  Bediener aber VORHER, kam er nie zu Gehör, weil `silence()` beide Töne
+  sofort abstellt. Klick auf "Quittieren" spielt ihn jetzt einmal komplett
+  als eigenständigen Klang ab (`Horn.ack()`, `playClip()` -- kein Loop, kein
+  Zustand, unabhängig von Sirene/Dauerton), nur wenn gerade wirklich eine
+  Meldung anstand.
+
 ## 0.0.81
 
 - 🐛 **Hupen-Fehler wirklich gefunden (Diagnose-Logs aus 0.0.79 haben ihn
