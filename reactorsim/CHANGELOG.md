@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.2
+
+- 🔧 **Fix: Ausklapp-Pfeil bei den Spielstand-Karten hing am linken
+  Kartenrand statt am Text.** `list-style-position` bezieht sich beim
+  nativen Dreieck-Marker auf die Randbox des GANZEN Listenelements, nicht
+  auf den Textanfang -- bei einer ganzen Kartenbreite sass der Pfeil damit
+  sichtbar losgeloest links, weit vom Wort "Spielstände" entfernt. Jetzt
+  ein eigenes Dreieck per `::before` in einer Flexbox mit dem Text
+  zusammen, dreht sich beim Aufklappen.
+
 ## 0.1.1
 
 - 💾 **Zehn feste Handspeicherplätze je Reaktortyp.** Der Speichern-Knopf

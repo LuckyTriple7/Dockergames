@@ -305,12 +305,28 @@ button {
    Template), ein Klick auf die Zusammenfassung klappt auf/zu, ganz ohne
    eigenes JS dafuer -- das kann <details> nativ. */
 .rs-card-resume { font-size: 12px; }
+/* Eigenes Dreieck statt des nativen Listen-Markers: der sass bei "outside"
+   im Rand der vollen Kartenbreite und damit sichtbar losgeloest vom Text
+   (list-style-position bezieht sich auf die Randbox des GANZEN
+   Listenelements, nicht auf den Textanfang). display:flex haelt Dreieck
+   und Text stattdessen als ein Paar zusammen, ganz gleich wie breit die
+   Karte ist. */
 .rs-card-resume-summary {
   cursor: pointer;
   color: var(--rs-fg-mute);
-  list-style-position: outside;
   user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+.rs-card-resume-summary::-webkit-details-marker { display: none; }
+.rs-card-resume-summary::before {
+  content: '▸';
+  display: inline-block;
+  transition: transform .1s ease;
+}
+.rs-card-resume[open] > .rs-card-resume-summary::before { transform: rotate(90deg); }
 .rs-card-resume-summary:hover { color: var(--rs-fg-dim); }
 .rs-card-resume-body { display: grid; gap: 6px; margin-top: 8px; }
 .rs-resume-row { display: flex; gap: 8px; align-items: stretch; }
