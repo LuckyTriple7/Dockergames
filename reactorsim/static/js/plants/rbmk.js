@@ -203,7 +203,7 @@ export const spec = {
     power_high: 'core', period_short: 'core', orm_low: 'core', orm_critical: 'core',
     void_positive: 'core', graphite_hot: 'core', axial_tilt: 'core', clad_temp: 'core',
     drum_press_high: 'drum', drum_level_low: 'drum', drum_level_high: 'drum',
-    mcp_cavitation: 'rcp',
+    mcp_cavitation: 'rcp', mcp_stuck: 'rcp',
     turbine_trip: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
   },
 
@@ -249,6 +249,12 @@ export const spec = {
     // herunter. Das gehoert auf die Meldetafel, nicht ins Protokoll.
     { id: 'rod_stuck', key: 'alarm_rod_stuck', severity: SEVERITY.WARN,
       test: (s, d) => !!d.rodStuck, delay_s: 0, hold_s: 0 },
+    // Dieselbe Luecke bei einer ausgefallenen Pumpe (mcp_trip): vorher nur
+    // eine Protokollzeile beim Ausfall selbst, danach nichts mehr auf der
+    // Meldetafel -- und der "Ein"-Knopf liess sich anklicken, als waere
+    // nichts gewesen (siehe pumpsStuck-Fix in game/events.js).
+    { id: 'mcp_stuck', key: 'alarm_mcp_stuck', severity: SEVERITY.WARN,
+      test: (s, d) => !!d.pumpStuck, delay_s: 0, hold_s: 0 },
   ],
 };
 
@@ -565,6 +571,9 @@ export const hooks = {
       dnbr: _cpr(s, sp, base),
       shutdownMargin: sp.rodBanks.reduce((a, b, i) => a + b.worth * (1 - s.rod[i]), 0),
       pumpStates: ctx.mcp.map((p) => p.state),
+      // Siehe pwr.js: unterscheidet ausgefallen (Ereignis, Knopf gesperrt)
+      // von selbst abgeschaltet (Spieler, Knopf bleibt bedienbar).
+      pumpStuckList: ctx.mcp.map((_, i) => !!(ctx.pumpsStuck && ctx.pumpsStuck.has(i))),
     };
   },
 };

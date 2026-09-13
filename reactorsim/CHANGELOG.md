@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.11
+
+- 🐛 **Fix: ausgefallene Pumpe liess sich einfach wieder anklicken --
+  keine Meldung, kein Widerstand.** Zwei getrennte Lücken, beide seit
+  Einführung von `mcp_trip`/`rcp_trip`/`station_blackout` (lange vor
+  dieser Session): der Ereignis-Griff rief nur `pump.trip()` EINMAL auf,
+  ohne den Zustand danach zu verteidigen -- derselbe Knopf, der die Pumpe
+  im Normalbetrieb auch anschaltet, holte sie sofort wieder zurück. Und
+  weil dafür keine eigene Meldetafel-Kachel existierte (anders als bei
+  einer klemmenden Stabgruppe oder einem klemmenden Ventil), stand auch
+  nirgends, dass überhaupt etwas kaputt ist.
+  - `ctx.pumpsStuck`/`ctx.recircPumpStuck` (game/events.js) hält jetzt
+    fest, WELCHE Pumpe durch ein Ereignis ausgefallen ist, `stepEvents()`
+    hält sie jeden Schritt gestoppt -- auch gegen den Ein-Knopf. Betrifft
+    `rcp_trip` (DWR/SWR/RBMK), `mcp_trip` (RBMK) und `station_blackout`
+    (SWR) gleichermaßen.
+  - Neue RBMK-Meldung "Pumpe ausgefallen" (`mcp_stuck`, Meldetafel-Kachel
+    „rcp"), mit eigener Hilfe -- dieselbe Lücke, die `rod_stuck` für
+    klemmende Stabgruppen schon lange geschlossen hatte.
+  - Betroffene Pumpenknöpfe werden jetzt zusätzlich ausgegraut und
+    gesperrt (`pumpStuckList` je Typdatei, `pumpRow()` in controls.js) --
+    eine vom SPIELER selbst abgeschaltete Pumpe bleibt dagegen ganz normal
+    bedienbar, nur die durch ein Ereignis ausgefallene ist gesperrt.
+  - Geprüft: `rbmk_night_shift`, `rbmk_cold_start` (beide nutzen
+    `mcp_trip` schon länger) und `bwr_fukushima` (`station_blackout`)
+    laufen mit dem Fix unverändert durch, keine Regression.
+
 ## 0.1.10
 
 - 🔧 RBMK "Ausfall einer Umwälzpumpengruppe": Schwierigkeit ★★★→★★

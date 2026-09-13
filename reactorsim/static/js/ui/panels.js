@@ -610,7 +610,7 @@ export function buildPanels(engine, render, helperEnabled) {
         s.h2Mass === undefined ? undefined : (s.h2Mass > 40 ? 3 : (s.h2Mass > 15 ? 1 : 0)));
 
     rho.set(d.breakdown, d.rho);
-    pumps.set(d.pumpStates || []);
+    pumps.set(d.pumpStates || [], d.pumpStuckList);
     demand.set(Math.round(s.P_demand));
     turbineResume.disabled = !s.turbineTripped || s.scram.active;
     if (rodAuto && rodCtl) rodAuto.set(rodCtl.auto);

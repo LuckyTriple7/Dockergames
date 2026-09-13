@@ -459,6 +459,14 @@ export function createEngine(plant, opts = {}) {
       // Spieler keinerlei Anhaltspunkt: der Sollwert liess sich verstellen,
       // die Stellung folgte nicht, und nichts sagte warum.
       rodStuck: !!(ctx.stuckRods && Object.keys(ctx.stuckRods).length),
+      // Dieselbe Frage fuer eine ausgefallene Pumpe (rcp_trip/mcp_trip,
+      // siehe game/events.js): ctx.pumpsStuck/ctx.recircPumpStuck haelt
+      // fest, WELCHE das sind, stepEvents() haelt sie jeden Schritt
+      // gestoppt -- auch gegen einen Klick auf den Ein-Knopf. Ohne diesen
+      // Wert stand nirgends eine Meldung, dass ueberhaupt etwas ausgefallen
+      // ist, und der Spieler konnte die "ausgefallene" Pumpe einfach wieder
+      // anklicken.
+      pumpStuck: !!((ctx.pumpsStuck && ctx.pumpsStuck.size) || ctx.recircPumpStuck),
     };
     return hooks.derived ? Object.assign(base, hooks.derived(s, spec, ctx, base)) : base;
   }

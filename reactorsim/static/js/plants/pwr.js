@@ -624,6 +624,10 @@ export const hooks = {
       C_B_cmd: s.C_B_cmd,
       T_sgm: s.T_sgm,
       pumpStates: ctx.pumps.map((p) => p.state),
+      // Welche davon durch ein Ereignis (rcp_trip) ausgefallen und nicht nur
+      // vom Spieler abgeschaltet sind -- der Knopf soll sich fuer ausgefallene
+      // Pumpen sperren, fuer selbst abgeschaltete aber weiter bedienen lassen.
+      pumpStuckList: ctx.pumps.map((_, i) => !!(ctx.pumpsStuck && ctx.pumpsStuck.has(i))),
       shutdownMargin: _shutdownMargin(s, sp, ctx),
     };
   },

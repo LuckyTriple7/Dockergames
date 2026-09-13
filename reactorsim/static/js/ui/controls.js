@@ -265,7 +265,13 @@ export function jogButtons(labelKey, onJog) {
   };
 }
 
-/** Pumpenreihe: Zustand anzeigen, per Klick ein- und ausschalten. */
+/** Pumpenreihe: Zustand anzeigen, per Klick ein- und ausschalten.
+ *  `stuck[i]` (siehe pumpStuckList je Typdatei) sperrt Pumpe i: ein
+ *  Ereignis (rcp_trip/mcp_trip/station_blackout) hat sie ausfallen lassen,
+ *  nicht der Spieler -- der Knopf soll dann nicht mehr so aussehen, als
+ *  liesse sie sich einfach wieder anwerfen. Eine vom Spieler selbst
+ *  abgeschaltete Pumpe (dieselbe rote "tripped"-Farbe, siehe togglePump())
+ *  bleibt dagegen bedienbar. */
 export function pumpRow(count, onToggle) {
   const btns = [];
   for (let i = 0; i < count; i++) {
@@ -276,8 +282,11 @@ export function pumpRow(count, onToggle) {
   }
   return {
     node: el('div.rs-pumps', null, btns),
-    set(states) {
-      for (let i = 0; i < btns.length; i++) setAttr(btns[i], 'data-state', states[i] || 'stopped');
+    set(states, stuck) {
+      for (let i = 0; i < btns.length; i++) {
+        setAttr(btns[i], 'data-state', states[i] || 'stopped');
+        btns[i].disabled = !!(stuck && stuck[i]);
+      }
     },
   };
 }

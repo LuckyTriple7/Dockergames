@@ -811,6 +811,9 @@ export const hooks = {
       dnbr: _cpr(s, sp, base),
       shutdownMargin: sp.rodBanks.reduce((a, b, i) => a + b.worth * (1 - s.rod[i]), 0),
       pumpStates: [ctx.recircPump.state],
+      // Siehe pwr.js: unterscheidet ausgefallen (Ereignis, Knopf gesperrt)
+      // von selbst abgeschaltet (Spieler, Knopf bleibt bedienbar).
+      pumpStuckList: [!!ctx.recircPumpStuck],
       pCont: s.pCont,
       h2Mass: s.h2Mass,
     };

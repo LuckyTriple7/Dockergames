@@ -179,6 +179,19 @@
 .rs-pump[data-state="run"]     { background: #14402c; border-color: var(--rs-ok); color: #bff3d6; }
 .rs-pump[data-state="stopped"] { background: #22262b; border-color: #4a5560; color: #8b98a4; }
 .rs-pump[data-state="tripped"] { background: #401419; border-color: var(--rs-alarm); color: #ffc7cd; }
+/* Ausgefallen (Ereignis, siehe pumpRow() in controls.js), nicht nur vom
+   Spieler abgeschaltet: ausgegraut statt rot -- die Meldetafel (mcp_stuck/
+   rcp_lost) traegt schon die Alarmfarbe, der Knopf selbst soll stattdessen
+   zeigen, dass er nichts mehr bewirkt. Nach der data-state-Regel, damit sie
+   deren Rot sicher ueberschreibt, ganz gleich welche Reihenfolge das CSS
+   sonst haette. */
+.rs-pump:disabled {
+  background: #1a1e22;
+  border-color: #3a4149;
+  color: #5c6670;
+  opacity: .7;
+  cursor: not-allowed;
+}
 
 /* ── Trendschreiber ───────────────────────────────────────────────────────── */
 

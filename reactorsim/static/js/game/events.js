@@ -35,9 +35,19 @@ const EVENTS = {
     severity: 3,
     apply(e, args) {
       const i = (args && args.loop) || 0;
-      if (e.ctx.pumps && e.ctx.pumps[i]) e.ctx.pumps[i].trip();
-      else if (e.ctx.mcp && e.ctx.mcp[i]) e.ctx.mcp[i].trip();
-      else if (e.ctx.recircPump) e.ctx.recircPump.trip();
+      const pumps = e.ctx.pumps || e.ctx.mcp;
+      if (pumps && pumps[i]) {
+        pumps[i].trip();
+        // Ohne das liess sich die "ausgefallene" Pumpe ueber denselben
+        // Knopf, der sie auch im Normalbetrieb ein-/ausschaltet, sofort
+        // wieder anwerfen -- siehe stepEvents() unten, gleiches Prinzip
+        // wie ctx.stuckRods bei einer klemmenden Stabgruppe.
+        e.ctx.pumpsStuck = e.ctx.pumpsStuck || new Set();
+        e.ctx.pumpsStuck.add(i);
+      } else if (e.ctx.recircPump) {
+        e.ctx.recircPump.trip();
+        e.ctx.recircPumpStuck = true;
+      }
     },
   },
 
@@ -130,10 +140,13 @@ const EVENTS = {
     severity: 3,
     apply(e) {
       // Wechsel- UND Gleichstrom weg. Die Umwaelzpumpe faellt mit --
-      // niemand fährt sie wieder hoch, dafür fehlt der Motorstrom.
+      // niemand fährt sie wieder hoch, dafür fehlt der Motorstrom. Deshalb
+      // recircPumpStuck genau wie bei rcp_trip: sonst liesse sich die
+      // Pumpe ueber denselben Knopf wie sonst auch wieder anwerfen, obwohl
+      // gar kein Motorstrom mehr da ist.
       e.state.acPower = false;
       e.state.dcPower = false;
-      if (e.ctx.recircPump) e.ctx.recircPump.trip();
+      if (e.ctx.recircPump) { e.ctx.recircPump.trip(); e.ctx.recircPumpStuck = true; }
     },
   },
 
@@ -144,7 +157,14 @@ const EVENTS = {
     apply(e, args) {
       const n = (args && args.count) || 2;
       if (!e.ctx.mcp) return;
-      for (let i = 0; i < n && i < e.ctx.mcp.length; i++) e.ctx.mcp[i].trip();
+      // pumpsStuck wie bei rcp_trip: sonst liessen sich die "ausgefallenen"
+      // Pumpen ueber denselben Knopf, der sie im Normalbetrieb auch
+      // ein-/ausschaltet, im naechsten Augenblick wieder anwerfen.
+      e.ctx.pumpsStuck = e.ctx.pumpsStuck || new Set();
+      for (let i = 0; i < n && i < e.ctx.mcp.length; i++) {
+        e.ctx.mcp[i].trip();
+        e.ctx.pumpsStuck.add(i);
+      }
     },
   },
 
@@ -196,6 +216,17 @@ export function stepEvents(e, dt) {
   if (ctx.msivStuck && s.msiv !== undefined) {
     s.msiv = 0;
   }
+
+  // Ausgefallene Pumpe(n) bleiben ausgefallen -- auch gegen einen Klick auf
+  // denselben Knopf, der sie im Normalbetrieb wieder anwerfen wuerde (siehe
+  // rcp_trip/mcp_trip/station_blackout oben). trip() jeden Schritt erneut
+  // aufzurufen ist billig (setzt nur drei Felder) und idempotent, solange
+  // niemand start() dazwischenruft -- genau das verhindert diese Zeile.
+  if (ctx.pumpsStuck) {
+    const pumps = ctx.pumps || ctx.mcp;
+    if (pumps) for (const i of ctx.pumpsStuck) { if (pumps[i]) pumps[i].trip(); }
+  }
+  if (ctx.recircPumpStuck && ctx.recircPump) ctx.recircPump.trip();
 
   // Schleichender Umwaelzstrom-Abfall (siehe recirc_runback oben mit
   // over_s) -- laeuft ueber mehrere Minuten statt in einem Schritt.
