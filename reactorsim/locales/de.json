@@ -315,6 +315,7 @@
   "mimic_pzr": "Druckhalter",
   "mimic_rcp": "Pumpe",
   "mimic_sg": "Dampferzeuger",
+  "mimic_fw": "Speisepumpe",
   "mimic_turbine": "Turbine",
   "mimic_gen": "Generator",
   "mimic_cond": "Kondensator",

@@ -124,6 +124,11 @@
 .rs-sg-level  { fill: #1f5e8c; opacity: .55; }
 .rs-pzr-level { fill: #2a6f4e; opacity: .6; }
 
+/* Trennlinie im Dampferzeuger zwischen Primaer- (Rohrbuendel) und
+   Sekundaerseite (Fuellstand) -- rein optisch, damit auf einen Blick klar
+   ist, dass sich beide Wasserkreisläufe nie mischen, siehe buildPwrMimic(). */
+.rs-sg-divider { stroke: #3a5064; stroke-width: 1; stroke-dasharray: 3 3; }
+
 /* Druckroehren im Graphitblock. Der Block glueht mit der Graphittemperatur --
    traeger als der Kern, weil 1700 Tonnen Graphit eine eigene Zeitkonstante
    von gut einer halben Stunde haben. */

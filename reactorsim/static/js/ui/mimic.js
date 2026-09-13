@@ -184,8 +184,25 @@ export function buildPwrMimic(container) {
   g.push(svg('text', { class: 'rs-label', x: 246, y: 246, 'text-anchor': 'middle' },
     [t('mimic_sg')]));
   g.push(readout(246, 120, 'sg', 'middle'));
-  // Füllstandsbalken im Dampferzeuger.
-  g.push(svg('rect', { class: 'rs-sg-level', x: 222, y: 60, width: 48, height: 112, rx: 16 }));
+  // Trennlinie bei x=240: links davon liegen die Anschluesse des Primaerstrangs
+  // (heiss bei x=224/y=62, kalt bei x=224/y=168, siehe oben), rechts davon die
+  // des Sekundaerkreises (Frischdampf bei x=246, Speisewasser bei x=268) --
+  // Fuellstand und Rohrbuendel bleiben unten dadurch strikt auf ihrer Seite,
+  // niemand kann das Bild so lesen, als mischten sich beide Wasser.
+  g.push(svg('line', { class: 'rs-sg-divider', x1: 240, y1: 50, x2: 240, y2: 172 }));
+  // Füllstandsbalken im Dampferzeuger -- NUR die Sekundaerseite rechts der
+  // Trennlinie, siehe oben.
+  g.push(svg('rect', { class: 'rs-sg-level', x: 244, y: 60, width: 26, height: 112, rx: 10 }));
+  // Rohrbuendel: das Primaerwasser laeuft durch diese Rohre und wird vom
+  // Sekundaerwasser nur von AUSSEN umspuelt, nie vermischt -- derselbe Punkt,
+  // den die Ruecksprache zum Fließbild ausdruecklich vermisst hat. Eigene
+  // data-Kennung braucht es nicht: --rs-t-hot/--rs-t-cold sitzen schon auf der
+  // Wurzel (siehe update()) und faerben es wie die Straenge selbst automatisch
+  // mit; 'prim' als Fluss-Kennung laesst zusaetzlich denselben Fluss-Strich
+  // durchlaufen wie auf dem Heiss-/Kaltstrang.
+  g.push(pipe('M 228 58 L 228 150', 'hot', 'prim'));
+  g.push(pipe('M 228 150 L 236 150', 'cold', null));
+  g.push(pipe('M 236 150 L 236 58', 'cold', 'prim'));
 
   // Regelventil und Umleitstation. Beschriftung des Regelventils rechts (zur
   // Turbine hin): links davon laeuft die Umleitung auf einer eigenen,
@@ -211,6 +228,13 @@ export function buildPwrMimic(container) {
   g.push(svg('text', { class: 'rs-label', x: 402, y: 248, 'text-anchor': 'middle' },
     [t('mimic_cond')]));
   g.push(readout(402, 218, 'cond', 'middle'));
+
+  // Speisewasserpumpe: sitzt an der Ecke der Speisewasserleitung, wo sie vom
+  // Kondensator kommend nach oben zum Dampferzeuger abbiegt (wie die
+  // Hauptkühlmittelpumpe an ihrer Ecke) -- ohne sie floss das Speisewasser im
+  // Bild scheinbar von allein bergauf, das hat die Rückmeldung zum Fließbild
+  // zu Recht bemängelt.
+  g.push(pump(268, 232, 'fw', t('mimic_fw')));
 
   // Temperaturen an den Strängen.
   g.push(readout(100, 54, 'thot'));
@@ -251,9 +275,8 @@ export function buildPwrMimic(container) {
       for (const n of flows.get('prim') || []) setVar(n, '--rs-w', flowVis(fPrim).toFixed(3));
       const fSteam = Math.max(0, Math.min(1.2, s.W_steam / sp.sg.W_steam0));
       for (const n of flows.get('steam') || []) setVar(n, '--rs-w', flowVis(fSteam).toFixed(3));
-      for (const n of flows.get('feed') || []) {
-        setVar(n, '--rs-w', flowVis(Math.max(0, Math.min(1.2, s.W_fw / sp.sg.W_steam0))).toFixed(3));
-      }
+      const fFeed = Math.max(0, Math.min(1.2, s.W_fw / sp.sg.W_steam0));
+      for (const n of flows.get('feed') || []) setVar(n, '--rs-w', flowVis(fFeed).toFixed(3));
       for (const n of flows.get('bypass') || []) setVar(n, '--rs-w', flowVis(s.bypass || 0).toFixed(3));
 
       const rcp = comps.get('rcp');
@@ -261,6 +284,11 @@ export function buildPwrMimic(container) {
         const anyTripped = (d.pumpStates || []).some((x) => x === 'tripped');
         setAttr(rcp, 'data-state', fPrim > 0.2 ? 'run' : (anyTripped ? 'tripped' : 'stopped'));
         setVar(rcp.parentNode, '--rs-w', fPrim.toFixed(3));
+      }
+      const fw = comps.get('fw');
+      if (fw) {
+        setAttr(fw, 'data-state', fFeed > 0.05 ? 'run' : 'stopped');
+        setVar(fw.parentNode, '--rs-w', fFeed.toFixed(3));
       }
       setAttr(comps.get('gov'), 'data-state', s.gov > 0.02 ? 'run' : 'stopped');
       setAttr(comps.get('bypass'), 'data-state', s.bypass > 0.02 ? 'run' : 'stopped');

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.96
+
+- 🖼️ **DWR-Fließbild: Speisewasserpumpe ergänzt, Primär-/Sekundärseite im
+  Dampferzeuger sichtbar getrennt.** Rückmeldung zum Schaubild: zwischen
+  Kondensator und Dampferzeuger fehlte die Speisewasserpumpe -- das Wasser
+  floss im Bild scheinbar von allein bergauf. Sitzt jetzt an der Ecke der
+  Speisewasserleitung, dreht sich mit dem tatsächlichen Speisewasserfluss.
+  Der Dampferzeuger zeigt zusätzlich eine Trennlinie zwischen Primärseite
+  (Rohrbündel, links) und Sekundärseite (Füllstand, rechts) -- beide Wasser
+  laufen im Bild jetzt sichtbar getrennt, nie vermischt.
+
 ## 0.0.95
 
 - 💾 **Spielstände hängen jetzt an ihrer eigenen Reaktor-Karte.** Bisher

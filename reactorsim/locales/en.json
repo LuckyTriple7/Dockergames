@@ -315,6 +315,7 @@
   "mimic_pzr": "Pressuriser",
   "mimic_rcp": "Pump",
   "mimic_sg": "Steam generator",
+  "mimic_fw": "Feed pump",
   "mimic_turbine": "Turbine",
   "mimic_gen": "Generator",
   "mimic_cond": "Condenser",
