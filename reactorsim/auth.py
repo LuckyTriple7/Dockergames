@@ -1,30 +1,37 @@
 #!/usr/bin/env python3
 """Anmeldung.
 
-Ein einziges Konto, Zugangsdaten aus der Umgebung (also aus der
-Dockge-Konfiguration). Mehrbenutzerbetrieb spaeter.
+Mehrere Konten moeglich. Das Hauptkonto kommt wie bisher aus
+REACTORSIM_USER/REACTORSIM_PASSWORD (aus der Dockge-Konfiguration), weitere
+ueber REACTORSIM_USERS="name:passwort,name2:passwort2" -- jedes ein
+vollwertiges Konto mit eigenen Spielstaenden (siehe persist.Store.account_key).
 
 Grundsaetze:
 
-* **Ohne Passwort steht die Seite nicht offen.** Ist keines gesetzt, erzeugt
-  ReactorSim beim ersten Start eines, schreibt es EINMAL ins Protokoll und legt
-  nur den Hash auf der Platte ab. Ein Dienst, der im Internet steht und auf ein
-  gesetztes Passwort hofft, ist ein Dienst ohne Passwort.
+* **Ohne Passwort steht die Seite nicht offen.** Ist fuer das Hauptkonto
+  keines gesetzt, erzeugt ReactorSim beim ersten Start eines, schreibt es
+  EINMAL ins Protokoll und legt nur den Hash auf der Platte ab. Ein Dienst,
+  der im Internet steht und auf ein gesetztes Passwort hofft, ist ein Dienst
+  ohne Passwort.
 * Der Hash entsteht ueber werkzeug.security (scrypt). Das Klartextpasswort aus
   der Umgebung wird beim Start gehasht und danach nicht mehr angefasst.
-* Die Sitzung haengt an einem signierten Token (itsdangerous), nicht an einer
-  Liste im Speicher -- so ueberlebt sie einen Neustart des Containers und
-  kostet keinen Zustand.
+* Die Sitzung haengt an einem signierten Token (itsdangerous) UND an einer je
+  Konto gemerkten Sitzungskennung: meldet sich ein Konto anderswo neu an, wird
+  die vorherige Kennung ungueltig, und die alte Sitzung stirbt beim naechsten
+  Zugriff -- genau eine aktive Sitzung je Konto, das Spiel kann nie auf zwei
+  Geraeten gleichzeitig weiterlaufen.
 * Der Signierschluessel liegt in /data und wird beim ersten Start erzeugt.
   Faellt er weg, sind alle Sitzungen ungueltig -- mehr passiert nicht.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import secrets
 import string
+import threading
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -46,14 +53,33 @@ _ALPHABET = string.ascii_letters.replace('l', '').replace('I', '').replace('O', 
 
 
 class Auth:
-    def __init__(self, data_dir: str, user: str, password: str | None):
+    def __init__(self, data_dir: str, user: str, password: str | None,
+                 extra_users: dict[str, str] | None = None):
         self._dir = Path(data_dir)
         self.user = (user or 'admin').strip() or 'admin'
         self._auth_path = self._dir / 'auth.json'
         self._key_path = self._dir / 'secret.key'
-        self._hash = self._resolve_password(password)
+        self._sessions_path = self._dir / 'sessions.json'
+        self._session_lock = threading.Lock()
+
+        self._hashes = {self.user: self._resolve_password(password)}
+        for uname, pw in (extra_users or {}).items():
+            uname = (uname or '').strip()
+            if not uname or uname in self._hashes:
+                # Leerer oder doppelter Name (auch ein Zusammenstoss mit dem
+                # Hauptkonto) -- ueberspringen statt das Hauptkonto zu
+                # verlieren. War schon vorher REACTORSIM_USER, gewinnt es.
+                log.warning("REACTORSIM_USERS: Konto %r uebersprungen (leer oder doppelt)", uname)
+                continue
+            self._hashes[uname] = generate_password_hash(pw)
+        # Fester Vergleichs-Hash fuer unbekannte Benutzernamen -- ohne ihn
+        # braeuchte check() fuer einen falschen Namen kein scrypt zu rechnen,
+        # und die Antwortzeit verriete, welcher Name ueberhaupt existiert.
+        self._dummy_hash = generate_password_hash(secrets.token_hex(16))
+
         self._serializer = URLSafeTimedSerializer(self._secret(), salt='rs-session')
         self._csrf = URLSafeTimedSerializer(self._secret(), salt='rs-csrf')
+        self._sessions = self._read_sessions()
 
     # ── Einrichtung ───────────────────────────────────────────────────────────
 
@@ -85,7 +111,6 @@ class Auth:
 
     def _read_stored_hash(self) -> str | None:
         try:
-            import json
             with open(self._auth_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             digest = data.get('password_hash')
@@ -121,24 +146,69 @@ class Auth:
     def check(self, user: str, password: str) -> bool:
         """Benutzer und Passwort pruefen.
 
-        Das Passwort wird IMMER geprueft, auch bei falschem Benutzernamen --
-        sonst verraet die Antwortzeit, welcher Name existiert.
+        Das Passwort wird IMMER geprueft, auch bei unbekanntem Benutzernamen
+        (gegen den Vergleichs-Hash aus __init__) -- sonst verraet die
+        Antwortzeit, welcher Name existiert.
         """
-        ok_user = secrets.compare_digest((user or '').strip(), self.user)
-        ok_pass = check_password_hash(self._hash, password or '')
+        uname = (user or '').strip()
+        ok_user = uname in self._hashes
+        ok_pass = check_password_hash(self._hashes.get(uname, self._dummy_hash), password or '')
         return ok_user and ok_pass
 
-    def issue(self) -> str:
-        return self._serializer.dumps({'u': self.user})
+    def issue(self, user: str) -> str:
+        """Neues Sitzungstoken fuer `user` -- UND eine neue Sitzungskennung,
+        die jede vorher fuer dieses Konto ausgegebene Sitzung entwertet (siehe
+        valid()). Genau eine aktive Sitzung je Konto, gleich von welchem
+        Geraet zuletzt angemeldet wurde."""
+        sid = secrets.token_hex(16)
+        with self._session_lock:
+            self._sessions[user] = sid
+            self._write_sessions()
+        return self._serializer.dumps({'u': user, 's': sid})
 
-    def valid(self, token: str | None) -> bool:
+    def valid(self, token: str | None) -> str | None:
+        """@return den Benutzernamen der gueltigen Sitzung, sonst None."""
         if not token:
-            return False
+            return None
         try:
             data = self._serializer.loads(token, max_age=SESSION_MAX_AGE)
         except (BadSignature, SignatureExpired):
-            return False
-        return isinstance(data, dict) and data.get('u') == self.user
+            return None
+        if not isinstance(data, dict):
+            return None
+        user, sid = data.get('u'), data.get('s')
+        if not user or not sid:
+            return None
+        with self._session_lock:
+            current = self._sessions.get(user)
+        return user if sid == current else None
+
+    def revoke(self, user: str | None) -> None:
+        """Sitzungskennung des Kontos loeschen -- ein Cookie, das nach dem
+        Abmelden trotzdem noch im Browser laege, wirkt damit sofort nicht
+        mehr, nicht erst nach Ablauf."""
+        if not user:
+            return
+        with self._session_lock:
+            if self._sessions.pop(user, None) is not None:
+                self._write_sessions()
+
+    def _read_sessions(self) -> dict:
+        try:
+            with open(self._sessions_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _write_sessions(self) -> None:
+        try:
+            self._dir.mkdir(parents=True, exist_ok=True)
+            atomic_io.write_json(str(self._sessions_path), self._sessions)
+        except OSError as exc:
+            log.error('sessions.json nicht schreibbar (%s) -- die '
+                      'Ein-Geraet-Sperre wirkt bis zum naechsten Neustart nicht',
+                      exc.__class__.__name__)
 
     # ── CSRF fuer das Anmeldeformular ─────────────────────────────────────────
 

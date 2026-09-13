@@ -54,10 +54,36 @@ VERIFY_TIMEOUT_S = 20
 PORT = int(os.environ.get('REACTORSIM_PORT', '17779'))
 
 # Zugangsdaten aus der Umgebung, also aus der Dockge-Konfiguration. Ist kein
-# Passwort gesetzt, erzeugt auth.Auth beim ersten Start eines und schreibt es
-# ins Protokoll -- offen steht die Seite nie.
+# Passwort fuer das Hauptkonto gesetzt, erzeugt auth.Auth beim ersten Start
+# eines und schreibt es ins Protokoll -- offen steht die Seite nie.
 REACTORSIM_USER = os.environ.get('REACTORSIM_USER', 'admin')
 REACTORSIM_PASSWORD = os.environ.get('REACTORSIM_PASSWORD', '')
+
+
+def _parse_extra_users(raw: str) -> dict:
+    """"name:passwort,name2:passwort2" -> {name: passwort}.
+
+    Ein kaputter Eintrag wird uebersprungen und ins Protokoll geschrieben,
+    statt den Start abzubrechen -- ein Tippfehler in einem ZWEITEN Konto soll
+    nicht die ganze Anlage lahmlegen, aber auch nicht unbemerkt verschwinden.
+    """
+    out = {}
+    for part in (raw or '').split(','):
+        part = part.strip()
+        if not part:
+            continue
+        name, sep, pw = part.partition(':')
+        name, pw = name.strip(), pw.strip()
+        if not sep or not name or not pw:
+            log.warning("REACTORSIM_USERS: Eintrag %r ohne 'name:passwort' ignoriert", part)
+            continue
+        out[name] = pw
+    return out
+
+
+# Weitere Konten neben dem Hauptkonto oben, je eines mit eigenen
+# Spielstaenden -- siehe auth.py und persist.Store.account_key.
+REACTORSIM_USERS = _parse_extra_users(os.environ.get('REACTORSIM_USERS', ''))
 
 # Eine einzige Versionsquelle: die Datei VERSION. Sie ist zugleich der Ausloeser
 # des Build-Workflows, deshalb kann sie hier nicht auseinanderlaufen. Der
@@ -89,7 +115,7 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 STORE = persist.Store(_DATA)
 LIMITS = persist.RateLimit()
-AUTH = authmod.Auth(_DATA, REACTORSIM_USER, REACTORSIM_PASSWORD)
+AUTH = authmod.Auth(_DATA, REACTORSIM_USER, REACTORSIM_PASSWORD, REACTORSIM_USERS)
 
 PLAYER_COOKIE = 'rs_player'
 
@@ -104,7 +130,9 @@ _PUBLIC_ENDPOINTS = frozenset({'health', 'login', 'set_lang'})
 def _require_login():
     if request.endpoint in _PUBLIC_ENDPOINTS:
         return None
-    if AUTH.valid(request.cookies.get(authmod.SESSION_COOKIE)):
+    user = AUTH.valid(request.cookies.get(authmod.SESSION_COOKIE))
+    if user:
+        g.user = user
         return None
     # Anfragen aus dem Spiel heraus bekommen eine Zahl, keine Anmeldeseite --
     # sonst landete HTML im JSON-Parser und der Fehler waere unlesbar.
@@ -129,8 +157,9 @@ def login():
             # Abgelaufenes Formular -- kein Angriff, nur eine alte Seite.
             error = 'login_expired'
         elif AUTH.check(request.form.get('user', ''), request.form.get('password', '')):
+            uname = request.form.get('user', '').strip()
             resp = make_response(redirect(nxt))
-            resp.set_cookie(authmod.SESSION_COOKIE, AUTH.issue(),
+            resp.set_cookie(authmod.SESSION_COOKIE, AUTH.issue(uname),
                             max_age=authmod.SESSION_MAX_AGE, httponly=True,
                             samesite='Lax', secure=request.is_secure)
             return resp
@@ -147,6 +176,10 @@ def login():
 
 @app.route('/logout', methods=['GET', 'POST'])
 def logout():
+    # Sitzungskennung mitentwerten, nicht nur das Cookie loeschen -- sonst
+    # wirkt ein Cookie, das anderswo noch im Browser laege, bis es abgelaufen
+    # ist (siehe Auth.revoke()).
+    AUTH.revoke(AUTH.valid(request.cookies.get(authmod.SESSION_COOKIE)))
     resp = make_response(redirect('/login'))
     resp.delete_cookie(authmod.SESSION_COOKIE)
     return resp
@@ -242,29 +275,20 @@ def meta():
 
 
 # ── Spielerkennung ────────────────────────────────────────────────────────────
+#
+# Spielstaende und Einstellungen gehoeren dem angemeldeten Konto (g.user,
+# gesetzt in _require_login), nicht mehr einem anonymen Geraete-Cookie -- wer
+# hier ankommt, hat sich bereits angemeldet, sonst waere die Anfrage in
+# _require_login abgewiesen worden. PLAYER_COOKIE lebt nur noch als
+# Lesezugriff auf alte Browser-Cookies aus der Zeit vor Konten weiter, fuer
+# die einmalige Uebernahme in Store.migrate_legacy().
 
 
-def _player_id() -> str:
-    """Token aus dem Cookie, oder ein neues. Keine Anmeldung, keine Daten zur
-    Person -- das Token erkennt ein Geraet wieder und sonst nichts."""
-    if 'player' in g:
-        return g.player
-    raw = request.cookies.get(PLAYER_COOKIE)
-    if STORE.valid_player(raw):
-        g.player = raw
-        g.player_is_new = False
-    else:
-        g.player = STORE.new_player_id()
-        g.player_is_new = True
-    return g.player
-
-
-@app.after_request
-def _set_player_cookie(resp):
-    if g.get('player_is_new') and g.get('player'):
-        resp.set_cookie(PLAYER_COOKIE, g.player, max_age=365 * 24 * 3600,
-                        httponly=True, samesite='Lax')
-    return resp
+def _account_id() -> str:
+    if 'account' not in g:
+        g.account = STORE.account_key(g.user)
+        STORE.migrate_legacy(g.account, request.cookies.get(PLAYER_COOKIE))
+    return g.account
 
 
 # ── Sicherheits-Kopfzeilen ────────────────────────────────────────────────────
@@ -328,10 +352,10 @@ def _security_headers(resp):
 
 
 def _limited(bucket: str, limit: int, window_s: float) -> bool:
-    """Ratenbegrenzung je Spieler UND je Absenderadresse."""
-    pid = _player_id()
+    """Ratenbegrenzung je Konto UND je Absenderadresse."""
+    acct = _account_id()
     addr = request.remote_addr or '-'
-    return not (LIMITS.hit(f'{bucket}:p:{pid}', limit, window_s)
+    return not (LIMITS.hit(f'{bucket}:p:{acct}', limit, window_s)
                 and LIMITS.hit(f'{bucket}:a:{addr}', limit * 4, window_s))
 
 
@@ -340,12 +364,12 @@ def _limited(bucket: str, limit: int, window_s: float) -> bool:
 
 @app.route('/api/saves')
 def saves_list():
-    return jsonify({'saves': STORE.list_saves(_player_id())})
+    return jsonify({'saves': STORE.list_saves(_account_id())})
 
 
 @app.route('/api/saves/<slot>', methods=['GET'])
 def save_read(slot: str):
-    blob = STORE.read_save(_player_id(), slot)
+    blob = STORE.read_save(_account_id(), slot)
     if blob is None:
         return jsonify({'error': 'not_found'}), 404
     return jsonify(blob)
@@ -363,7 +387,7 @@ def save_write(slot: str):
     reactor = blob.get('reactor')
     if reactor is not None and not isinstance(reactor, str):
         return jsonify({'error': 'bad_reactor'}), 400
-    err = STORE.write_save(_player_id(), slot, blob)
+    err = STORE.write_save(_account_id(), slot, blob)
     if err:
         return jsonify({'error': err}), 413 if err == 'too_large' else 400
     return jsonify({'ok': True})
@@ -373,7 +397,7 @@ def save_write(slot: str):
 def save_delete(slot: str):
     if not persist.SLOT_RE.match(slot):
         return jsonify({'error': 'bad_slot'}), 400
-    return jsonify({'ok': STORE.delete_save(_player_id(), slot)})
+    return jsonify({'ok': STORE.delete_save(_account_id(), slot)})
 
 
 # ── Einstellungen ───────────────────────────────────────────────────────────────
@@ -385,7 +409,7 @@ def save_delete(slot: str):
 
 @app.route('/api/prefs', methods=['GET'])
 def prefs_read():
-    return jsonify(STORE.read_prefs(_player_id()))
+    return jsonify(STORE.read_prefs(_account_id()))
 
 
 @app.route('/api/prefs', methods=['PUT'])
@@ -395,7 +419,7 @@ def prefs_write():
     blob = request.get_json(silent=True)
     if not isinstance(blob, dict):
         return jsonify({'error': 'bad_body'}), 400
-    err = STORE.write_prefs(_player_id(), blob)
+    err = STORE.write_prefs(_account_id(), blob)
     if err:
         return jsonify({'error': err}), 413 if err == 'too_large' else 400
     return jsonify({'ok': True})

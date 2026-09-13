@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.0.83
+
+- ✨ **Mehrbenutzerbetrieb: weitere Konten über `REACTORSIM_USERS`.** Bisher
+  gab es genau ein Konto (`REACTORSIM_USER`/`REACTORSIM_PASSWORD`). Jetzt
+  lassen sich beliebig viele weitere als `name:passwort,name2:passwort2`
+  eintragen -- jedes ein vollwertiges Konto mit eigenem Passwort.
+- 🔐 **Spielstände, Einstellungen und Bestenlisten-Ratenbegrenzung gehören
+  jetzt dem Konto, nicht mehr dem Browser.** Bisher hing das alles an einem
+  anonymen Cookie (`rs_player`) -- ein anderer Browser oder ein gelöschter
+  Cookie hieß: alte Spielstände sind weg. Jetzt liegt der Schlüssel im
+  angemeldeten Konto selbst (`persist.Store.account_key`, ein fester Hash aus
+  dem Benutzernamen), unabhängig vom Gerät. Beim ersten Login nach diesem
+  Update wird ein noch vorhandener alter `rs_player`-Spielstand einmalig ins
+  Konto übernommen.
+- 🔒 **Ein Konto, eine Sitzung.** Meldet sich ein Konto auf einem zweiten
+  Gerät an, wird die Sitzung des ersten sofort ungültig (eigene
+  Sitzungskennung je Konto in `sessions.json`, nicht nur die Signatur des
+  Cookies) -- dasselbe Konto kann nicht mehr gleichzeitig auf zwei Geräten
+  weiterlaufen. Abmelden entwertet die Sitzung ebenfalls serverseitig, nicht
+  nur das lokale Cookie.
+
 ## 0.0.82
 
 - ✨ **Bestätigungston beim Quittieren.** 0.0.81 stellte sicher, dass der

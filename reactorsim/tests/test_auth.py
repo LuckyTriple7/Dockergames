@@ -199,6 +199,69 @@ def test_configured_password_wins_over_stored(tmp_path, monkeypatch):
     assert r.status_code == 302
 
 
+def test_extra_user_has_own_account(tmp_path, monkeypatch):
+    """REACTORSIM_USERS legt weitere vollwertige Konten an, unabhaengig vom
+    Hauptkonto -- eigenes Passwort, eigene Spielstaende (siehe test_api.py)."""
+    monkeypatch.setenv('REACTORSIM_USERS', 'zweiter:zweites-passwort-123')
+    mod = _fresh(tmp_path, monkeypatch)
+    c = mod.app.test_client()
+    r = _login(c, user='zweiter', password='zweites-passwort-123')
+    assert r.status_code == 302
+    assert c.get('/api/meta').status_code == 200
+
+    c2 = mod.app.test_client()
+    assert _login(c2, user='zweiter', password='falsch').status_code == 401
+
+
+def test_extra_users_colliding_with_main_account_are_skipped(tmp_path, caplog):
+    """Ein Eintrag in REACTORSIM_USERS, der den Namen des Hauptkontos trifft
+    (Tippfehler in der Konfiguration), darf das Hauptkonto nicht ersetzen."""
+    import logging
+    sys.modules.pop('auth', None)
+    sys.modules.pop('atomic_io', None)
+    import auth as authmod
+
+    caplog.set_level(logging.WARNING, logger='auth')
+    a = authmod.Auth(str(tmp_path), 'operator', 'haupt-passwort-123',
+                      {'operator': 'anderes-passwort', 'zweiter': 'zweites-passwort'})
+    assert a.check('operator', 'haupt-passwort-123')
+    assert not a.check('operator', 'anderes-passwort')
+    assert a.check('zweiter', 'zweites-passwort')
+    assert 'operator' in caplog.text
+
+
+def test_second_login_on_same_account_kicks_the_first(tmp_path, monkeypatch):
+    """Genau eine aktive Sitzung je Konto: meldet sich dasselbe Konto auf
+    einem zweiten Geraet an, stirbt die Sitzung des ersten -- das Spiel kann
+    dann nicht mehr gleichzeitig auf beiden weiterlaufen."""
+    mod = _fresh(tmp_path, monkeypatch)
+    geraet_a = mod.app.test_client()
+    geraet_b = mod.app.test_client()
+
+    _login(geraet_a)
+    assert geraet_a.get('/api/meta').status_code == 200
+
+    _login(geraet_b)
+    assert geraet_b.get('/api/meta').status_code == 200
+    assert geraet_a.get('/api/meta').status_code == 401
+
+
+def test_logout_kicks_a_copied_cookie_too(tmp_path, monkeypatch):
+    """Abmelden entwertet die Sitzungskennung serverseitig, nicht nur das
+    Cookie im eigenen Browser -- eine Kopie des alten Cookies (z.B. aus einem
+    Backup) darf danach nicht weiter gelten."""
+    mod = _fresh(tmp_path, monkeypatch)
+    original = mod.app.test_client()
+    copy_of_cookie = mod.app.test_client()
+
+    r = _login(original)
+    token = r.headers['Set-Cookie'].split('rs_session=')[1].split(';')[0]
+    copy_of_cookie.set_cookie('rs_session', token)
+
+    original.get('/logout')
+    assert copy_of_cookie.get('/api/meta').status_code == 401
+
+
 def test_session_survives_restart(tmp_path, monkeypatch):
     mod = _fresh(tmp_path, monkeypatch)
     c = mod.app.test_client()

@@ -41,6 +41,9 @@ services:
       # eines und schreibt es ins Protokoll — offen steht die Seite nie.
       - REACTORSIM_USER=admin
       - REACTORSIM_PASSWORD=bitte-aendern
+      # Weitere Konten, je eines mit eigenen Spielständen — optional, siehe
+      # Abschnitt "Zugang" unten.
+      # - REACTORSIM_USERS=partner:anderes-passwort,kind:drittes-passwort
       # Nur für die Zeitstempel in den Protokollzeilen.
       - TZ=Europe/Berlin
 
@@ -66,16 +69,17 @@ Danach `http://<server>:17779`.
 
 ## Zugang
 
-Ein Konto, Zugangsdaten aus der Konfiguration:
+Ein Hauptkonto, Zugangsdaten aus der Konfiguration:
 
 | Variable | Vorgabe | Bedeutung |
 |---|---|---|
-| `REACTORSIM_USER` | `admin` | Benutzername |
+| `REACTORSIM_USER` | `admin` | Benutzername des Hauptkontos |
 | `REACTORSIM_PASSWORD` | — | Passwort. Fehlt es, wird eines erzeugt |
+| `REACTORSIM_USERS` | — | Weitere Konten: `name:passwort,name2:passwort2` |
 
-Ist kein Passwort gesetzt, erzeugt ReactorSim beim ersten Start ein zufälliges,
-schreibt es **einmal** ins Protokoll und legt nur den Hash in `./data/auth.json`
-ab:
+Ist kein Passwort für das Hauptkonto gesetzt, erzeugt ReactorSim beim ersten
+Start ein zufälliges, schreibt es **einmal** ins Protokoll und legt nur den
+Hash in `./data/auth.json` ab:
 
 ```bash
 docker compose logs reactorsim | grep -A 3 "Passwort"
@@ -83,13 +87,26 @@ docker compose logs reactorsim | grep -A 3 "Passwort"
 
 Ein gesetztes `REACTORSIM_PASSWORD` gewinnt immer gegen die gespeicherte
 Fassung — ändern heißt also: Wert in Dockge ändern, Stack neu starten, fertig.
+Für Konten aus `REACTORSIM_USERS` gilt dasselbe automatisch, da sie ohnehin
+nur aus der Umgebung kommen — es gibt für sie keine erzeugte Ersatzfassung.
+
+Jedes Konto hat eigene Spielstände, Einstellungen und eine eigene
+Ratenbegrenzung — mehrere Leute können also denselben Server nutzen, ohne
+sich gegenseitig zu überschreiben. Zugleich gilt **je Konto genau eine aktive
+Sitzung**: meldet sich ein Konto auf einem zweiten Gerät an, wird die Sitzung
+auf dem ersten sofort ungültig. Dasselbe Konto kann also nie auf zwei Geräten
+gleichzeitig weiterspielen — für zwei Geräte gleichzeitig braucht es zwei
+Konten.
 
 Die Anmeldung hält 30 Tage in einem HttpOnly-Cookie. Abmelden über den Link
 unten auf dem Startbildschirm. Gegen Durchprobieren sind zehn Versuche je
 Minute und Absenderadresse erlaubt.
 
-Mehrbenutzerbetrieb kommt später; im Moment ist es ein Konto für alle, die den
-Zugang kennen.
+**Update von einer Version ohne Konten für mehrere Nutzer:** Spielstände hingen
+bisher an einem anonymen Cookie im Browser, nicht am Konto. Beim ersten Login
+nach diesem Update übernimmt ReactorSim einmalig, was unter diesem Cookie
+schon lag, in das gerade angemeldete Konto — vorausgesetzt, es ist derselbe
+Browser wie bisher und das Konto hat noch keinen eigenen Spielstand.
 
 ---
 

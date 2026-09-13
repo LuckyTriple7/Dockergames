@@ -16,10 +16,13 @@ Grundsatz: dem Browser wird nichts geglaubt, was er nicht beweisen kann.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
 import re
 import secrets
+import shutil
 import threading
 import time
 import unicodedata
@@ -27,6 +30,8 @@ import unicodedata
 from werkzeug.utils import safe_join
 
 import atomic_io
+
+log = logging.getLogger(__name__)
 
 SLOT_RE = re.compile(r'^[a-z0-9_-]{1,32}$')
 PLAYER_RE = re.compile(r'^[0-9a-f]{32}$')
@@ -57,6 +62,39 @@ class Store:
     @staticmethod
     def valid_player(pid) -> bool:
         return bool(pid) and bool(PLAYER_RE.match(str(pid)))
+
+    @staticmethod
+    def account_key(username: str) -> str:
+        """Feste, dateisystemsichere Kennung aus dem Kontonamen.
+
+        Benutzernamen duerfen beliebige Zeichen tragen (Leerzeichen, Umlaute,
+        was die Dockge-Konfiguration eben zulaesst) -- ein Dateipfad nicht.
+        Der Hash ist deterministisch (dasselbe Konto findet von jedem Geraet
+        aus denselben Ordner wieder) und hat exakt die Form eines alten
+        anonymen Geraete-Tokens (PLAYER_RE) -- Spielstaende, Slot-Grenze und
+        Ratenbegrenzung brauchen deshalb keine zweite Kennungsart."""
+        return hashlib.sha256(('account:' + username).encode('utf-8')).hexdigest()[:32]
+
+    def migrate_legacy(self, account: str, legacy_pid) -> None:
+        """Einmalige Uebernahme: Spielstaende, die vor der Kontenpflicht unter
+        einem anonymen rs_player-Cookie entstanden, in den jetzt angemeldeten
+        Account kopieren -- NUR solange der Account noch keinen eigenen
+        Ordner hat. Ohne diese Bedingung wuerde ein zweites Geraet mit noch
+        altem Cookie bei jedem Login den Account-Stand wieder ueberschreiben,
+        statt einmalig zu uebernehmen."""
+        if not self.valid_player(legacy_pid):
+            return
+        try:
+            dest = self._player_dir(account)
+            src = self._player_dir(legacy_pid)
+        except ValueError:
+            return
+        if os.path.exists(dest) or not os.path.isdir(src):
+            return
+        try:
+            shutil.copytree(src, dest)
+        except OSError as exc:
+            log.error("Alte Spielstaende nicht uebernommen (%s)", exc.__class__.__name__)
 
     def _player_dir(self, pid: str) -> str:
         if not self.valid_player(pid):

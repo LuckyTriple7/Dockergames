@@ -329,6 +329,59 @@ def test_save_slot_limit_without_parsing_every_slot(tmp_path, monkeypatch):
     assert len(store.list_saves(pid)) == persist.MAX_SLOTS
 
 
+def test_migrate_legacy_copies_once_and_never_overwrites(tmp_path):
+    """Alte, anonyme Geraete-Speicherstaende wandern einmalig in den Account
+    -- ein zweiter Aufruf (z.B. ein zweites Geraet mit noch altem Cookie)
+    darf nicht ueberschreiben, was der Account inzwischen selbst hat."""
+    import persist
+    store = persist.Store(str(tmp_path))
+    legacy = store.new_player_id()
+    store.write_save(legacy, 'slot1', {'v': 1, 'reactor': 'pwr'})
+    store.write_prefs(legacy, {'x': 1})
+
+    account = persist.Store.account_key('alice')
+    store.migrate_legacy(account, legacy)
+    assert store.read_save(account, 'slot1') == {'v': 1, 'reactor': 'pwr'}
+    assert store.read_prefs(account) == {'x': 1}
+
+    store.write_save(account, 'slot1', {'v': 2, 'reactor': 'pwr'})
+    store.migrate_legacy(account, legacy)
+    assert store.read_save(account, 'slot1') == {'v': 2, 'reactor': 'pwr'}
+
+
+def test_legacy_cookie_save_migrates_to_account_on_first_login(tmp_path, monkeypatch):
+    """Wer schon vor der Kontenpflicht gespielt hat, traegt den alten
+    rs_player-Cookie noch im Browser -- beim ersten Login damit muss der
+    alte Stand im neuen Konto auftauchen."""
+    import re
+
+    import persist
+
+    monkeypatch.setenv('REACTORSIM_BASE', _ROOT)
+    monkeypatch.setenv('REACTORSIM_DATA', str(tmp_path))
+    monkeypatch.setenv('REACTORSIM_USER', TEST_USER)
+    monkeypatch.setenv('REACTORSIM_PASSWORD', TEST_PASSWORD)
+    for mod in ('app', 'auth', 'persist', 'scoring', 'atomic_io'):
+        sys.modules.pop(mod, None)
+    import app as appmod
+    appmod.app.config['TESTING'] = True
+
+    legacy_store = persist.Store(str(tmp_path))
+    legacy_pid = legacy_store.new_player_id()
+    legacy_store.write_save(legacy_pid, 'altstand', {'v': 1, 'reactor': 'pwr'})
+
+    c = appmod.app.test_client()
+    c.set_cookie('rs_player', legacy_pid)
+    html = c.get('/login').get_data(as_text=True)
+    csrf = re.search(r'name="csrf" value="([^"]+)"', html).group(1)
+    r = c.post('/login', data={'user': TEST_USER, 'password': TEST_PASSWORD,
+                               'csrf': csrf, 'next': '/'})
+    assert r.status_code == 302
+
+    saves = c.get('/api/saves').get_json()['saves']
+    assert any(s['slot'] == 'altstand' for s in saves)
+
+
 def test_atomic_write_survives_partial_failure(tmp_path):
     import atomic_io
     path = os.path.join(tmp_path, 'x.json')

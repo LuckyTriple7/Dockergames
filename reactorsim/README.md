@@ -31,11 +31,14 @@ Portzuordnung in der `docker-compose.yml`.
 Der Zugang ist durch ein Konto geschützt — Benutzer und Passwort kommen aus
 `REACTORSIM_USER` und `REACTORSIM_PASSWORD`. Ohne gesetztes Passwort erzeugt
 ReactorSim beim ersten Start eines und schreibt es ins Protokoll; offen steht
-die Seite nie.
+die Seite nie. Weitere Konten (eigene Spielstände je Konto) über
+`REACTORSIM_USERS="name:passwort,name2:passwort2"`. Je Konto ist genau eine
+Sitzung gleichzeitig aktiv — meldet es sich auf einem zweiten Gerät an, endet
+die Sitzung auf dem ersten.
 
 Unter `./data` landen Spielstände, Bestenliste und die Zugangsdaten (nur als
-Hash). Personenbezogene Daten entstehen keine — der Spieler wird über ein
-zufälliges Token im Cookie wiedererkannt.
+Hash). Personenbezogene Daten entstehen keine — der Spielstand gehört dem
+Konto, nicht dem Gerät.
 
 ## Szenarien
 

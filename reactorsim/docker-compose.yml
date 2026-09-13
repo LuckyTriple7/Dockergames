@@ -27,6 +27,8 @@ services:
     environment:
       - REACTORSIM_USER=admin
       - REACTORSIM_PASSWORD=bitte-aendern
+      # Weitere Konten, je eines mit eigenen Spielstaenden -- optional:
+      # - REACTORSIM_USERS=partner:anderes-passwort,kind:drittes-passwort
       - TZ=Europe/Berlin
     restart: unless-stopped
     healthcheck:
