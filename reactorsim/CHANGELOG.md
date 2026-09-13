@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7
+
+- 🔊 Meldeton "Dauerlicht/Quittierung" (`game_attention.mp3`) ausgetauscht.
+
 ## 0.1.6
 
 - 🔧 **Fix: neues RBMK-Szenario "Ausfall einer Umwälzpumpengruppe" (0.1.5)
