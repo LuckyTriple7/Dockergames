@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.98
+
+- 🖼️ **RBMK-Fließbild: Speisewasserpumpe ergänzt, Kern klarer beschriftet.**
+  Rückmeldung zum Schaubild: dieselbe fehlende Speisewasserpumpe wie bei
+  DWR (0.0.96) und SWR (0.0.97) -- zwischen Kondensator und Trommel-
+  abscheider fehlte sie, das Kondensat floss im Bild scheinbar von allein
+  zurück.
+  "Druckröhren" heißt jetzt "Reaktorkern" (EN: "Reactor core" statt
+  "Pressure tubes") -- der Block ist eben nicht nur die Rohre, sondern der
+  ganze Graphitmoderator mit den Druckröhren darin.
+
 ## 0.0.97
 
 - 🖼️ **SWR-Fließbild: Speisewasserpumpe ergänzt, Behälter umbenannt.**

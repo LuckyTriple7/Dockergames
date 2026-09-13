@@ -574,12 +574,12 @@ export function buildRbmkMimic(container) {
   g.push(readout(118, 94, 'power', 'middle'));
   // Graphittemperatur stand hier früher als bloße Zahl -- bei 35 Minuten
   // Zeitkonstante sieht sie über eine ganze Schicht praktisch unbewegt aus
-  // und dazu direkt unter der Beschriftung "Druckröhren", als gehörte sie
+  // und dazu direkt unter der Beschriftung "Reaktorkern", als gehörte sie
   // dazu. Die Abschaltreserve ist am selben Fleck die Zahl, die wirklich
   // Auskunft gibt -- sie bewegt sich mit jedem Stabzug und ist bei diesem Typ
   // die eigentliche Sicherheitsgröße (siehe ORM im Grundlagen-Glossar). Der
   // Text ist bewusst selbst beschriftet ("ORM …"), damit die Nähe zur
-  // "Druckröhren"-Beschriftung keine falsche Zuordnung mehr nahelegt.
+  // "Reaktorkern"-Beschriftung keine falsche Zuordnung mehr nahelegt.
   g.push(readout(60, 246, 'orm'));
 
   // Trommelabscheider.
@@ -615,6 +615,12 @@ export function buildRbmkMimic(container) {
     [t('mimic_cond')]));
   g.push(readout(402, 218, 'cond', 'middle'));
 
+  // Speisewasserpumpe: sitzt an der Ecke der Speisewasserleitung, wo sie vom
+  // Kondensator kommend nach oben zur Trommel abbiegt -- wie bei DWR/SWR
+  // (siehe buildPwrMimic()/buildBwrMimic()), aus demselben Grund: ohne sie
+  // floss das Speisewasser im Bild scheinbar von allein zurueck.
+  g.push(pump(216, 232, 'fw', t('mimic_fw')));
+
   for (const node of g) root.append(node);
   container.replaceChildren(root);
 
@@ -648,9 +654,8 @@ export function buildRbmkMimic(container) {
       for (const n of flows.get('prim') || []) setVar(n, '--rs-w', flowVis(fPrim).toFixed(3));
       const fSteam = Math.max(0, Math.min(1.2, s.W_steam / sp.drum.W_steam0));
       for (const n of flows.get('steam') || []) setVar(n, '--rs-w', flowVis(fSteam).toFixed(3));
-      for (const n of flows.get('feed') || []) {
-        setVar(n, '--rs-w', flowVis(Math.max(0, Math.min(1.2, s.W_fw / sp.drum.W_steam0))).toFixed(3));
-      }
+      const fFeed = Math.max(0, Math.min(1.2, s.W_fw / sp.drum.W_steam0));
+      for (const n of flows.get('feed') || []) setVar(n, '--rs-w', flowVis(fFeed).toFixed(3));
       for (const n of flows.get('bypass') || []) setVar(n, '--rs-w', flowVis(s.bypass || 0).toFixed(3));
 
       const rcp = comps.get('rcp');
@@ -660,6 +665,11 @@ export function buildRbmkMimic(container) {
         setAttr(rcp, 'data-state',
           running > 0 ? 'run' : (states.some((x) => x === 'tripped') ? 'tripped' : 'stopped'));
         setVar(rcp.parentNode, '--rs-w', fPrim.toFixed(3));
+      }
+      const fw = comps.get('fw');
+      if (fw) {
+        setAttr(fw, 'data-state', fFeed > 0.05 ? 'run' : 'stopped');
+        setVar(fw.parentNode, '--rs-w', fFeed.toFixed(3));
       }
       setAttr(comps.get('gov'), 'data-state', s.gov > 0.02 ? 'run' : 'stopped');
       setAttr(comps.get('bypass'), 'data-state', s.bypass > 0.02 ? 'run' : 'stopped');
