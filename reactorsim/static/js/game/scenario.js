@@ -228,6 +228,7 @@ export class RunState {
       energyDemanded: this.energyDemanded,
       deviationMWh: this.deviationMWh,
       violationSeconds: { ...this.violationSeconds },
+      causeSeconds: [...this.causeSeconds],
       scramCount: this.scramCount,
       maxFuelK: this.maxFuelK,
       minDnbr: Number.isFinite(this.minDnbr) ? this.minDnbr : null,
@@ -241,6 +242,10 @@ export class RunState {
 
   restore(d) {
     if (!d || typeof d !== 'object') return;
+    if (Array.isArray(d.causeSeconds)) {
+      this.causeSeconds = new Map(d.causeSeconds.filter((entry) => Array.isArray(entry)
+        && typeof entry[0] === 'string' && Number.isFinite(entry[1]) && entry[1] >= 0));
+    }
     if (Number.isFinite(d.energyDelivered)) this.energyDelivered = d.energyDelivered;
     if (Number.isFinite(d.energyDemanded)) this.energyDemanded = d.energyDemanded;
     if (Number.isFinite(d.deviationMWh)) this.deviationMWh = d.deviationMWh;

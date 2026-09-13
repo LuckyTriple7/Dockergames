@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.16
+
+- Spielstände bewahren interne Vorwerte, Reglertakt, Zufallszustand und
+  RBMK-Zonen-/AZ-5-Zustände. Neue Speicherstände setzen die geprüften
+  Transienten exakt fort; ältere Stände bleiben mit rekonstruierten
+  Vorwerten ladbar. Alarmursachen und freie Bedarfskurven werden mitgesichert.
+- Fortsetzen lädt den Zustand vor Panelaufbau, Simulation und Autosicherung.
+  Ladefehler bleiben im Menü sichtbar; veraltete Ladeantworten werden verworfen.
+- Verlassen des freien Spiels beendet die Sitzung, sodass anschließend wieder
+  Szenarien gestartet werden können. Neustart behält auch geladene Szenarien.
+- Szenarioverluste zeigen Ursache, Verlauf und Wertung in einer Auswertung.
+  Menü und Neustart räumen beide Enddialoge auf.
+- Trends werden im Simulationstakt erfasst, unabhängig von Bildrate und
+  Zeitraffer. Ein alter Xenon-Zeitsprung endet bei einem Sitzungswechsel.
+- 14 Regressionstests für Persistenz, Menü-/Ladeabläufe, Enddialoge und Trends.
+
 ## 0.1.15
 
 - 🐛 **Fix: der eigentliche Grund hinter 0.1.14 -- vergangene Szenario-

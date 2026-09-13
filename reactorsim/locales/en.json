@@ -1,4 +1,5 @@
 {
+  "loading_save": "Loading saved game …",
   "app_title": "ReactorSim",
   "app_subtitle": "Control room simulation",
   "splash_hint": "Click to start",

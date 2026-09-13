@@ -59,6 +59,18 @@ export class Session {
     }
   }
 
+  snapshot() {
+    return this.free ? { demandTarget: this.demandTarget,
+      demandNextChangeT: this.demandNextChangeT, rng: this.demandRng.snapshot() } : {};
+  }
+
+  restore(data) {
+    if (!this.free || !data) return;
+    if (Number.isFinite(data.demandTarget)) this.demandTarget = data.demandTarget;
+    if (Number.isFinite(data.demandNextChangeT)) this.demandNextChangeT = data.demandNextChangeT;
+    this.demandRng.restore(data.rng);
+  }
+
   /** Freies Spiel: die Anforderung wandert langsam zu einem neuen Zufallsziel,
    *  nie sprunghaft -- ein realer Netzbetreiber ruft auch keine Stufenfunktion
    *  ab. */

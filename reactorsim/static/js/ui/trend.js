@@ -46,8 +46,8 @@ export class TrendRecorder {
 
   /** Abtasten -- in Simulationssekunden, nicht in Bildern. */
   sample(s, d) {
-    if (s.t_sim < this.nextSample) return;
-    this.nextSample = s.t_sim + 1;
+    if (s.t_sim + 1e-8 < this.nextSample) return;
+    this.nextSample = Math.floor(s.t_sim + 1e-8) + 1;
     const i = this.head;
     this.time[i] = s.t_sim;
     for (let c = 0; c < this.channels.length; c++) {

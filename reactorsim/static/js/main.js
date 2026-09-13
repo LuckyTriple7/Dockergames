@@ -11,7 +11,7 @@ import { getPlant, isAvailable, PLANT_IDS } from './plants/index.js';
 import { Session, PHASE } from './game/session.js';
 import { gridDeviationTrips } from './game/scenario.js';
 import { api } from './net/api.js';
-import { save as saveGame, load as loadGame } from './net/persist.js';
+import { save as saveGame, apply as applySave } from './net/persist.js';
 import { GLOSSARY } from './ui/glossary.js';
 import { SHORTCUTS } from './ui/shortcuts.js';
 import { MusicLoop, playClip, setMuted } from './ui/music.js';
@@ -837,7 +837,11 @@ const XENON_SKIP_TARGET = 1.0;
  *  waehrenddessen bricht sofort ab und zeigt sich normal, statt stillschweigend
  *  ueberfahren zu werden. */
 async function fastForwardXenon() {
-  const s = app.engine.state;
+  const engine = app.engine;
+  const session = app.session;
+  const bootId = app.bootId;
+  const sampleTrends = app.sampleTrends;
+  const s = engine.state;
   const btn = $('#rs-xenon-skip');
   const before = btn.textContent;
   app.xenonSkipping = true;
@@ -846,8 +850,9 @@ async function fastForwardXenon() {
   let elapsed = 0;
   while (elapsed < XENON_SKIP_CAP_S && s.X > XENON_SKIP_TARGET && !s.destroyed && !s.fault) {
     for (let i = 0; i < XENON_SKIP_CHUNK; i++) {
-      app.engine.step(XENON_SKIP_DT);
-      app.session.step(XENON_SKIP_DT, app.engine.trips.tiles(), app.engine.trips.unacknowledgedSeconds());
+      engine.step(XENON_SKIP_DT);
+      session.step(XENON_SKIP_DT, engine.trips.tiles(), engine.trips.unacknowledgedSeconds());
+      sampleTrends();
       elapsed += XENON_SKIP_DT;
       if (s.destroyed || s.fault) break;
     }
@@ -855,6 +860,7 @@ async function fastForwardXenon() {
     // Dem Tab eine Gelegenheit geben, das Bild und Eingaben zu bedienen --
     // sonst haengt der Browser bei 72h Notbremse mehrere Sekunden am Stueck.
     await new Promise((resolve) => { window.setTimeout(resolve, 0); });
+    if (bootId !== app.bootId) return;
   }
   btn.disabled = false;
   setText(btn, before);
@@ -902,7 +908,7 @@ function saveSlotName(prefix) {
 /** Automatische Sicherung -- eigener Slot, siehe AUTOSAVE_INTERVAL_MS oben. */
 function saveCurrentGame() {
   const scnId = app.session && app.session.scenario ? app.session.scenario.id : null;
-  return saveGame(app.engine, scnId, saveSlotName('auto'), app.session && app.session.run);
+  return saveGame(app.engine, scnId, saveSlotName('auto'), app.session && app.session.run, app.session);
 }
 
 // Zehn feste Handplaetze je Reaktortyp -- ANDERS als die Autospeicherung
@@ -920,7 +926,7 @@ function manualSlotName(reactorId, n) {
  *  Auswahldialog (openSaveSlots()) angeklickt. */
 function saveManualGame(slot) {
   const scnId = app.session && app.session.scenario ? app.session.scenario.id : null;
-  return saveGame(app.engine, scnId, slot, app.session && app.session.run);
+  return saveGame(app.engine, scnId, slot, app.session && app.session.run, app.session);
 }
 
 /** Speichern-Dialog: zeigt alle zehn Handplaetze DES AKTUELLEN Reaktortyps,
@@ -982,6 +988,7 @@ function showFault(detail) {
  * zeigen, sondern den Weg.
  */
 function showDestroyed() {
+  $('#rs-debrief').hidden = true;
   app.endShown = true;
   setSpeed(0);
   app.bgMusic.stop();
@@ -1037,7 +1044,18 @@ function leaveToMenu() {
   toMenu();
 }
 
+function clearEndDialogs() {
+  $('#rs-debrief').hidden = true;
+  $('#rs-destroyed').hidden = true;
+  app.pendingResult = null;
+  app.xenonSkipping = false;
+  $('#rs-xenon-skip').disabled = false;
+}
+
 function toMenu() {
+  app.bootId = (app.bootId || 0) + 1;
+  app.session = null;
+  clearEndDialogs();
   if (app.loop) app.loop.stop();
   if (app.autosaveTimer) { window.clearInterval(app.autosaveTimer); app.autosaveTimer = null; }
   // Die Sirene laeuft als eigene Dauerschleife unabhaengig von loop/bgMusic
@@ -1053,6 +1071,8 @@ function toMenu() {
 
 /** Auswertung am Ende eines Szenarios. */
 function showDebrief(result, failed) {
+  // Free play has no score: its loss screen is opened after the next render.
+  if (!result && app.engine.state.destroyed) return;
   setSpeed(0);
   app.bgMusic.stop();
   const verdict = $('#rs-debrief-verdict');
@@ -1063,6 +1083,17 @@ function showDebrief(result, failed) {
 
   const parts = $('#rs-debrief-parts');
   parts.replaceChildren();
+  if (app.engine.state.destroyed) {
+    // Keep loss details and score in one screen, including score submission.
+    app.endShown = true;
+    $('#rs-destroyed').hidden = true;
+    if (app.horn) app.horn.meltdown();
+    const key = app.engine.state.destroyedKey || 'event_fuel_dispersal';
+    parts.append(el('p', { text: t(key + '_body') }));
+    app.engine.drainLog();
+    parts.append(el('ol.rs-log', null, app.engine.ctx.history.slice(-8).reverse().map((e) =>
+      el('li', { text: `${clock(e.t)} · ${t(e.key)}` }))));
+  }
   if (result) {
     const sum = result.summary;
     const p = result.parts || {};
@@ -1224,12 +1255,13 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // sein eigenes `cold: true` mitbringt -- ein Spielstand ueberschreibt den
   // Zustand ohnehin gleich wieder, trim() liefe da nur fuer einen
   // Wimpernschlag unbeobachtet mit.
-  const isColdStart = !!cold && !loadSlot;
+  const isColdStart = !!(cold || scenarioDef?.cold) && !loadSlot;
+  const bootId = app.bootId = (app.bootId || 0) + 1;
+  clearEndDialogs();
 
-  // Für den Neustart-Knopf in Auswertung und Kernzerstörung gemerkt -- ein
-  // Spielstand zählt dabei nicht als Szenario, "Neustart" fängt dann frei an.
+  // Auch nach dem Fortsetzen startet "Neustart" wieder denselben Auftrag.
   app.lastReactor = reactorId;
-  app.lastScenarioDef = loadSlot ? null : (scenarioDef || null);
+  app.lastScenarioDef = scenarioDef || null;
   app.lastCold = isColdStart;
 
   // Eine laufende Schleife MUSS stehen, bevor eine neue entsteht. app.loop
@@ -1245,8 +1277,15 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // aus der verlassenen Runde -- einfach im <audio>-Element weiter.
   if (app.horn) app.horn.silence();
 
-  $('#rs-start').hidden = true;
-  $('#rs-app').hidden = false;
+  app.session = null;
+  $('#rs-app').hidden = true;
+  $('#rs-start').hidden = false;
+  let startMessage = $('#rs-start-message');
+  if (!startMessage) {
+    startMessage = el('p', { id: 'rs-start-message', role: 'status' });
+    $('#rs-start').append(startMessage);
+  }
+  setText(startMessage, loadSlot ? t('loading_save') : '');
 
   // Wartet auf die einmal beim Laden gestartete Abfrage (siehe oben) --
   // praktisch immer schon fertig, sobald der Spieler bis hierher geklickt
@@ -1254,6 +1293,18 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // Wertebindungen sammelt es per querySelectorAll('[data-v]') genau einmal,
   // aus dem, was zu dem Zeitpunkt im DOM steht.
   const prefs = await app.prefsPromise;
+  if (bootId !== app.bootId) return;
+  let saved = null;
+  if (loadSlot) {
+    const response = await api.readSave(loadSlot);
+    if (bootId !== app.bootId) return;
+    if (!response.ok || !response.data) {
+      app.bgMusic.stop();
+      setText(startMessage, t('load_failed'));
+      return;
+    }
+    saved = response.data;
+  }
   buildStatusBar();
   // Gleicher Grund wie beim '[data-stat-label="dnbr"]' im Einstellungen-
   // Dialog: DNBR/CPR ist derselbe Wert, der Name wechselt nur mit dem Typ.
@@ -1263,6 +1314,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
 
   app.endShown = false;
   app.engine = createEngine(plant, {
+    burnup: saved?.state?.burnup,
     n: isColdStart ? 1e-6 : 1.0, cold: isColdStart, seed: scenarioDef ? scenarioDef.seed : 1,
     // Meldetafel-Vorwarnung fuer die szenarioeigene Fail-Bedingung
     // 'grid_deviation' (siehe game/scenario.js) -- ohne sie fiel eine Runde
@@ -1273,7 +1325,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // panels.js' recordingKit() für die typspezifische Bedienung) -- Grundlage
   // der Server-Nachrechnung beim Einreichen einer Wertung, siehe
   // '#rs-debrief-send' weiter unten. Wird bei einem geladenen Spielstand
-  // wieder verworfen (siehe loadGame()-Aufruf am Ende dieser Funktion): ein
+  // wieder verworfen (siehe applySave()-Aufruf vor dem Panelaufbau): ein
   // Sprung auf einen gespeicherten Zustand lässt sich nicht aus Schritten
   // plus Protokoll nachrechnen.
   attachRecorder(app.engine);
@@ -1283,6 +1335,20 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // bei Szenarien relevant, dueAlerts() bleibt im freien Spiel leer.
   app.session.onAlert = () => playClip('geiger_game_alert.mp3', 0.6);
   app.session.start();
+  if (saved) {
+    const error = applySave(saved, app.engine, app.session.run, app.session);
+    if (error) {
+      app.session = null;
+      app.bgMusic.stop();
+      setText(startMessage, t('load_failed'));
+      return;
+    }
+    app.engine.recorder = null;
+    app.session.scenario?.catchUp(app.engine.state.t_sim);
+  }
+  setText(startMessage, '');
+  $('#rs-start').hidden = true;
+  $('#rs-app').hidden = false;
   // Nur ein Szenario hat eine Einweisung, die es wert ist, erneut
   // aufzurufen -- im freien Spiel gibt es keine, der Knopf bleibt weg.
   $('#rs-briefing-btn').hidden = app.session.free;
@@ -1294,6 +1360,9 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   app.horn = built.horn;
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;
+  app.sampleTrends = built.sampleTrends;
+  built.sampleTrends();
+  if (app.engine.ctx.history.length) built.annun.log(app.engine.ctx.history);
   // Die Hupe wird bei jeder Runde neu gebaut (buildPanels()), die Einstellung
   // muss also jedes Mal neu uebertragen werden -- ueber applyAudioPrefs(),
   // damit auch der Hauptschalter greift.
@@ -1330,6 +1399,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // Die Spielschicht sieht jeden Simulationsschritt, nicht jedes Bild.
   app.loop.afterStep = (dt) => {
     app.session.step(dt, app.engine.trips.tiles(), app.engine.trips.unacknowledgedSeconds());
+    built.sampleTrends();
   };
 
   initControls();
@@ -1345,36 +1415,6 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   app.autosaveTimer = window.setInterval(() => {
     if (app.session && app.session.phase === PHASE.RUNNING) saveCurrentGame();
   }, AUTOSAVE_INTERVAL_MS);
-
-  // Einen Spielstand erst anwenden, wenn die Anlage steht: die Regler und
-  // Pumpen schwingen sich dann aus dem geladenen Zustand von selbst ein.
-  if (loadSlot) {
-    // app.session.run ist optional (null im freien Spiel, siehe
-    // Session-Konstruktor) -- persist.js restore() ueberspringt es dann
-    // einfach, wie bei jedem Feld ohne Gegenstueck.
-    loadGame(app.engine, loadSlot, app.session && app.session.run).then((err) => {
-      if (err) { flash($('#rs-save'), t('load_failed')); return; }
-      // Ein geladener Spielstand springt auf einen fremden Zustand -- das
-      // Protokoll bis hierher (leer oder nicht) reicht dann nicht mehr, um
-      // den Lauf aus Schritten plus Handlungen nachzurechnen. app.engine.
-      // recorder wird dadurch null; api.submitScore() schickt dann kein
-      // Protokoll mit, und der Server faellt auf die reine
-      // Plausibilitaetspruefung zurueck (siehe scoring.py).
-      app.engine.recorder = null;
-      // Quittierstatus der Meldetafel zeigt sich von selbst im naechsten
-      // Bild (annun.update() liest jeden Takt engine.trips.tiles() neu, das
-      // restore() oben schon veraendert hat) -- nur das Log-Panel muss
-      // einmalig nachgetragen werden, es haengt nur an, statt neu zu lesen.
-      if (app.engine.ctx.history.length) built.annun.log(app.engine.ctx.history);
-      // Diese Session/dieses Scenario ist frisch gebaut (siehe oben, vor
-      // dem Laden) und weiss nichts von schon vergangenen Ereignissen --
-      // ohne catchUp() feuerte jedes davon beim naechsten Bild ein zweites
-      // Mal: doppelte Protokollzeilen, dazu bei einer laufenden Stoerung
-      // (z.B. "Pumpe ausgefallen") ein kurzes Aus-und-wieder-An auf der
-      // Meldetafel samt Hupe, obwohl sie schon quittiert war.
-      if (app.session.scenario) app.session.scenario.catchUp(app.engine.state.t_sim);
-    });
-  }
 }
 
 // ── Start ────────────────────────────────────────────────────────────────────

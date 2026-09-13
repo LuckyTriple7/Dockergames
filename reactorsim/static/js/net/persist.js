@@ -7,10 +7,14 @@
 
 import { api } from './api.js';
 import { numbers } from '../sim/state.js';
+import { decaySum } from '../sim/decayheat.js';
 
-// Bewusst NICHT erhoeht: "components" ist rein additiv, ein alter Stand ohne
-// dieses Feld muss weiter laden -- Pumpen/Regler federn dann einfach auf
-// ihre frisch gebauten Anfangswerte ein, genau wie vor diesem Fix.
+const CONTEXT_NUMBERS = ['controlAcc', 'decayFrac', 'nPrev', 'period', 'substeps',
+  'tAvgPrev', 'pPrev', 'decayRatio', 'displayLevel'];
+const NESTED_STATE = ['zTop', 'zBot', 'az5'];
+
+// Additive fields preserve compatibility with older saves. Missing historical
+// values can only be reconstructed approximately; new saves retain them.
 const SAVE_VERSION = 1;
 
 /** Pumpen, Ventile und Regler in ihre je eigene Form packen -- siehe
@@ -31,7 +35,7 @@ function packComponents(ctx) {
  *  `runState` ist optional (nur Szenarien haben eins, siehe game/session.js
  *  Session.run) -- ohne sie faengt die Wertung nach jedem Fortsetzen wieder
  *  bei null an, obwohl die Simulation selbst korrekt weiterlaeuft. */
-export function pack(engine, scenarioId, runState) {
+export function pack(engine, scenarioId, runState, session) {
   const s = engine.state;
   const out = {};
   // Nur Zahlen und einfache Felder direkt am Zustand.
@@ -41,12 +45,20 @@ export function pack(engine, scenarioId, runState) {
     else if (typeof v === 'boolean') out[k] = v;
   }
   out.scram = { ...s.scram };
+  for (const key of NESTED_STATE) if (s[key]) out[key] = { ...s[key] };
+  if (s.tipArmed) out.tipArmed = [...s.tipArmed];
+  if (s.destroyedKey) out.destroyedKey = s.destroyedKey;
   return {
     v: SAVE_VERSION,
     reactor: s.reactor,
     scenario: scenarioId || null,
     t_sim: s.t_sim,
     state: out,
+    context: Object.fromEntries(CONTEXT_NUMBERS
+      .filter((key) => Number.isFinite(engine.ctx[key]))
+      .map((key) => [key, engine.ctx[key]])),
+    rng: engine.ctx.rng.snapshot(),
+    session: session ? session.snapshot() : undefined,
     // Pumpen, Ventile, Regler -- eigenes Gedaechtnis ausserhalb von
     // engine.state, siehe ctx.saveable je Typ. Ohne das kam nach dem Laden
     // jede Pumpe wieder hochgefahren und jede Hand-Stellung sprang auf
@@ -87,7 +99,7 @@ export function pack(engine, scenarioId, runState) {
  * Block prüfen und anwenden.
  * @returns {string|null} Fehlergrund, oder null bei Erfolg
  */
-export function apply(blob, engine, runState) {
+export function apply(blob, engine, runState, session) {
   if (!blob || blob.v !== SAVE_VERSION) return 'version';
   if (blob.reactor !== engine.state.reactor) return 'reactor';
   const src = blob.state;
@@ -117,6 +129,17 @@ export function apply(blob, engine, runState) {
   if (src.scram && typeof src.scram === 'object') {
     s.scram = { active: !!src.scram.active, t: Number(src.scram.t) || 0, cause: src.scram.cause || null };
   }
+  for (const key of NESTED_STATE) {
+    if (!s[key] || !src[key]) continue;
+    for (const [field, value] of Object.entries(src[key])) {
+      if ((typeof s[key][field] === 'number' && Number.isFinite(value))
+        || (typeof s[key][field] === 'boolean' && typeof value === 'boolean')) s[key][field] = value;
+    }
+  }
+  if (s.tipArmed && Array.isArray(src.tipArmed) && src.tipArmed.length === s.tipArmed.length) {
+    s.tipArmed = [...src.tipArmed];
+  }
+  if (typeof src.destroyedKey === 'string') s.destroyedKey = src.destroyedKey;
 
   // Pumpen, Ventile, Regler -- optional: ein Stand von vor diesem Fix hat
   // kein components-Feld, dann bleibt alles auf den frisch gebauten
@@ -177,11 +200,24 @@ export function apply(blob, engine, runState) {
     if (typeof m.sgLeak === 'number' && Number.isFinite(m.sgLeak)) engine.ctx.sgLeak = m.sgLeak;
     if (m.boronRunaway) engine.ctx.boronRunaway = true;
   }
+  // Legacy saves lack history-dependent context. Reconstruct the values that
+  // can be derived, preventing a false temperature/pressure impulse on load.
+  const ctx = engine.ctx;
+  ctx.decayFrac = decaySum(s.D);
+  ctx.nPrev = s.n;
+  if ('tAvgPrev' in ctx) ctx.tAvgPrev = (s.T_ci + s.T_co) / 2;
+  if ('pPrev' in ctx) ctx.pPrev = s.p_dome ?? s.p_drum;
+  for (const key of CONTEXT_NUMBERS) {
+    if (Number.isFinite(blob.context?.[key])) ctx[key] = blob.context[key];
+  }
+  if (blob.rng) ctx.rng.restore(blob.rng);
+  engine.reactivity.compute(s, engine.spec);
+  if (session && blob.session) session.restore(blob.session);
   return null;
 }
 
-export async function save(engine, scenarioId, slot = 'auto', runState) {
-  const r = await api.writeSave(slot, pack(engine, scenarioId, runState));
+export async function save(engine, scenarioId, slot = 'auto', runState, session) {
+  const r = await api.writeSave(slot, pack(engine, scenarioId, runState, session));
   return r.ok;
 }
 

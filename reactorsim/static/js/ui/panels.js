@@ -655,8 +655,7 @@ export function buildPanels(engine, render, helperEnabled) {
   });
 
   render.add('trend', () => {
-    const d = engine.derive();
-    for (const r of trends) { r.sample(s, d); r.draw(); }
+    for (const r of trends) r.draw();
   });
 
   if (mimic) {
@@ -682,7 +681,13 @@ export function buildPanels(engine, render, helperEnabled) {
   // annun: main.js braucht sie einmalig nach dem Laden eines Spielstands, um
   // ctx.history (siehe sim/engine.js) ins Log-Panel nachzutragen -- das Panel
   // selbst startet immer mit leerem DOM (siehe Annunciator-Konstruktor).
-  return { horn, jogRod, rodSound, annun };
+  return { horn, jogRod, rodSound, annun,
+    sampleTrends() {
+      if (trends.every((r) => s.t_sim + 1e-8 < r.nextSample)) return;
+      const d = engine.derive();
+      for (const r of trends) r.sample(s, d);
+    },
+  };
 }
 
 function ctxPos(valve) { return valve ? valve.pos : 0; }
