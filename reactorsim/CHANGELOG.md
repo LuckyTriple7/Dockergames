@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.5
+
+- 🆕 **Neuntes Szenario: RBMK "Ausfall einer Umwälzpumpengruppe"** (60 min,
+  ★★). Volllastbetrieb, nach zehn Minuten fallen zwei der acht
+  Hauptumwälzpumpen aus (bestehendes `mcp_trip`-Ereignis, bisher nur als
+  Nebenstörung in "Nachtschicht"/"Kaltstart" benutzt, hier erstmals als
+  einzige, klar lernbare Aufgabe). Lehrt den positiven Dampfblasen-
+  koeffizienten des RBMK aus der Durchsatz-Richtung: weniger Durchsatz →
+  mehr Blasen → mehr Reaktivität → mehr Leistung → noch mehr Blasen, dazu
+  steigendes Kavitationsrisiko an den verbliebenen Pumpen, wenn man
+  versucht, den Ausfall über deren Mehrleistung auszugleichen.
+- 📋 Weitere 13 Szenario-Ideen (DWR/SWR-Feedwater- und Pumpenausfälle,
+  SG-Rohrbruch, Druckmessungs-Drift, Vakuumverlust, RBMK-Trommelpegel/
+  Xenonfalle/Axialverzerrung/Graphitüberhitzung/Stabklemmer, SWR-ATWS)
+  nach Machbarkeit sortiert ins BACKLOG.md aufgenommen -- mehrere davon
+  (SG-Rohrbruch, Speisewasserverlust, DWR-Pumpenausfall) nutzen bereits
+  vollständig implementierte, aber noch nie in einem Szenario verpackte
+  Ereignisse (`sg_tube_leak`, `feedwater_loss`, `rcp_trip`).
+
 ## 0.1.4
 
 - 📝 **Szenario-Einweisungen nach technischem Gegencheck geschärft.**

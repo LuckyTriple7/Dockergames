@@ -1,0 +1,45 @@
+{
+  "id": "rbmk_mcp_loss",
+  "reactor": "rbmk",
+  "difficulty": 2,
+  "title_key": "scn_rbmk_mcp_title",
+  "brief_key": "scn_rbmk_mcp_brief",
+  "duration_s": 3600,
+  "seed": 19860426,
+  "demand": [
+    {
+      "t": 0,
+      "mw": 1000
+    },
+    {
+      "t": 3600,
+      "mw": 1000
+    }
+  ],
+  "grid": {
+    "tolerance_mw": 100
+  },
+  "events": [
+    {
+      "t": 600,
+      "id": "mcp_trip",
+      "args": {
+        "count": 2
+      }
+    }
+  ],
+  "fail": [
+    {
+      "type": "fuel_damage"
+    },
+    {
+      "type": "trip_ignored",
+      "for_s": 300
+    },
+    {
+      "type": "grid_deviation",
+      "mw": 200,
+      "for_s": 600
+    }
+  ]
+}
