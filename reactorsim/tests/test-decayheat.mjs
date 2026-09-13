@@ -51,6 +51,6 @@ test('folgt der Leistung mit Verzögerung', () => {
   for (let i = 0; i < 60; i++) stepDecay(D, 1, 1);
   const short = decaySum(D);
   assert.ok(short > 0.03 && short < 0.055, `nach 60 s: ${short}`);
-  for (let i = 0; i < 10 * 86400; i++) stepDecay(D, 1, 1);
-  assert.ok(Math.abs(decaySum(D) - 0.07) < 0.002, `nach 10 d: ${decaySum(D)}`);
+  stepDecay(D, 1, 100 * 86400);
+  assert.ok(Math.abs(decaySum(D) - 0.07) < 0.002, `nach 100 d: ${decaySum(D)}`);
 });

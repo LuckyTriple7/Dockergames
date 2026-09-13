@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.17
+
+- Dampfentnahme durch Inventar und Energie begrenzt; kein dauerhaftes Restwasser.
+- Bedeckung und DNBR/CPR beeinflussen den Waermeuebergang; die kuenstliche
+  SWR-Heizquelle bei Kernfreilegung entfaellt. Brennstoff und Graphit bilanzieren
+  gespeicherte und abgegebene Waerme.
+- Druckabhaengige Diesel-Loeschwasserpumpe mit begrenztem Vorrat, Anzeige,
+  Druckentlastung und Gleichstrom-/Ersatzbatterie-Bedienung.
+- Wasserstoff: getrennte Gasraeume, Leckage und kontrollierte Entlastung.
+- RBMK-Stabwirkung folgt der Geometrie bei Handfahrt und AZ-5.
+- Sieben Nachwaermegruppen erhalten den Langzeitanteil. Alte Viergruppenstaende
+  werden unter Erhalt ihrer momentanen Nachwaermeleistung migriert.
+- IAPWS-Oberflaechenspannung; heisser Wiederanlauf korrekt bezeichnet.
+- Physik-Regressionen, Blackout-Gegenproben, Speicherung und Eingabe-Replay;
+  Details und Modellgrenzen in audit/PHYSIK-FIXES-2026-09-13.md.
+
 ## 0.1.16
 
 - Spielstände bewahren interne Vorwerte, Reglertakt, Zufallszustand und

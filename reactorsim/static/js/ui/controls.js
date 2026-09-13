@@ -188,6 +188,14 @@ export function slider({ labelKey, min, max, step, value, digits = 0, unitKey, o
 }
 
 /** Tastengruppe -- genau eine Taste ist aktiv. */
+export function indicator({ labelKey, read, unitKey, digits = 0 }) {
+  const value = el('span.rs-ctl-v');
+  const set = () => setText(value, num(read(), digits) + '\u2009' + t(unitKey));
+  set();
+  return { node: el('div.rs-ctl-row', null,
+    [el('span.rs-ctl-k', { text: t(labelKey) }), value]), set };
+}
+
 export function buttonGroup(labelKey, options, initial, onChange) {
   const btns = options.map((o) => el('button.rs-gbtn', { type: 'button', 'data-v': o.value },
     [t(o.key)]));

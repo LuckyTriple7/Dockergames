@@ -7,7 +7,7 @@
 
 import { api } from './api.js';
 import { numbers } from '../sim/state.js';
-import { decaySum } from '../sim/decayheat.js';
+import { decaySum, equilibriumDecay } from '../sim/decayheat.js';
 
 const CONTEXT_NUMBERS = ['controlAcc', 'decayFrac', 'nPrev', 'period', 'substeps',
   'tAvgPrev', 'pPrev', 'decayRatio', 'displayLevel'];
@@ -118,7 +118,14 @@ export function apply(blob, engine, runState, session) {
   const s = engine.state;
   for (const [k, v] of Object.entries(src)) {
     const cur = s[k];
-    if (cur instanceof Float64Array && Array.isArray(v) && v.length === cur.length) {
+    if (k === 'D' && Array.isArray(v) && v.length === 4 && cur.length !== 4) {
+      // Legacy groups cannot recover the original irradiation history. Keep
+      // instantaneous decay power continuous; redistribute by new weights.
+      const total = v.reduce((a, b) => a + Math.max(0, b), 0);
+      const weights = equilibriumDecay(1);
+      const sum = decaySum(weights);
+      cur.set(weights.map((f) => f * total / sum));
+    } else if (cur instanceof Float64Array && Array.isArray(v) && v.length === cur.length) {
       cur.set(v);
     } else if (typeof cur === 'number' && typeof v === 'number') {
       s[k] = v;

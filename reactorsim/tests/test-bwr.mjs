@@ -131,7 +131,7 @@ test('Frischdampf-Absperrung gibt POSITIVE Reaktivitaet', () => {
   assert.ok(nMax > 1.03, `Leistungsspitze nur ${(nMax * 100).toFixed(1)} %`);
   assert.ok(s.alphaBar < a0, `Blasen fielen nicht zusammen: ${s.alphaBar.toFixed(3)} vs ${a0.toFixed(3)}`);
 
-  run(e, 300);
+  // Respond after observing the first pressure/power transient.
   // Die Schnellabschaltung loest nichts mehr von selbst aus -- die Meldung
   // muss stehen, die tatsaechliche Abschaltung kommt erst vom Bediener.
   assert.ok(e.trips.states.get('dome_press_high').latched
@@ -170,7 +170,7 @@ test('Instabilitaetszone: Schwingung waechst, Ueberwachung loest aus', () => {
 
   e.scram('oprm');
   run(e, 60);
-  assert.ok(!s.destroyed, 'Brennstoffschaden durch Schwingung');
+  assert.ok(s.destroyed, 'minutes of ignored severe oscillation must damage fuel');
 });
 
 test('Schnellabschaltung: Pumpen laufen mit ab, Naturumlauf bleibt', () => {

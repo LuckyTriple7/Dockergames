@@ -3,7 +3,7 @@
 import { createEngine } from '../static/js/sim/engine.js';
 import { getPlant } from '../static/js/plants/index.js';
 import { equilibriumDecay, stepDecay } from '../static/js/sim/decayheat.js';
-import { tsat, psat } from '../static/js/sim/steam.js';
+import { tsat, psat, surfaceTension } from '../static/js/sim/steam.js';
 const DT = 0.05;
 const results = {};
 
@@ -38,7 +38,7 @@ results.noFeedwater = ['pwr', 'rbmk'].map((id) => {
   results.zeroHeatCoolantHook = { timeS: 180, heatInputKW: 0, initialC, finalC: s.T_co - 273.15 };
 }
 
-results.fireInjection = [70.7, 100].map((pressureBar) => {
+results.fireInjection = [6, 12, 70.7, 100].map((pressureBar) => {
   const e = createEngine(getPlant('bwr'));
   e.state.p_dome = pressureBar;
   e.state.acPower = false;
@@ -72,7 +72,7 @@ results.surfaceTension = [100, 285.88].map((celsius) => {
   const T = celsius + 273.15;
   const tau = 1 - T / 647.096;
   return { celsius,
-    modelMilliNm: 1000 * Math.max(0.0588 * (1 - T / 647.1) ** 1.2, 1e-4),
+    modelMilliNm: 1000 * surfaceTension(T),
     iapwsMilliNm: 235.8 * tau ** 1.256 * (1 - 0.625 * tau) };
 });
 results.condenser = { modelTsatAt0035BarC: tsat(0.035) - 273.15,

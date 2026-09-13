@@ -18,8 +18,9 @@
 
 import { Pump, Valve, Lag, coldStopPumps } from '../sim/components.js';
 import { FeedwaterController, GovernorController, RodController } from '../sim/controllers.js';
-import { tsat, psat, hg, hf, hfg, rhog, dpdT, averageVoid } from '../sim/steam.js';
+import { tsat, psat, hg, hf, hfg, rhog, averageVoid } from '../sim/steam.js';
 import { clamp, toK, relax } from '../sim/constants.js';
+import { availableSteam, saturatedPressure, coverage, transferFraction } from '../sim/thermal.js';
 import { SEVERITY } from '../sim/trips.js';
 
 const P0 = 70.7;                     // bar, Domdruck
@@ -118,12 +119,6 @@ export const spec = {
     // der Effekt sein soll, aber nicht in der Lage, die Anzeige von "voll"
     // auf "leer" zu ziehen.
     swellMax: 0.25,
-    // Temperaturhub über die Sättigung, den die reine Dampfkühlung bei
-    // vollständig freiliegendem Kern erreicht -- deutlich über der
-    // Hüllrohrgrenze (1204 °C), damit Nachzerfallswärme ohne Bedeckung
-    // tatsächlich zum Hüllrohrversagen führt und nicht in einem Gleich-
-    // gewicht knapp darunter steckenbleibt.
-    dryOverheatK: 3200,
     T_fw: T_FW,
     W_steam0: 2059,
     subcool0: 12,
@@ -151,10 +146,8 @@ export const spec = {
   // ausgelegt -- genau deshalb hätte er im Original gereicht.
   ic: { W0: 130, enduranceS: 7200 },
 
-  // Löschwassereinspeisung als letzter Handgriff: kein Motor, keine
-  // Elektronik, funktioniert auch im vollständigen Stromausfall -- dafür
-  // viel weniger Durchsatz als die reguläre Speisewasseranlage.
-  fireInj: { W0: 35 },
+  // Diesel-driven low-pressure injection with finite external water supply.
+  fireInj: { W0: 35, shutoffBar: 12, supplyKg: 1000000 },
 
   // Sicherheitsbehälter (Druckkammer + Kondensationskammer). Baut sich aus
   // dem Sicherheitsventil-Dampf auf, der in die Kondensationskammer bläst --
@@ -315,6 +308,8 @@ export const hooks = {
 
     // Löschwassereinspeisung: von Hand, ohne jede Elektronik.
     s.fireInjOn = false;
+    s.fireWaterKg = sp.fireInj.supplyKg;
+    s.depressurize = false;
 
     // Sicherheitsbehälter.
     s.contMass = 0;
@@ -324,6 +319,8 @@ export const hooks = {
 
     // Wasserstoff aus der Hüllrohrreaktion, in kg (grobe Näherung).
     s.h2Mass = 0;
+    s.h2BuildingMass = 0;
+    s.h2ProducedKg = 0;
     s.h2Exploded = false;
 
     ctx.recircPump = new Pump({
@@ -462,52 +459,14 @@ export const hooks = {
   coreCoolant(s, sp, ctx, qCoolKW, h) {
     const Tsat = tsat(s.p_dome);
 
-    // Kernfreilegung: solange genug Wasser im Behaelter steht, siedet der
-    // Kern und haelt seine Austrittstemperatur an der Saettigung fest, ganz
-    // gleich wie klein der Durchsatz ist -- Sieden ist ein sehr guter
-    // Waermeuebergang. Faellt der Fuellstand unter die obere Kernkante,
-    // kuehlt dort nur noch vorbeistroemender Dampf, und der Waermeuebergang
-    // bricht auf einen Bruchteil ein. covered nutzt die RAW-Masse (M_rpv),
-    // nicht die auf 0..1 gestauchte Anzeigegroesse L_rpv -- die ist am
-    // unteren Ende laengst bei 0, waehrend physisch noch Wasser im
-    // Ringraum steht.
-    const covered = clamp((s.M_rpv - sp.vessel.mUncoverFloor) /
-      (sp.vessel.mUncoverStart - sp.vessel.mUncoverFloor), 0, 1);
-    // Bewusst KEIN Ziel aus qCoolKW hergeleitet: qCoolKW ist bereits das
-    // Ergebnis von UA_cc·(T_cl−T_cool) aus dem VORIGEN Schritt -- ein Ziel,
-    // das davon selbst wieder abhaengt, pendelt sich zirkulaer irgendwo
-    // unterhalb der Grenztemperatur ein, sobald T_cl an T_cool heranrueckt,
-    // und die Nachzerfallswaerme "findet" scheinbar von selbst ein
-    // Gleichgewicht, das keins ist. dryOverheatK ist stattdessen ein fester
-    // Wert: voll frei liegend strebt die Kuehlmitteltemperatur so weit über
-    // die Saettigung, dass sie über die Huellrohrgrenze hinaustreibt --
-    // genau das Szenario, das Fukushima-1 zeigt: kein Leistungsausflug,
-    // reiner Kuehlungsverlust.
-    const dryTarget = Tsat + sp.vessel.dryOverheatK;
-    const coolTarget = Tsat + (1 - covered) * (dryTarget - Tsat);
-    // Bedeckt reagiert die Saettigungstemperatur sofort (Sieden ist traege-
-    // frei), unbedeckt braucht die Dampfkuehlung ein paar Minuten, um sich
-    // einzustellen -- beides ueber dieselbe relax()-Zeitkonstante, nur nach
-    // covered gewichtet.
-    s.T_co = relax(s.T_co, coolTarget, h, 3.0 + (1 - covered) * 180);
+    // No temperature target above saturation: heat originates in the fuel.
+    // The cladding transfer coefficient handles loss of wetted area.
+    s.T_co = relax(s.T_co, Tsat, h, 3);
     s.T_mod = Tsat;
-    // Eintritt: die Unterkuehlung folgt der Mischung aus Umwaelzwasser und
-    // Speisewasser, aber traege -- der Weg durch den Fallraum dauert. Sobald
-    // der Kern ueberwiegend frei liegt, verliert "Eintritt" seinen Sinn --
-    // dieselbe Dampfkuehlung erfasst dann den ganzen Kanal, Ein- und Austritt
-    // gleichermassen. Ohne das hier wuerde die generische T_cool =
-    // 0,5·(T_ci+T_co) der Motorengine die Kernfreilegung zur Haelfte wieder
-    // wegmitteln, weil T_ci stur an der Saettigung haengen bliebe.
-    s.T_ci = relax(s.T_ci, covered > 0.5 ? (Tsat - s.dTsub) : coolTarget, h, 3.0 + (1 - covered) * 180);
+    s.T_ci = relax(s.T_ci, Tsat - s.dTsub, h, 3);
 
     const W = Math.max(s.W_core, 1);
     const qSub = W * sp.coolant.cp * Math.max(Tsat - s.T_ci, 0);
-    // Bewusst NICHT mit covered multipliziert: der noch bedeckte Teil des
-    // Kerns siedet unabhaengig davon weiter, wieviel oben schon frei liegt --
-    // sonst wuerde ein einsetzender Kernfreilegung den Massenverlust
-    // druckseitig wieder ABBREMSEN, statt ihn (wie in Wirklichkeit) unbeirrt
-    // weiterlaufen zu lassen, waehrend zusaetzlich die Huellrohrtemperatur
-    // ueber T_co/dryTarget hochlaeuft.
     const qBoil = Math.max(qCoolKW - qSub, 0);
     s.x_e = clamp(qBoil / (W * hfg(s.p_dome)), 0, 1);
 
@@ -529,7 +488,15 @@ export const hooks = {
     s.alphaBar = ctx.voidLag.step(clamp(_void(s, sp) - collapse, 0, 0.95), h);
   },
 
+  heatTransfer(s, sp) {
+    return transferFraction(_cpr(s, sp, { load: s.P_th / sp.P0_th }),
+      coverage(s.M_rpv, sp.vessel.mUncoverStart, sp.vessel.mUncoverFloor));
+  },
+
   stepLoop(s, sp, ctx, dt) {
+    if (!s.acPower) s.W_fw = Math.min(fireInjectionFlow(s, sp), s.fireWaterKg / dt);
+    s.W_fw = Math.min(s.W_fw, Math.max(0, (sp.vessel.massMax - s.M_rpv) / dt));
+    if (!s.acPower) s.fireWaterKg = Math.max(0, s.fireWaterKg - s.W_fw * dt);
     // ── Umwaelzstrom ────────────────────────────────────────────────────────
     ctx.recircPump.demand = clamp(s.recircDmd, 0, sp.recirc.max);
     ctx.recircPump.step(dt);
@@ -563,14 +530,20 @@ export const hooks = {
 
     const dp = Math.max(s.p_dome - s.p_cond, 0);
     const rhoS = rhog(s.p_dome);
-    const W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dp);
-    const W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dp);
+    let W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dp);
+    let W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dp);
 
     // Sicherheitsventile: blasen in die Kondensationskammer, nicht zur Turbine.
-    s.srv = s.p_dome > 78 ? clamp((s.p_dome - 78) / 3, 0, 1) : 0;
-    const W_srv = s.srv * 900;
-
-    s.W_steam = W_t + W_bp + W_srv;
+    s.srv = s.depressurize && s.dcPower ? 1
+      : (s.p_dome > 78 ? clamp((s.p_dome - 78) / 3, 0, 1) : 0);
+    let W_srv = s.srv * 900;
+    const requested = W_t + W_bp + W_srv;
+    const actual = availableSteam({ mass: s.M_rpv, feed: s.W_fw, requested, dt,
+      pressure: s.p_dome, cp: sp.vessel.cp, metalCapacity: sp.vessel.mass * sp.vessel.cp * 0.05,
+      heat: s.coolantHeatKJ / dt, feedEnthalpy: s.acPower ? H_FW : 4.2 * 20 });
+    const scale = requested > 0 ? actual / requested : 0;
+    W_t *= scale; W_bp *= scale; W_srv *= scale;
+    s.W_steam = actual;
 
     // ── Notkondensator ──────────────────────────────────────────────────────
     // Automatik will ihn offen, sobald isoliert wurde (SCRAM + Frischdampf
@@ -599,11 +572,13 @@ export const hooks = {
     // Erzeugt wird, was im Kern verdampft; abgefuehrt, was die Ventile UND
     // der Notkondensator lassen. Der IC zaehlt nur hier, nicht im
     // Fuellstand weiter unten -- sein Kondensat bleibt im eigenen Kreislauf.
-    const W_gen = s.x_e * s.W_core;
-    const W_out = s.W_steam + W_ic;
-    const C_p = (sp.vessel.mass * sp.vessel.cp) / Math.max(dpdT(s.p_dome), 1e-6);
-    const dh = Math.max(hg(s.p_dome) - H_FW, 1);
-    const pNew = clamp(s.p_dome + (((W_gen - W_out) * dh) * dt) / C_p, 1, 110);
+    const balance = saturatedPressure({ pressure: s.p_dome, mass: s.M_rpv,
+      cp: sp.vessel.cp, metalCapacity: sp.vessel.mass * sp.vessel.cp * 0.05,
+      heat: s.coolantHeatKJ / dt, feed: s.W_fw,
+      feedEnthalpy: s.acPower ? H_FW : 4.2 * 20, steam: s.W_steam,
+      extraCooling: W_ic * hfg(s.p_dome), dt });
+    const pNew = balance.pressure;
+    s.pressureClipKJ = balance.rejectedKJ;
     // Die geglaettete Aenderungsrate treibt den Blasenkollaps im Kern.
     ctx.dpLag.step((pNew - ctx.pPrev) / dt, dt);
     ctx.pPrev = pNew;
@@ -630,29 +605,34 @@ export const hooks = {
     if (s.contFailed) s.contMass = Math.max(0, s.contMass - sp.containment.ventCv * 2 * dt);
 
     // ── Wasserstoff ─────────────────────────────────────────────────────────
-    // Zirkon-Wasser-Reaktion oberhalb von 1200 °C Huellrohrtemperatur --
-    // lange vor der eigentlichen Kernzerstoerung ueber die Enthalpie.
-    if (s.T_cl > sp.h2.onsetK) {
-      s.h2Mass += sp.h2.rate * (s.T_cl - sp.h2.onsetK) * dt;
+    // Simplified bounded oxidation source and two gas compartments. The
+    // inert containment is not the oxygen-containing reactor building.
+    const produced = Math.min(Math.max(0, 1000 - s.h2ProducedKg),
+      Math.max(0, sp.h2.rate * (s.T_cl - sp.h2.onsetK) * dt),
+      Math.max(0, s.M_rpv + (s.W_fw - s.W_steam) * dt) / 9);
+    s.h2ProducedKg += produced;
+    s.h2Mass += produced;
+    s.M_rpv -= produced * 9;
+    // Controlled vent goes to the stack. Overpressure/failure can leak gas
+    // into the building independently of the vent command.
+    const ventRate = s.contVentOpen ? 0.02 : 0;
+    const leakRate = s.contFailed || s.pCont > sp.containment.designLimit * 0.7 ? 0.002 : 0;
+    const removed = s.h2Mass * (1 - Math.exp(-(ventRate + leakRate) * dt));
+    if (ventRate + leakRate > 0) {
+      s.h2Mass -= removed;
+      s.h2BuildingMass += removed * leakRate / (ventRate + leakRate);
     }
-    if (!s.h2Exploded && s.contVentOpen && s.h2Mass > 25) {
-      // Der Wasserstoff geht beim Fukushima-Unfall nicht kontrolliert durch
-      // den Kamin ab, sondern sucht sich seinen Weg zurueck ins
-      // Reaktorgebaeude -- genau beim Venten wird er dorthin gedrueckt.
+    // 10,000 m3 air compartment, ambient H2 density 0.0838 kg/m3.
+    // Ignition is assumed once a flammable mixture forms (game abstraction).
+    if (!s.h2Exploded && s.h2BuildingMass / (10000 * 0.0838) >= 0.04) {
       s.h2Exploded = true;
       ctx.log.push({ t: s.t_sim, key: 'event_h2_explosion', severity: 3 });
     }
 
     // ── Fuellstand ──────────────────────────────────────────────────────────
     //
-    // Der Behaelter hat eine Obergrenze. Vorher stand hier nur eine UNTERE
-    // (20 000 kg), und das Ergebnis war absurd: bei abgesperrtem Frischdampf
-    // speiste der Regler mit 1724 kg/s nach, waehrend nur noch 900 kg/s ueber
-    // das Sicherheitsventil abgingen -- ueber vierzig Minuten wuchs das
-    // Inventar auf 2 056 144 kg, das Elffache des Nennwerts. Voll ist voll:
-    // was darueber hinaus gefoerdert wird, geht mit dem Dampf weiter, es
-    // staut sich nicht im Behaelter.
-    s.M_rpv = clamp(s.M_rpv + (s.W_fw - s.W_steam) * dt, 20000, sp.vessel.massMax);
+    // Actual feed is capped before the balance; no mass is discarded.
+    s.M_rpv = Math.max(0, s.M_rpv + (s.W_fw - s.W_steam) * dt);
 
     const Ltrue = clamp(0.5 + (s.M_rpv - sp.vessel.mass) / sp.vessel.massSpan, 0, 1);
     // Schrumpfen und Quellen ist hier staerker als beim Druckwasserreaktor:
@@ -671,7 +651,7 @@ export const hooks = {
     // klebte.
     const swell = clamp(sp.vessel.shrinkSwell * (sp.vessel.p0 - s.p_dome) / sp.vessel.p0,
       -sp.vessel.swellMax, sp.vessel.swellMax);
-    s.L_rpv = clamp(Ltrue + swell, 0, 1);
+    s.L_rpv = clamp(Ltrue + coverage(s.M_rpv, sp.vessel.mass) * swell, 0, 1);
 
     // ── Unterkuehlung am Kerneintritt ───────────────────────────────────────
     s.dTsub = _subcooling(s, sp);
@@ -687,11 +667,9 @@ export const hooks = {
     if (!s.scram.active && ctx.rodCtl.auto) {
       s.rodDmd[0] = clamp(s.rodDmd[0] + ctx.rodCtl.step(s.T_mod, 1, dt), 0, 1);
     }
-    // Ohne Wechselstrom laufen weder Speisewasserpumpen noch ihre Regelung --
-    // was dann noch Wasser bringt, ist ausschliesslich die Loeschwasser-
-    // einspeisung, motorlos und ohne jede Elektronik.
+    // Diesel injection needs low pressure, but no grid AC.
     s.W_fw = s.acPower ? ctx.fwCtl.step(s.L_rpv, s.W_steam, dt)
-      : (s.fireInjOn ? sp.fireInj.W0 : 0);
+      : fireInjectionFlow(s, sp);
     // Das Regelventil haelt den Druck, nicht die Leistung.
     s.gov = ctx.govCtl.step(s.P_e, s.P_demand, s.p_dome, dt);
     s.bypass = s.p_dome > sp.vessel.p0 + 4
@@ -751,12 +729,20 @@ export const hooks = {
       { key: 'state_closed', value: '0' },
     ], '1', (v) => { s.icDemand = Number(v); });
 
-    // Löschwassereinspeisung: einzige Wasserquelle, die auch ohne jeden
-    // Strom funktioniert.
+    // Enable the diesel pump; actual flow still depends on pressure.
     const fireInj = kit.buttonGroup('ctl_fire_inj', [
       { key: 'state_open', value: '1' },
       { key: 'state_closed', value: '0' },
     ], '0', (v) => { s.fireInjOn = !!Number(v); });
+
+    const depressurize = kit.buttonGroup('ctl_depressurize', [
+      { key: 'state_open', value: '1' }, { key: 'state_closed', value: '0' },
+    ], '0', (v) => { s.depressurize = !!Number(v); });
+    const dc = kit.buttonGroup('ctl_emergency_dc', [
+      { key: 'state_on', value: '1' }, { key: 'state_off', value: '0' },
+    ], '1', (v) => { s.dcPower = !!Number(v); });
+    const fireSupply = kit.indicator({ labelKey: 'val_fire_water', unitKey: 'unit_t',
+      digits: 1, read: () => s.fireWaterKg / 1000 });
 
     // Sicherheitsbehälter-Venten: kontrollierte Freisetzung, um einen
     // unkontrollierten Bruch zu verhindern.
@@ -777,6 +763,9 @@ export const hooks = {
         set: (st) => { if (st.dcPower) ic.set(String(st.icDemand)); },
       },
       { mount: 'safety', node: fireInj.node, set: (st) => fireInj.set(st.fireInjOn ? '1' : '0') },
+      { mount: 'safety', node: depressurize.node, set: (st) => depressurize.set(st.depressurize ? '1' : '0') },
+      { mount: 'safety', node: dc.node, set: (st) => dc.set(st.dcPower ? '1' : '0') },
+      { mount: 'safety', node: fireSupply.node, set: () => fireSupply.set() },
       { mount: 'safety', node: contVent.node, set: (st) => contVent.set(st.contVentOpen ? '1' : '0') },
     ];
   },
@@ -827,7 +816,8 @@ function _subcooling(s, sp) {
   const W = Math.max(s.W_core, 1);
   const Wfw = clamp(s.W_fw, 0, W);
   const hSat = hf(s.p_dome);
-  const hMix = (Wfw * H_FW + (W - Wfw) * hSat) / W;
+  const hFeed = s.acPower ? H_FW : 4.2 * 20;
+  const hMix = (Wfw * hFeed + (W - Wfw) * hSat) / W;
   return clamp((hSat - hMix) / sp.coolant.cp, 0, 60);
 }
 
@@ -871,3 +861,9 @@ function _cpr(s, sp, base) {
 }
 
 export default { spec, hooks };
+
+/** Diesel pump curve, no AC grid required; zero flow above shutoff head. */
+export function fireInjectionFlow(s, sp = spec) {
+  if (!s.fireInjOn || !(s.fireWaterKg > 0)) return 0;
+  return sp.fireInj.W0 * Math.sqrt(clamp(1 - Math.max(s.p_dome - 1, 0) / (sp.fireInj.shutoffBar - 1), 0, 1));
+}

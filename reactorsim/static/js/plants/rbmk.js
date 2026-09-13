@@ -33,10 +33,10 @@ import { Pump, Valve, Lag, coldStopPumps } from '../sim/components.js';
 import {
   FeedwaterController, GovernorController, RodController, PowerController,
 } from '../sim/controllers.js';
-import { tsat, psat, hg, hf, hfg, rhog, dpdT, averageVoid } from '../sim/steam.js';
+import { tsat, psat, hg, hf, hfg, rhog, averageVoid } from '../sim/steam.js';
 import { clamp, toK, relax, LAMBDA_I135, LAMBDA_XE } from '../sim/constants.js';
 import { stepPoisons, equilibriumPoisons } from '../sim/poisons.js';
-import { rodWorthCurve } from '../sim/reactivity.js';
+import { availableSteam, saturatedPressure, coverage, transferFraction } from '../sim/thermal.js';
 import { SEVERITY } from '../sim/trips.js';
 
 const P0_DRUM = 69;
@@ -134,18 +134,14 @@ export const spec = {
 
   // Graphitverdränger unter dem Absorber.
   tip: {
-    // Wirksamkeit je Gruppe. So kalibriert, dass die Summe über beide Gruppen
-    // bei flachem Flussprofil gut ein β ergibt und bei bodennahem Profil rund
-    // zwei β -- zusammen mit dem Blasenkoeffizienten bei leerem Kern liegt die
-    // Gesamteinfuhr dann in der Größenordnung, die am 26. April 1986 gemessen
-    // wurde.
+    // Phenomenological worth per bank, not a reconstructed accident curve.
     worth_pcm: 320,
     // Nur Stäbe, die weit draußen stehen, schieben Graphit in die untere
     // Wassersäule. Wer schon halb drin steckt, hat dort längst Absorber.
     outThreshold: 0.12,
     // Über diesen Teil des Fahrwegs wirkt die Spitze, danach kommt der
     // Absorber.
-    span: 0.30,
+    span: 1.25 / 7,
   },
 
   axial: {
@@ -446,11 +442,22 @@ export const hooks = {
     const collapse = sp.drum.voidCollapse * ctx.dpLag.v;
     s.alphaBar = ctx.voidLag.step(clamp(_void(s, sp) - collapse, 0, 0.95), h);
 
-    // Graphit: große Masse, lange Zeitkonstante. Er ist der Grund, warum der
-    // Reaktor nach einer Leistungsänderung noch minutenlang nachwirkt.
+  },
+
+  directHeat(s, sp, ctx, deposited, h) {
+    // Store the non-fuel deposit in graphite; only its released heat reaches
+    // the coolant. Do not count the same energy twice.
+    const Tsat = tsat(s.p_drum);
     const C_gr = (sp.graphite.mass_t * 1000 * sp.graphite.cp) / 1000;   // kJ/K
-    const qGr = s.P_th * 1000 * sp.graphite.powerFraction;
-    s.T_gr = relax(s.T_gr, Tsat + qGr / sp.graphite.UA, h, C_gr / sp.graphite.UA);
+    const before = s.T_gr;
+    const graphiteDeposit = Math.min(deposited, s.P_th * 1000 * sp.graphite.powerFraction);
+    s.T_gr = relax(before, Tsat + graphiteDeposit / sp.graphite.UA, h, C_gr / sp.graphite.UA);
+    return deposited - C_gr * (s.T_gr - before) / h;
+  },
+
+  heatTransfer(s, sp) {
+    return transferFraction(_cpr(s, sp, { load: s.P_th / sp.P0_th }),
+      coverage(s.M_drum, sp.drum.mass * 0.55, 20000));
   },
 
   stepLoop(s, sp, ctx, dt) {
@@ -467,25 +474,32 @@ export const hooks = {
 
     const dp = Math.max(s.p_drum - s.p_cond, 0);
     const rhoS = rhog(s.p_drum);
-    const W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dp);
-    const W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dp);
+    let W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dp);
+    let W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dp);
     s.srv = s.p_drum > 75 ? clamp((s.p_drum - 75) / 3, 0, 1) : 0;
-    s.W_steam = W_t + W_bp + s.srv * 700;
+    const requested = W_t + W_bp + s.srv * 700;
+    s.W_steam = availableSteam({ mass: s.M_drum, feed: s.W_fw, requested, dt,
+      pressure: s.p_drum, cp: sp.drum.cp, metalCapacity: sp.drum.mass * sp.drum.cp * 0.05,
+      heat: s.coolantHeatKJ / dt, feedEnthalpy: H_FW });
+    const scale = requested > 0 ? s.W_steam / requested : 0;
+    W_t *= scale; W_bp *= scale;
 
     // ── Trommeldruck ────────────────────────────────────────────────────────
-    const W_gen = s.x_e * s.W_core;
-    const C_p = (sp.drum.mass * sp.drum.cp) / Math.max(dpdT(s.p_drum), 1e-6);
-    const dh = Math.max(hg(s.p_drum) - H_FW, 1);
-    const pNew = clamp(s.p_drum + (((W_gen - s.W_steam) * dh) * dt) / C_p, 1, 110);
+    const balance = saturatedPressure({ pressure: s.p_drum, mass: s.M_drum,
+      cp: sp.drum.cp, metalCapacity: sp.drum.mass * sp.drum.cp * 0.05,
+      heat: s.coolantHeatKJ / dt, feed: s.W_fw, feedEnthalpy: H_FW,
+      steam: s.W_steam, dt });
+    const pNew = balance.pressure;
+    s.pressureClipKJ = balance.rejectedKJ;
     ctx.dpLag.step((pNew - ctx.pPrev) / dt, dt);
     ctx.pPrev = pNew;
     s.p_drum = pNew;
     s.p_prim = s.p_drum;
 
     // ── Trommelfüllstand ────────────────────────────────────────────────────
-    s.M_drum = Math.max(s.M_drum + (s.W_fw - s.W_steam) * dt, 20000);
+    s.M_drum = Math.max(s.M_drum + (s.W_fw - s.W_steam) * dt, 0);
     const Ltrue = clamp(0.5 + (s.M_drum - sp.drum.mass) / sp.drum.massSpan, 0, 1);
-    s.L_drum = clamp(Ltrue + sp.drum.shrinkSwell * (sp.drum.p0 - s.p_drum) / sp.drum.p0, 0, 1);
+    s.L_drum = clamp(Ltrue + coverage(s.M_drum, sp.drum.mass) * sp.drum.shrinkSwell * (sp.drum.p0 - s.p_drum) / sp.drum.p0, 0, 1);
 
     s.dTsub = _subcooling(s, sp);
 
@@ -519,10 +533,7 @@ export const hooks = {
     s.bypass = s.p_drum > sp.drum.p0 + 4 ? clamp((s.p_drum - sp.drum.p0 - 4) / 6, 0, 1) : 0;
   },
 
-  /**
-   * AZ-5. Beim Auslösen wird festgehalten, welche Gruppen weit draußen standen
-   * -- nur die schieben Graphit in die untere Wassersäule.
-   */
+  /** Retain history for old saves; worth uses current geometry. */
   onScram(s, sp, ctx) {
     for (let i = 0; i < s.rod.length; i++) {
       s.tipArmed[i] = s.rod[i] < sp.tip.outThreshold ? 1 : 0;
@@ -615,47 +626,17 @@ function _voidCoeff(s, sp) {
   return a1 + (a0 - a1) * f;
 }
 
-/**
- * Graphitspitzen der Schnellabschaltung.
- *
- *   ρ_Spitze = W · f_unten · Σ g(h)      g(h) = sin(π·h/span) für h < span
- *
- * Es zählen nur die Gruppen, die beim Auslösen weit draußen standen. f_unten
- * gewichtet mit dem Flussprofil: bei bodennahem Fluss wirkt der Graphit dort,
- * wo die meiste Leistung entsteht, und die Einfuhr wird doppelt so groß.
- *
- * Jenseits von span sitzt der Absorber im Kern und der Beitrag ist weg -- die
- * Reaktivität wird stark negativ. Nur eben zu spät.
- */
+/** Reduced displacer worth over the initial 1.25 m of a 7 m core. */
 function _tipReactivity(s, sp) {
-  if (!s.az5 || !s.az5.armed) return 0;
+  // Reduced geometric shape: identical positions/profile have identical worth,
+  // whether reached by normal drive or AZ-5. No button-triggered reactivity.
   const span = sp.tip.span;
   const fBot = clamp(1 + s.ao, 0, 2);
   let tip = 0;
-  let notYet = 0;
-  for (let i = 0; i < s.rod.length; i++) {
-    if (!s.tipArmed[i]) continue;
-    const h = s.rod[i];
-    if (h <= 0) continue;
-
-    // Der Graphitverdränger schiebt sich in die untere Wassersäule.
-    if (h < span) tip += Math.sin((Math.PI * h) / span);
-
-    // Und solange er das tut, ist der Absorber noch gar nicht im Kern -- er
-    // hängt fünf Meter darüber. Der allgemeine Stabbeitrag rechnet ihn aber
-    // vom ersten Zentimeter an mit, weil er nichts von Verdrängern weiß.
-    // Hier wird er deshalb wieder herausgerechnet und über den doppelten
-    // Verdrängerweg langsam wieder zugelassen.
-    //
-    // Ohne diese Verrechnung gewinnt der Absorber jede Sekunde: bei h = 0,3
-    // stehen +350 pcm Graphit gegen −830 pcm Absorber, die Schnellabschaltung
-    // wäre auch mit leerem Kern sofort negativ, und die Eigenheit, um die es
-    // bei diesem Reaktortyp geht, gäbe es im Spiel nicht.
-    const worth = sp.rodBanks[i].worth || 0;
-    const fade = h <= span ? 1 : clamp((2 * span - h) / span, 0, 1);
-    if (fade > 0) notYet += worth * rodWorthCurve(h) * fade;
+  for (const h of s.rod) {
+    if (h > 0 && h < span) tip += Math.sin(Math.PI * h / span);
   }
-  return (sp.tip.worth_pcm * fBot * tip + notYet) * 1e-5;
+  return sp.tip.worth_pcm * fBot * tip * 1e-5;
 }
 
 /**

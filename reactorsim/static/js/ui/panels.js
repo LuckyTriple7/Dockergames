@@ -11,7 +11,7 @@ import { TrendRecorder } from './trend.js';
 import { Annunciator, Horn } from './annunciator.js';
 import { PulseLoop } from './music.js';
 import {
-  autoSwitch, station, slider, buttonGroup, jogButtons, pumpRow, isControlsPaused,
+  autoSwitch, station, slider, buttonGroup, indicator, jogButtons, pumpRow, isControlsPaused,
 } from './controls.js';
 import { MIMICS } from './mimic.js';
 import { runHelper } from '../game/helper.js';
@@ -283,7 +283,7 @@ export function buildPanels(engine, render, helperEnabled) {
   // diese Handlungen ohne DOM nachzuspielen -- die Mutationslogik selbst
   // steht deshalb nur hier in der Typdatei, kein zweites Mal.
   const uiKit = recordingKit(
-    { autoSwitch, station, slider, buttonGroup },
+    { autoSwitch, station, slider, buttonGroup, indicator },
     (id, v) => { if (engine.recorder) engine.recorder.record(id, v); },
   );
   const extras = (hooks.uiControls ? hooks.uiControls(s, sp, ctx, uiKit) : []) || [];

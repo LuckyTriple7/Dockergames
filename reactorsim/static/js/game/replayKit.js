@@ -21,6 +21,7 @@
  *  @param {(id:string, value:*)=>void} record */
 export function recordingKit(kit, record) {
   return {
+    indicator: (options) => kit.indicator(options),
     autoSwitch: (labelKey, initial, onChange) => kit.autoSwitch(labelKey, initial, (v) => {
       record('auto:' + labelKey, v);
       onChange(v);
@@ -47,6 +48,7 @@ export function recordingKit(kit, record) {
 export function captureKit(map) {
   const stub = { node: null, set() {} };
   return {
+    indicator: () => stub,
     autoSwitch: (labelKey, initial, onChange) => { map['auto:' + labelKey] = onChange; return stub; },
     station: (o) => {
       map['write:' + o.labelKey] = o.write;

@@ -14,8 +14,9 @@ import { Pump, Valve, TransportDelay, Lag, coldStopPumps } from '../sim/componen
 import {
   RodController, PressurizerController, FeedwaterController, GovernorController,
 } from '../sim/controllers.js';
-import { tsat, psat, hg, hf, rhog, dpdT } from '../sim/steam.js';
+import { tsat, psat, hg, hf, rhog } from '../sim/steam.js';
 import { clamp, toK } from '../sim/constants.js';
+import { availableSteam, saturatedPressure, coverage, transferFraction } from '../sim/thermal.js';
 import { SEVERITY } from '../sim/trips.js';
 
 export const spec = {
@@ -377,6 +378,11 @@ export const hooks = {
 
   moderatorTemp(s, sp, Tc) { return Tc; },
 
+  heatTransfer(s, sp) {
+    return transferFraction(_dnbr(s, sp, { load: s.P_th / sp.P0_th,
+      subcooling: tsat(s.p_prim) - s.T_co }));
+  },
+
   /** Primär- und Sekundärkreis. */
   stepLoop(s, sp, ctx, dt) {
     // ── Pumpen und Kerndurchsatz ─────────────────────────────────────────────
@@ -422,7 +428,8 @@ export const hooks = {
     //   q = UA2·(T_heiß − q/(2·W·c_p) − T_m)
     const Wcp = Math.max(W * sp.coolant.cp, 1);
     const qPrim = (UA2 * (T_hotSG - Tm)) / (1 + UA2 / (2 * Wcp));
-    const qSec = UA2 * (Tm - Tsat_sg);
+    const wet = coverage(s.M_sg, sp.sg.mass * 0.6);
+    const qSec = UA2 * wet * (Tm - Tsat_sg);
     s.T_sgm = Tm + ((qPrim - qSec) * dt) / (sp.sg.mass * 0.5 * sp.sg.cp);
 
     // Kalter Strang: was der Dampferzeuger entzieht, fehlt dem Rücklauf.
@@ -431,7 +438,6 @@ export const hooks = {
 
     // ── Frischdampf ──────────────────────────────────────────────────────────
     const hfw = _hfw(sp);
-    const W_gen = Math.max(qSec / Math.max(hg(s.p_sg) - hfw, 1), 0);
 
     ctx.govValve.demand = s.turbineTripped ? 0 : s.gov;
     ctx.govValve.step(dt);
@@ -440,32 +446,29 @@ export const hooks = {
 
     const dpTurb = Math.max(s.p_sg - s.p_cond, 0);
     const rhoS = rhog(s.p_sg);
-    const W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dpTurb);
-    const W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dpTurb);
-    s.W_steam = W_t + W_bp;
+    let W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dpTurb);
+    let W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dpTurb);
+    let relief = Math.max(s.p_sg - 88, 0) * 400;
+    const requested = W_t + W_bp + relief;
+    const actual = availableSteam({ mass: s.M_sg, feed: s.W_fw, requested, dt,
+      pressure: s.p_sg, cp: sp.sg.cp, metalCapacity: sp.sg.mass * sp.sg.cp * 0.05,
+      heat: qSec, feedEnthalpy: hfw });
+    const scale = requested > 0 ? actual / requested : 0;
+    W_t *= scale; W_bp *= scale; relief *= scale;
+    s.W_steam = actual;
 
-    // Druck aus der Energiebilanz des Sekundärinventars. Die Kapazität ist
-    // M·c_p·dT_sat/dp -- dieselbe Wärme hebt den Druck bei 64 bar anders als
-    // bei 88 bar, weil die Sättigungskurve dort flacher liegt.
-    const C_p = sp.sg.mass * sp.sg.cp / Math.max(dpdT(s.p_sg), 1e-6);
-    const qOut = s.W_steam * Math.max(hg(s.p_sg) - hfw, 1);
-    s.p_sg = clamp(s.p_sg + ((qSec - qOut) * dt) / C_p, 1, 110);
-
-    // Sicherheitsventile der Sekundärseite.
-    if (s.p_sg > 88) {
-      const relief = (s.p_sg - 88) * 400;
-      s.p_sg -= (relief * Math.max(hg(s.p_sg) - hfw, 1) * dt) / C_p;
-      s.M_sg -= relief * dt;
-    }
-
-    // ── Füllstand ────────────────────────────────────────────────────────────
-    s.M_sg = Math.max(s.M_sg + (s.W_fw - s.W_steam) * dt, 1000);
+    const balance = saturatedPressure({ pressure: s.p_sg, mass: s.M_sg,
+      cp: sp.sg.cp, metalCapacity: sp.sg.mass * sp.sg.cp * 0.05, heat: qSec, feed: s.W_fw,
+      feedEnthalpy: hfw, steam: s.W_steam, dt });
+    s.p_sg = balance.pressure;
+    s.pressureClipKJ = balance.rejectedKJ;
+    s.M_sg = Math.max(0, s.M_sg + (s.W_fw - s.W_steam) * dt);
     const Ltrue = clamp(0.5 + (s.M_sg - sp.sg.mass) / sp.sg.massSpan, 0, 1);
     // Schrumpfen und Quellen: fällt der Druck, bilden sich mehr Blasen und der
     // Füllstand steigt SCHEINBAR -- obwohl Wasser fehlt. Ohne diesen Term
     // fühlt sich die Speisewasserregelung falsch an, und der klassische
     // Bedienfehler nach einem Lastabwurf wäre gar nicht möglich.
-    s.L_sg = clamp(Ltrue + sp.sg.shrinkSwell * (sp.sg.p0 - s.p_sg) / sp.sg.p0, 0, 1);
+    s.L_sg = clamp(Ltrue + coverage(s.M_sg, sp.sg.mass) * sp.sg.shrinkSwell * (sp.sg.p0 - s.p_sg) / sp.sg.p0, 0, 1);
 
     // ── Druckhalter ──────────────────────────────────────────────────────────
     const dTavg = (Tavg - ctx.tAvgPrev) / dt;

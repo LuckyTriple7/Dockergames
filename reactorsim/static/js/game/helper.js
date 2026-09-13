@@ -225,12 +225,7 @@ const BWR_FIXES = {
     if (!s.contVentOpen) { s.contVentOpen = true; a.push(act('cont_vent_open')); }
     return fixed(a);
   },
-  // NICHT automatisieren: bei h2_critical (Ausloeseschwelle 40 kg) steht die
-  // Wasserstoffmenge laengst ueber den 25 kg, ab denen contVentOpen in
-  // bwr.js stepLoop() die Explosion ausloest ("h2Exploded"). Der Hilfetext
-  // raet trotzdem zum Venten -- fuer einen Menschen mit Ermessen, nicht fuer
-  // einen Knopf, der das blind ausfuehrt. Lieber unfixable als eine Hilfe,
-  // die den Kern selbst in die Luft jagt.
+  // Severe-accident gas management requires operator judgement.
   h2_critical: () => UNFIXABLE,
   // Der Antrieb sitzt fest, siehe PWR_FIXES.rod_stuck.
   rod_stuck: () => UNFIXABLE,
@@ -238,28 +233,13 @@ const BWR_FIXES = {
 
 // ── RBMK ─────────────────────────────────────────────────────────────────────
 //
-// ORM/Dampfblasenkoeffizient: NIEMALS AZ-5 als Reaktion. Bei weit gezogenen
-// Staeben fuehrt die Schnellabschaltung in den ersten Sekunden POSITIVE
-// Reaktivitaet ein (Graphitspitzen, siehe plants/rbmk.js _tipReactivity()) --
-// die Auslegungsstoerung dieses Typs, und der schaerfste Einzelfall der Regel
-// oben. Der Hilfetext (alarm_orm_critical_help) ist hier ohnehin explizit:
-// Staebe von Hand einfahren, AZ-5 nur als allerletzte Wahl des Bedieners.
-
-function rbmkInsertRods(engine, actions) {
-  const s = engine.state, ctx = engine.ctx;
-  if (ctx.powerCtl.auto) { ctx.powerCtl.auto = false; actions.push(act('power_ctl_manual')); }
-  if (s.rodDmd[0] < 1 || s.rodDmd[1] < 1) {
-    s.rodDmd[0] = 1; s.rodDmd[1] = 1;
-    actions.push(act('rods_insert'));
-  }
-}
-
+// Manual insertion shares the same geometric displacer effect as AZ-5.
 const RBMK_FIXES = {
   power_high: () => UNFIXABLE,
   period_short: () => UNFIXABLE,
-  orm_low: (e) => { const a = []; rbmkInsertRods(e, a); return fixed(a); },
-  orm_critical: (e) => { const a = []; rbmkInsertRods(e, a); return fixed(a); },
-  void_positive: (e) => { const a = []; rbmkInsertRods(e, a); startPumps(e.ctx, a); return fixed(a); },
+  orm_low: () => UNFIXABLE,
+  orm_critical: () => UNFIXABLE,
+  void_positive: () => UNFIXABLE,
   // Kein Frischdampf-/Umleitventil im Zugriff dieses Typs (uiControls() bietet
   // nur den Umwaelzstrom), und ohne RESA/AZ-5 bleibt sonst kein Hebel.
   drum_press_high: () => UNFIXABLE,

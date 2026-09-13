@@ -1,16 +1,5 @@
-// Nachzerfallswärme in vier exponentiellen Pseudogruppen.
-//
-//   dD_j/dt = f_j·λ_j·n − λ_j·D_j        P_zerfall = Σ D_j
-//
-// Jede Gruppe strebt gegen f_j·n und folgt der Leistung mit ihrer eigenen
-// Zeitkonstante -- 5 s, 100 s, 33 min, gut ein Tag. Zusammen bilden sie den
-// t^-0.2-Verlauf über fünf Zehnerpotenzen nach, tragen die Leistungsgeschichte
-// aber im eigenen Zustand statt in einem Integral über die Vergangenheit.
-//
-// ACHTUNG, die häufigste Verwechslung an dieser Stelle:
-//     P_th = P0 · (PROMPT_FRACTION·n + Σ D_j)
-// Nicht n + ΣD_j. Im stationären Volllastbetrieb ist ΣD_j = 0,070; ohne den
-// Abzug käme die Anlage auf 107 % und jede Wärmebilanz wäre falsch.
+// History-dependent decay heat in logarithmically spaced pseudo-groups.
+// Approximate gameplay model; coefficients and limitations in constants.js.
 
 import { DECAY_F, DECAY_L, relax } from './constants.js';
 
@@ -24,7 +13,7 @@ export function equilibriumDecay(n) {
 }
 
 /**
- * @param {Float64Array} D  vier Gruppen (wird verändert)
+ * @param {Float64Array} D  NDECAY Gruppen (wird verändert)
  * @param {number} n        relative neutronische Leistung
  * @param {number} dt       Sekunden
  * @returns {number} Nachzerfallswärme als Anteil der Nennleistung

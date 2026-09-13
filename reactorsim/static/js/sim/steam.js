@@ -15,6 +15,12 @@
 
 import { toK, clamp } from './constants.js';
 
+/** IAPWS R1-76(2014), N/m. https://iapws.org/documents/release/Surf-H2O.download */
+export function surfaceTension(T) {
+  const tau = Math.max(1 - T / 647.096, 0);
+  return 0.2358 * tau ** 1.256 * (1 - 0.625 * tau);
+}
+
 // p, T_sat(°C), h_f, h_g, v_f, v_g
 const TABLE = [
   // Der Kondensator faehrt bei 0,04 bis 0,06 bar -- ohne diese Zeilen haette
@@ -139,11 +145,9 @@ export function voidFraction(x, p, G) {
   const rg = rhog(p);
   const rf = rhof(p);
   const C0 = 1.13;
-  // V_gj = 2,9·(σ·g·Δρ/ρ_f²)^0,25. Die Oberflächenspannung von Wasser fällt
-  // mit dem Druck; die Näherung σ ≈ 0,0588·(1 − T/T_krit)^1,2 reicht hier.
+  // Drift velocity uses IAPWS water surface tension at saturation.
   const T = tsat(p);
-  const Tkrit = 647.1;
-  const sigma = Math.max(0.0588 * Math.pow(Math.max(1 - T / Tkrit, 1e-3), 1.2), 1e-4);
+  const sigma = surfaceTension(T);
   const Vgj = 2.9 * Math.pow((sigma * 9.81 * (rf - rg)) / (rf * rf), 0.25);
   const Gc = Math.max(G, 1);
   const denom = C0 * (xc + (1 - xc) * (rg / rf)) + (Vgj * rg) / Gc;

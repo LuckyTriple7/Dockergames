@@ -13,7 +13,7 @@ import { Session, PHASE } from '../static/js/game/session.js';
 import { gridDeviationTrips } from '../static/js/game/scenario.js';
 import { attachRecorder } from '../static/js/game/recorder.js';
 import { record } from '../static/js/game/coreActions.js';
-import { recordingKit } from '../static/js/game/replayKit.js';
+import { recordingKit, captureKit } from '../static/js/game/replayKit.js';
 import { replayRun } from '../static/js/game/replay.js';
 
 const DT = 0.05;
@@ -49,6 +49,27 @@ test('replayRun reproduziert einen Live-Lauf ohne jede Bedienhandlung', async ()
 
   const replayed = replayRun(plant, scenarioDef, []);
   assert.deepEqual(replayed, session.result.summary);
+});
+
+test('BWR emergency power, depressurization and injection replay exactly', async () => {
+  const plant = getPlant('bwr');
+  const original = await loadScenario('bwr_fukushima.json');
+  const def = { ...original, duration_s: 600,
+    events: [{ t: 30, id: 'earthquake_scram' }, { t: 60, id: 'station_blackout' }] };
+  const engine = createEngine(plant, { seed: def.seed, extraTrips: gridDeviationTrips(def) });
+  attachRecorder(engine);
+  const map = {};
+  const kit = recordingKit(captureKit(map), (id, value) => engine.recorder.record(id, value));
+  plant.hooks.uiControls(engine.state, engine.spec, engine.ctx, kit);
+  const session = driveToEnd(engine, def, (n) => {
+    if (n === 1800) map['btn:ctl_emergency_dc']('1');
+    if (n === 1900) map['btn:ctl_depressurize']('1');
+    if (n === 2000) map['btn:ctl_fire_inj']('1');
+    if (n === 2100) map['btn:ctl_cont_vent']('1');
+  });
+  const log = engine.recorder.serialize();
+  assert.equal(log.length, 4);
+  assert.deepEqual(replayRun(plant, def, log), session.result.summary);
 });
 
 test('replayRun reproduziert einen Live-Lauf MIT Kernaktionen (Regler, Last, Pumpe, Stäbe)', async () => {

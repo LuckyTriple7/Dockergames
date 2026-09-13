@@ -88,7 +88,7 @@ test('SWR: Frischdampf-Absperrung klemmt -- oeffnet NICHT, Notkondensator wird n
   assert.equal(e.state.icDemand, 1, 'schon angefordert, damit der Notkondensator sofort greift, sobald der Bediener selbst abschaltet');
 });
 
-test('SWR: Wasserstoff kritisch bleibt IMMER unfixable -- Venten wuerde die Explosion selbst ausloesen', () => {
+test('SWR: Wasserstoff kritisch bleibt IMMER unfixable -- schwere Unfallfolgen erfordern Bedienerentscheidung', () => {
   const e = makeEngine('bwr');
   e.state.h2Mass = 45;
   e.state.contVentOpen = false;
@@ -97,17 +97,15 @@ test('SWR: Wasserstoff kritisch bleibt IMMER unfixable -- Venten wuerde die Expl
   assert.equal(e.state.contVentOpen, false, 'der Helfer darf hier nichts anfassen');
 });
 
-test('RBMK: ORM kritisch faehrt die Staebe von Hand ein -- NIE automatisch AZ-5', () => {
+test('RBMK: low ORM does not trigger blind manual insertion or AZ-5', () => {
   const e = makeEngine('rbmk');
-  e.state.rod[0] = 0.05; e.state.rod[1] = 0.05;
-  e.state.rodDmd[0] = 0.05; e.state.rodDmd[1] = 0.05;
-  e.ctx.powerCtl.auto = true;
-  const r = runHelper(e, 'rbmk', 'orm_critical');
-  assert.equal(r.status, 'fixed');
-  assert.equal(e.state.scram.active, false, 'AZ-5 haette bei weit gezogenen Staeben positive Reaktivitaet eingefuehrt');
-  assert.equal(e.ctx.powerCtl.auto, false);
-  assert.deepEqual([e.state.rodDmd[0], e.state.rodDmd[1]], [1, 1]);
-  assert.ok(r.actions.some((a) => a.key === 'helper_action_rods_insert'));
+  e.state.rod.fill(0.05); e.state.rodDmd.fill(0.05);
+  const before = [...e.state.rodDmd];
+  for (const alarm of ['orm_low', 'orm_critical', 'void_positive']) {
+    assert.equal(runHelper(e, 'rbmk', alarm).status, 'unfixable');
+    assert.deepEqual([...e.state.rodDmd], before);
+    assert.equal(e.state.scram.active, false);
+  }
 });
 
 test('RBMK: axiale Schieflage ist nicht automatisch behebbar', () => {

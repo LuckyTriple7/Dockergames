@@ -102,6 +102,8 @@ export function createState(spec, opts = {}) {
 
     // Leistung und Netz
     P_th: 0,
+    coolantHeatKJ: 0,
+    pressureClipKJ: 0,
     P_e: 0,
     P_demand: spec.P0_e || 0,
     f_grid: 50.0,

@@ -152,19 +152,26 @@ export function createEngine(plant, opts = {}) {
 
     // Brennstoff: Quelle ist die Spaltleistung, Senke das Hüllrohr.
     const qFuel = P_th * 1000 * (spec.fuel.depositFraction || 0.974);
+    const fuelBefore = s.T_f;
     s.T_f = relax(s.T_f, s.T_cl + qFuel / UA_fc, h, C_f / UA_fc);
 
     // Hüllrohr zwischen Brennstoff und Kühlmittel.
-    const qClad = UA_fc * (s.T_f - s.T_cl);
-    s.T_cl = relax(s.T_cl, T_cool + qClad / UA_cc, h, C_cl / UA_cc);
+    // Integrated fluxes conserve energy even during a fast transient.
+    const qClad = qFuel - C_f * (s.T_f - fuelBefore) / h;
+    const cladBefore = s.T_cl;
+    const transfer = hooks.heatTransfer ? hooks.heatTransfer(s, spec, ctx) : 1;
+    const UA = UA_cc * clamp(transfer, 0.0001, 1);
+    s.T_cl = relax(s.T_cl, T_cool + qClad / UA, h, C_cl / UA);
 
     // Kühlmittel: Wärme vom Hüllrohr, plus der Teil der Spaltenergie, der gar
     // nicht erst im Brennstoff landet -- Gammastrahlung und Neutronen geben
     // rund 2,6 % direkt an Moderator und Einbauten ab. Ohne diesen Anteil
     // verschwänden 100 MW aus der Bilanz, und der Kern liefe auf 104,6 %,
     // um die Turbine trotzdem zu bedienen.
-    const qDirect = P_th * 1000 * (1 - (spec.fuel.depositFraction || 0.974));
-    const qCool = UA_cc * (s.T_cl - T_cool) + qDirect;
+    const deposited = P_th * 1000 * (1 - (spec.fuel.depositFraction || 0.974));
+    const qDirect = hooks.directHeat ? hooks.directHeat(s, spec, ctx, deposited, h) : deposited;
+    const qCool = qClad - C_cl * (s.T_cl - cladBefore) / h + qDirect;
+    s.coolantHeatKJ = (s.coolantHeatKJ || 0) + qCool * h;
 
     if (hooks.coreCoolant) {
       // Siedende Kerne rechnen hier anders: die Austrittstemperatur ist die
@@ -361,6 +368,7 @@ export function createEngine(plant, opts = {}) {
 
   function step(dt) {
     if (s.fault) return;
+    s.coolantHeatKJ = 0;
 
     // 1 + 2: Reaktivität und Kinetik, Kernthermik in den Untertakten.
     const rho0 = rx.compute(s, spec);
