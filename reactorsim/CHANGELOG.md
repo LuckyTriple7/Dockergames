@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.0.74
+
+- ✨ **Vier neue Tastenkürzel** (`ui/shortcuts.js`, `main.js`):
+  - `Strg+S` speichert sofort, dieselbe Stelle wie der Speichern-Knopf.
+  - `Strg+X` zeigt eine Abfrage ("Zum Hauptmenü?") und verlässt danach die
+    Schicht -- der Menü-Knopf selbst fragt weiterhin nicht nach, ein
+    Tastendruck kann aber aus Versehen kommen.
+  - `Strg+Z` **gehalten** (eine volle Sekunde) löst die Schnellabschaltung
+    aus -- der Knopf blinkt währenddessen über dasselbe `data-armed`, das
+    auch der Zwei-Klick-Knopf benutzt. Loslassen vor Ablauf bricht ab, ganz
+    ohne Auslösung.
+  - `Strg+M` schaltet den Ton stumm/an, dieselbe Stelle wie die beiden
+    Lautsprecher-Knöpfe (Startbildschirm, Kopfzeile).
+- ✨ **Meldehupe zweistufig statt Dauersirene.** Bisher lief `alarm_sirene.mp3`
+  in Dauerschleife, solange eine Meldung unquittiert war -- als nervig
+  empfunden. Jetzt läuft die Sirene EINMAL durch, danach übernimmt ein neuer
+  Dauerton (`game_attention.mp3`) bis zum Quittieren (`Horn` in
+  `annunciator.js`).
+
 ## 0.0.73
 
 - ✍️ **Alle 9 Szenario-Einweisungen überarbeitet** (`scn_*_brief` in

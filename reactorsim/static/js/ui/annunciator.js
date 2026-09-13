@@ -88,36 +88,58 @@ export class Annunciator {
 export class Horn {
   constructor() {
     this._enabled = true;
-    // Sirene läuft als Dauerschleife, solange eine Meldung unquittiert ist
-    // (siehe alarm()/silence() unten) -- ein einzelner Clip würde sich bei
-    // jedem Taktschlag der blinkenden Kachel selbst überlagern.
+    // Zweistufig: die Sirene laeuft EINMAL durch (kein Loop), danach uebernimmt
+    // der Dauerton, bis quittiert wird -- ein einzelner Sirenen-Clip in Dauer-
+    // schleife wuerde sich bei jedem Taktschlag der blinkenden Kachel selbst
+    // ueberlagern, und die Sirene allein in Dauerschleife wurde als nervig
+    // empfunden. _playing haelt fest, ob diese Episode schon begonnen hat --
+    // alarm() darf sie nicht neu antriggern, waehrend Sirene ODER Dauerton
+    // schon laeuft, silence() setzt sie fuer die naechste Meldung zurueck.
     this._siren = new MusicLoop('alarm_sirene.mp3', 0.35);
+    this._siren.audio.loop = false;
+    this._attention = new MusicLoop('game_attention.mp3', 0.35);
+    this._playing = false;
+    // 'ended' feuert nur, wenn die Sirene natuerlich durchgelaufen ist, nicht
+    // bei silence()->stop() (das pausiert nur) -- der _playing-Check fängt
+    // trotzdem den seltenen Fall ab, dass beides im selben Augenblick passiert.
+    this._siren.audio.addEventListener('ended', () => {
+      if (this.enabled && this._playing) this._attention.start();
+    });
   }
 
   // main.js weist `app.horn.enabled = ...` direkt zu (Stats-Dialog) -- der
-  // Setter muss deshalb die laufende Sirene mit abstellen, nicht nur das
-  // Flag umlegen, sonst spielt sie nach dem Abschalten einfach weiter.
+  // Setter muss deshalb beide laufenden Toene mit abstellen, nicht nur das
+  // Flag umlegen, sonst spielt einer nach dem Abschalten einfach weiter.
   get enabled() { return this._enabled; }
   set enabled(v) {
     this._enabled = v;
     this._siren.setEnabled(v);
+    this._attention.setEnabled(v);
   }
 
   /**
-   * Meldehupe. Wird im Takt der blinkenden Kachel gerufen (siehe panels.js);
-   * start() ist idempotent, läuft also einfach weiter, statt neu anzusetzen.
+   * Meldehupe. Wird im Takt der blinkenden Kachel gerufen (siehe panels.js).
+   * Der eigentliche Start passiert nur beim ERSTEN Aufruf einer Episode
+   * (_playing noch false) -- danach laeuft die Sirene bzw. der Dauerton von
+   * selbst weiter, ein erneuter Aufruf soll nichts neu antriggern.
    * TRIP-Meldungen (severity >= 3) bekommen eine dringlichere, leicht
    * höhere Stimme -- ohne zweite Datei über die Wiedergabegeschwindigkeit.
    */
   alarm(severity = 2) {
     if (!this.enabled) return;
-    this._siren.audio.playbackRate = severity >= 3 ? 1.15 : 1.0;
+    const rate = severity >= 3 ? 1.15 : 1.0;
+    this._siren.audio.playbackRate = rate;
+    this._attention.audio.playbackRate = rate;
+    if (this._playing) return;
+    this._playing = true;
     this._siren.start();
   }
 
-  /** Sirene abstellen, sobald keine Meldung mehr unquittiert ist. */
+  /** Sirene und Dauerton abstellen, sobald keine Meldung mehr unquittiert ist. */
   silence() {
+    this._playing = false;
     this._siren.stop();
+    this._attention.stop();
   }
 
   /** Schnellabschaltung -- einmaliger Clip, kein Loop. */
@@ -130,8 +152,11 @@ export class Horn {
     if (this.enabled) playClip('game_over.mp3');
   }
 
-  /** Muss aus einer Benutzergeste heraus laufen, sonst bleibt der Ton stumm. */
+  /** Muss aus einer Benutzergeste heraus laufen, sonst bleibt der Ton stumm.
+   *  Beide Elemente einmalig anspielen -- der Dauerton startet spaeter aus
+   *  einem 'ended'-Ereignis heraus, nicht aus einer neuen Geste. */
   unlock() {
     this._siren.audio.play().then(() => this._siren.stop()).catch(() => {});
+    this._attention.audio.play().then(() => this._attention.stop()).catch(() => {});
   }
 }

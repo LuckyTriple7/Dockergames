@@ -85,6 +85,17 @@ function applyAudioPrefs() {
   }
 }
 
+/** Hauptschalter umlegen -- vom Klick auf einen der beiden .rs-mute-Knoepfe
+ *  UND von Strg+M (siehe initStart()) gerufen. */
+function toggleMute() {
+  app.prefs.audio = { ...(app.prefs.audio || {}), muted: !(app.prefs.audio || {}).muted };
+  applyAudioPrefs();
+  api.writePrefs(app.prefs);
+  if (!app.prefs.audio.muted) {
+    (app.session && app.session.phase === PHASE.RUNNING ? app.bgMusic : app.introMusic).start();
+  }
+}
+
 // ── Startbildschirm ──────────────────────────────────────────────────────────
 
 function initStart() {
@@ -169,16 +180,10 @@ function initStart() {
 
   // Ton-Hauptschalter. Der Klick ist zugleich die Nutzergeste, die der
   // Browser fuer Audio verlangt -- wer aufdreht, hoert die Musik sofort und
-  // nicht erst nach der naechsten Aktion.
+  // nicht erst nach der naechsten Aktion. Eigene Funktion statt Inline-
+  // Callback: Strg+M (siehe initStart() weiter unten) ruft dieselbe Stelle.
   for (const btn of $$('.rs-mute')) {
-    btn.addEventListener('click', () => {
-      app.prefs.audio = { ...(app.prefs.audio || {}), muted: !(app.prefs.audio || {}).muted };
-      applyAudioPrefs();
-      api.writePrefs(app.prefs);
-      if (!app.prefs.audio.muted) {
-        (app.session && app.session.phase === PHASE.RUNNING ? app.bgMusic : app.introMusic).start();
-      }
-    });
+    btn.addEventListener('click', toggleMute);
   }
 
   // Zurueck aus der Einweisung, ohne die Schicht anzutreten. Schliesst nur
@@ -231,6 +236,67 @@ function initStart() {
     .then((r) => (r.ok ? r.json() : null))
     .then((m) => { if (m && m.scenarios) app.scenarios = m.scenarios; })
     .catch(() => {});
+
+  // Abfrage vor Strg+X (siehe Tastatur weiter unten) -- der Menü-Knopf selbst
+  // fragt nicht extra nach, ein Fingertipper auf einen extra beschrifteten
+  // Knopf gilt schon als Absicht; ein Tastenkuerzel dagegen laden.
+  const confirmMenu = $('#rs-confirm-menu');
+  $('#rs-confirm-menu-yes').addEventListener('click', () => { confirmMenu.hidden = true; leaveToMenu(); });
+  $('#rs-confirm-menu-no').addEventListener('click', () => { confirmMenu.hidden = true; });
+  confirmMenu.addEventListener('click', (ev) => { if (ev.target === confirmMenu) confirmMenu.hidden = true; });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !confirmMenu.hidden) confirmMenu.hidden = true;
+  });
+
+  // Globale Tastenkuerzel, unabhaengig vom Rundenstatus -- deshalb hier statt
+  // in initControls() (Leertaste/1-4/Strg+Pfeiltasten dort, siehe dort):
+  // Strg+M soll schon auf dem Startbildschirm wirken, die anderen drei laufen
+  // ohnehin ins Leere, solange app.engine noch nicht existiert.
+  //
+  // Strg+Z haelt fest: erst nach einer vollen Sekunde ausgehaltenem Druck
+  // loest SCRAM aus (scramHoldTimer), nicht schon beim Antippen -- ein
+  // Fingertipper auf die falsche Taste darf die Anlage nicht abwerfen, genau
+  // wie beim zweistufigen Knopf (siehe initControls()). Blinkt waehrenddessen
+  // ueber dasselbe data-armed-Attribut wie der Knopf (siehe base.css).
+  let scramHoldTimer = 0;
+  const cancelScramHold = () => {
+    if (!scramHoldTimer) return;
+    window.clearTimeout(scramHoldTimer);
+    scramHoldTimer = 0;
+    $('#rs-scram').dataset.armed = '0';
+  };
+  document.addEventListener('keydown', (ev) => {
+    if (ev.target instanceof HTMLInputElement) return;
+    if (!ev.ctrlKey) return;
+    const key = ev.key.toLowerCase();
+    if (key === 'm') {
+      ev.preventDefault();
+      toggleMute();
+    } else if (key === 's') {
+      ev.preventDefault();
+      if (!app.engine) return;
+      saveCurrentGame().then((ok) => flash($('#rs-save'), t(ok ? 'save_ok' : 'save_failed')));
+    } else if (key === 'x') {
+      ev.preventDefault();
+      if (!app.engine) return;
+      confirmMenu.hidden = false;
+    } else if (key === 'z') {
+      ev.preventDefault();
+      if (ev.repeat || scramHoldTimer || !app.engine) return;
+      if (app.horn) app.horn.unlock();
+      $('#rs-scram').dataset.armed = '1';
+      scramHoldTimer = window.setTimeout(() => {
+        scramHoldTimer = 0;
+        $('#rs-scram').dataset.armed = '0';
+        if (app.horn) app.horn.scram();
+        app.engine.scram('manual');
+        setSpeed(1);
+      }, 1000);
+    }
+  });
+  document.addEventListener('keyup', (ev) => {
+    if (ev.key === 'Control' || ev.key.toLowerCase() === 'z') cancelScramHold();
+  });
 
   refreshResumeList();
 }
@@ -410,13 +476,7 @@ function initControls() {
     setSpeed(1);
   });
 
-  $('#rs-menu').addEventListener('click', () => {
-    if (app.session && app.session.phase === PHASE.RUNNING && !app.session.free) {
-      app.session.abort();
-      return;
-    }
-    toMenu();
-  });
+  $('#rs-menu').addEventListener('click', leaveToMenu);
 
   $('#rs-fault-reload').addEventListener('click', () => window.location.reload());
 
@@ -789,6 +849,17 @@ function showDestroyed() {
 function restart() {
   if (!app.lastReactor) { toMenu(); return; }
   boot(app.lastReactor, app.lastScenarioDef, null, app.lastCold);
+}
+
+/** Menü-Knopf UND Strg+X (siehe initStart()) rufen dieselbe Stelle -- ein
+ *  laufendes Szenario (nicht das freie Spiel) gilt als abgebrochen, statt
+ *  einfach zu verschwinden. */
+function leaveToMenu() {
+  if (app.session && app.session.phase === PHASE.RUNNING && !app.session.free) {
+    app.session.abort();
+    return;
+  }
+  toMenu();
 }
 
 function toMenu() {

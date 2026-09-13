@@ -501,6 +501,20 @@
   </div>
 </div>
 
+<!-- ── Abfrage vor Strg+X ───────────────────────────────────────────────── -->
+<!-- Nur das Tastenkuerzel fragt nach, nicht der Menü-Knopf selbst -- siehe
+     initStart() in main.js. -->
+<div class="rs-modal" id="rs-confirm-menu" hidden>
+  <div class="rs-modal-box">
+    <h2>{{ t.confirm_menu_title }}</h2>
+    <p>{{ t.confirm_menu_text }}</p>
+    <div class="rs-modal-actions">
+      <button type="button" class="rs-btn rs-btn-primary" id="rs-confirm-menu-yes">{{ t.btn_menu }}</button>
+      <button type="button" class="rs-btn" id="rs-confirm-menu-no">{{ t.btn_cancel }}</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Simulationsfehler ────────────────────────────────────────────────── -->
 <div class="rs-modal" id="rs-fault" hidden>
   <div class="rs-modal-box">
