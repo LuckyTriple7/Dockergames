@@ -354,7 +354,7 @@
   "val_rpv_level": "Füllstand Druckbehälter",
   "val_dome_press": "Domdruck",
   "val_cpr": "CPR",
-  "mimic_rpv": "Druckbehälter",
+  "mimic_rpv": "Reaktordruckbehälter",
   "mimic_ic": "Notkondensator",
   "mimic_sep": "Abscheider",
   "mimic_recirc": "Umwälzpumpe",

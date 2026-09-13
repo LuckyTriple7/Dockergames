@@ -354,7 +354,7 @@
   "val_rpv_level": "Vessel level",
   "val_dome_press": "Dome pressure",
   "val_cpr": "CPR",
-  "mimic_rpv": "Vessel",
+  "mimic_rpv": "Reactor vessel",
   "mimic_ic": "Isolation condenser",
   "mimic_sep": "Separator",
   "mimic_recirc": "Recirc pump",

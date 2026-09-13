@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.0.97
+
+- 🖼️ **SWR-Fließbild: Speisewasserpumpe ergänzt, Behälter umbenannt.**
+  Rückmeldung zum Schaubild: dieselbe fehlende Speisewasserpumpe wie beim
+  DWR (0.0.96) -- zwischen Kondensator und Reaktordruckbehälter fehlte
+  sie, das Kondensat floss im Bild scheinbar von allein zurück. Zeigt
+  jetzt zusätzlich "tripped" (rot), wenn kein Wechselstrom anliegt (siehe
+  `s.acPower`) -- dann stehen die Speisewasserpumpen wirklich still, nicht
+  nur ein zugedrehtes Ventil.
+  "Druckbehälter" heißt jetzt "Reaktordruckbehälter" (EN: "Reactor
+  vessel" statt "Vessel") -- war zu allgemein für das zentrale Bauteil, in
+  dem beim SWR das Wasser tatsächlich siedet.
+
 ## 0.0.96
 
 - 🖼️ **DWR-Fließbild: Speisewasserpumpe ergänzt, Primär-/Sekundärseite im

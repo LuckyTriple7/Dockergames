@@ -434,6 +434,12 @@ export function buildBwrMimic(container) {
     [t('mimic_cond')]));
   g.push(readout(402, 218, 'cond', 'middle'));
 
+  // Speisewasserpumpe: sitzt an der Ecke der Speisewasserleitung, wo sie vom
+  // Kondensator kommend nach oben zum Behaelter abbiegt -- wie beim DWR
+  // (siehe buildPwrMimic()), aus demselben Grund: ohne sie floss das
+  // Speisewasser im Bild scheinbar von allein zurueck.
+  g.push(pump(212, 232, 'fw', t('mimic_fw')));
+
   for (const node of g) root.append(node);
   container.replaceChildren(root);
 
@@ -464,9 +470,8 @@ export function buildBwrMimic(container) {
       for (const n of flows.get('prim') || []) setVar(n, '--rs-w', flowVis(fRec).toFixed(3));
       const fSteam = Math.max(0, Math.min(1.2, s.W_steam / sp.vessel.W_steam0));
       for (const n of flows.get('steam') || []) setVar(n, '--rs-w', flowVis(fSteam).toFixed(3));
-      for (const n of flows.get('feed') || []) {
-        setVar(n, '--rs-w', flowVis(Math.max(0, Math.min(1.2, s.W_fw / sp.vessel.W_steam0))).toFixed(3));
-      }
+      const fFeed = Math.max(0, Math.min(1.2, s.W_fw / sp.vessel.W_steam0));
+      for (const n of flows.get('feed') || []) setVar(n, '--rs-w', flowVis(fFeed).toFixed(3));
       for (const n of flows.get('bypass') || []) setVar(n, '--rs-w', flowVis(s.bypass || 0).toFixed(3));
       for (const n of flows.get('ic') || []) setVar(n, '--rs-w', s.icOpen ? '1.000' : '0.000');
       for (const n of flows.get('srv') || []) setVar(n, '--rs-w', flowVis(s.srv || 0).toFixed(3));
@@ -475,6 +480,15 @@ export function buildBwrMimic(container) {
       if (rcp) {
         setAttr(rcp, 'data-state', (d.pumpStates && d.pumpStates[0]) || 'stopped');
         setVar(rcp.parentNode, '--rs-w', fRec.toFixed(3));
+      }
+      const fw = comps.get('fw');
+      if (fw) {
+        // Ohne Wechselstrom stehen die Speisewasserpumpen still, egal wie
+        // weit der Regler aufreissen wuerde (siehe s.acPower in bwr.js) --
+        // "tripped" zeigt das, statt es wie ein einfach zugedrehtes Ventil
+        // aussehen zu lassen.
+        setAttr(fw, 'data-state', !s.acPower ? 'tripped' : (fFeed > 0.05 ? 'run' : 'stopped'));
+        setVar(fw.parentNode, '--rs-w', fFeed.toFixed(3));
       }
       setAttr(comps.get('gov'), 'data-state', s.gov > 0.02 && s.msiv > 0.5 ? 'run' : 'stopped');
       setAttr(comps.get('bypass'), 'data-state', s.bypass > 0.02 ? 'run' : 'stopped');
