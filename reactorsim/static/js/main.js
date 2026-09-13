@@ -291,7 +291,7 @@ function initStart() {
     } else if (key === 's') {
       ev.preventDefault();
       if (!app.engine) return;
-      saveCurrentGame().then((ok) => flash($('#rs-save'), t(ok ? 'save_ok' : 'save_failed')));
+      saveManualGame().then((ok) => flash($('#rs-save'), t(ok ? 'save_ok' : 'save_failed')));
     } else if (key === 'x') {
       ev.preventDefault();
       if (!app.engine) return;
@@ -327,11 +327,16 @@ function refreshResumeList() {
     // Ein Slot je Reaktortyp ("auto-<typ>"), nicht mehr der eine gemeinsame
     // "auto"-Slot von vorher -- ein Stand beim DWR ueberschreibt seither
     // keinen beim SWR mehr. Aeltere Spielstaende aus der Zeit davor (Slot
-    // "auto") tauchen hier nicht mehr auf.
-    const autos = saves.filter((x) => x.slot && x.slot.startsWith('auto-'));
+    // "auto") tauchen hier nicht mehr auf. Seit 0.0.80 zusaetzlich "manual-":
+    // der Speichern-Knopf hat seinen eigenen Slot, den die Autospeicherung
+    // nie anfasst (siehe saveSlotName()) -- beide stehen hier nebeneinander,
+    // an der Beschriftung unterscheidbar.
+    const autos = saves.filter((x) => x.slot
+      && (x.slot.startsWith('auto-') || x.slot.startsWith('manual-')));
     list.replaceChildren(...autos.map((sv) => {
       const scn = sv.scenario && app.scenarios.find((x) => x.id === sv.scenario);
-      const btn = el('button.rs-btn', { type: 'button' }, [t('btn_resume_named', {
+      const labelKey = sv.slot.startsWith('manual-') ? 'btn_resume_named_manual' : 'btn_resume_named';
+      const btn = el('button.rs-btn', { type: 'button' }, [t(labelKey, {
         reactor: t('reactor_' + sv.reactor),
         scenario: sv.scenario ? t(scn ? scn.title_key : 'scn_unknown') : t('scn_free'),
         when: new Date(sv.saved_at * 1000).toLocaleString(),
@@ -659,7 +664,7 @@ function initControls() {
   statsModal.addEventListener('click', (ev) => { if (ev.target === statsModal) statsModal.hidden = true; });
 
   $('#rs-save').addEventListener('click', () => {
-    saveCurrentGame().then((ok) => {
+    saveManualGame().then((ok) => {
       flash($('#rs-save'), t(ok ? 'save_ok' : 'save_failed'));
     });
   });
@@ -809,19 +814,34 @@ async function fastForwardXenon() {
 
 // Alle 60 echte Sekunden, unabhaengig vom Zeitraffer -- ein Strg+R oder ein
 // Tab-Absturz soll hoechstens eine Minute Spielzeit kosten, nicht den ganzen
-// Lauf. Speichert in denselben Slot wie der Speichern-Knopf (siehe
-// saveCurrentGame()), taucht danach automatisch in der Fortsetzen-Liste auf.
+// Lauf. Eigener Slot ("auto-...", siehe saveCurrentGame()), getrennt vom
+// Speichern-Knopf -- der schrieb bis 0.0.79 in DENSELBEN Slot, und die
+// naechste Autospeicherung ueberschrieb einen gerade von Hand gesicherten
+// Stand kommentarlos wieder mit dem inzwischen weitergelaufenen Zustand.
 const AUTOSAVE_INTERVAL_MS = 60000;
 
-/** Aktuellen Lauf in seinen Slot schreiben. Speichern-Knopf und Autosave
- *  rufen dieselbe Stelle, damit garantiert kein zweiter Slot-Name entsteht. */
+/** Slotname je Reaktortyp UND Szenario (bzw. "-free" fuers freie Spiel) --
+ *  siehe CHANGELOG 0.0.60, vorher teilten sich zwei Laeufe auf demselben
+ *  Reaktortyp einen Slot und ueberschrieben sich stillschweigend. `prefix`
+ *  haelt zusaetzlich Autospeicherung und Speichern-Knopf auseinander (siehe
+ *  CHANGELOG 0.0.80) -- ohne das teilten sich beide denselben Slot, und die
+ *  naechste Autospeicherung ueberschrieb einen von Hand gesicherten Stand
+ *  wieder. */
+function saveSlotName(prefix) {
+  const scnId = app.session && app.session.scenario ? app.session.scenario.id : null;
+  return prefix + '-' + app.lastReactor + '-' + (scnId || 'free');
+}
+
+/** Automatische Sicherung -- eigener Slot, siehe AUTOSAVE_INTERVAL_MS oben. */
 function saveCurrentGame() {
   const scnId = app.session && app.session.scenario ? app.session.scenario.id : null;
-  // Eigener Slot je Reaktortyp UND Szenario (bzw. "-free" fuers freie Spiel)
-  // -- siehe CHANGELOG 0.0.60, vorher teilten sich zwei Laeufe auf demselben
-  // Reaktortyp einen Slot und ueberschrieben sich stillschweigend.
-  return saveGame(app.engine, scnId, 'auto-' + app.lastReactor + '-' + (scnId || 'free'),
-    app.session && app.session.run);
+  return saveGame(app.engine, scnId, saveSlotName('auto'), app.session && app.session.run);
+}
+
+/** Speichern-Knopf -- eigener Slot, den die Autospeicherung nie anfasst. */
+function saveManualGame() {
+  const scnId = app.session && app.session.scenario ? app.session.scenario.id : null;
+  return saveGame(app.engine, scnId, saveSlotName('manual'), app.session && app.session.run);
 }
 
 function showFault(detail) {

@@ -452,6 +452,7 @@
   "debrief_offline": "no server reachable",
   "btn_save": "Save",
   "btn_resume_named": "Resume: {reactor} — {scenario} ({when})",
+  "btn_resume_named_manual": "Resume (manually saved): {reactor} — {scenario} ({when})",
   "scn_unknown": "Unknown scenario",
   "save_ok": "Saved",
   "save_failed": "Save failed",

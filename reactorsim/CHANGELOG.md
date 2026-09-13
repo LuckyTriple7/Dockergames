@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.0.80
+
+- 🐛 **Speichern-Knopf und Autospeicherung teilten sich einen Slot.**
+  `saveCurrentGame()` schrieb für beide in denselben `"auto-<typ>-<szenario>"`
+  -- die naechste automatische Sicherung (alle 60s) überschrieb einen gerade
+  von Hand gesicherten Stand kommentarlos mit dem inzwischen weitergelaufenen
+  Zustand. Eigener Slot jetzt: Autospeicherung bleibt `"auto-..."`, der
+  Speichern-Knopf (Klick UND Strg+S) schreibt nach `"manual-..."`
+  (`saveSlotName()`, `main.js`). Beide stehen als eigene Zeilen in der
+  Fortsetzen-Liste, an der Beschriftung unterscheidbar
+  (`btn_resume_named_manual`).
+
+## 0.0.79
+
+- 🔧 **Temporäre Diagnose-Logs für den Dauerton-Fehler.** 0.0.78 hat das
+  Problem nicht behoben (immer noch stumm nach der Sirene). Statt einer
+  weiteren Vermutung: `console.log`/`console.error` in `Horn.alarm()` und
+  `MusicLoop.start()` (`ui/annunciator.js`, `ui/music.js`), klar als
+  "TEMPORAERE DIAGNOSE" markiert -- zeigen bei jedem Poll den Zustand beider
+  `<audio>`-Elemente (paused/ended/currentTime/readyState/error). Fliegen
+  wieder raus, sobald die Konsolenausgabe den echten Fehler zeigt.
+
 ## 0.0.78
 
 - 🐛 **Meldehupe: Dauerton kam wirklich nie, jetzt gefunden.** 0.0.77s Fix

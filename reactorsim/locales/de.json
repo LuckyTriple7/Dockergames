@@ -452,6 +452,7 @@
   "debrief_offline": "kein Server erreichbar",
   "btn_save": "Speichern",
   "btn_resume_named": "Fortsetzen: {reactor} — {scenario} ({when})",
+  "btn_resume_named_manual": "Fortsetzen (manuell gespeichert): {reactor} — {scenario} ({when})",
   "scn_unknown": "Unbekanntes Szenario",
   "save_ok": "Gespeichert",
   "save_failed": "Speichern fehlgeschlagen",
