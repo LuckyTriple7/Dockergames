@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.6
+
+- 🔧 **Fix: neues RBMK-Szenario "Ausfall einer Umwälzpumpengruppe" (0.1.5)
+  war ohne Wirkung, wenn der Leistungsregler auf Automatik blieb.**
+  Nachtest ergab: der automatische Leistungsregler trimmt selbst einen
+  Ausfall von 4 der 8 Hauptumwälzpumpen 60 Minuten lang praktisch ohne
+  Leistungsabweichung weg -- die Kernaufgabe des Szenarios (positive
+  Dampfblasen-Rückkopplung von Hand beherrschen) kam so nie zustande. Das
+  Szenario startet jetzt mit dem Leistungsregler auf Hand (Ereignis
+  `power_regulator_off` bei t=0, wie im historischen RBMK-Betrieb
+  üblich) -- ohne Gegensteuern über die Steuerstäbe läuft die Leistung
+  jetzt nachweislich auf "Leistung hoch" zu. Schwierigkeit deshalb auf
+  ★★★ angehoben.
+- 📝 Außerdem die Einweisung korrigiert: die Behauptung, geringerer
+  Durchsatz erhöhe die Kavitationsgefahr an den verbliebenen Pumpen, hält
+  der Simulation nicht stand -- die Unterkühlung (`_subcooling()` in
+  rbmk.js) steigt hier tatsächlich mit sinkendem Durchsatz, weil das
+  Speisewasser einen größeren Anteil der Mischtemperatur im Fallraum
+  bestimmt. Ersetzt durch die zutreffende Aussage: höhere Pumpendrehzahl
+  gleicht den Durchsatzverlust nur teilweise aus, das eigentliche
+  Gegenmittel sind die Steuerstäbe.
+
 ## 0.1.5
 
 - 🆕 **Neuntes Szenario: RBMK "Ausfall einer Umwälzpumpengruppe"** (60 min,

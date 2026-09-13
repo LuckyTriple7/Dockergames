@@ -1,7 +1,7 @@
 {
   "id": "rbmk_mcp_loss",
   "reactor": "rbmk",
-  "difficulty": 2,
+  "difficulty": 3,
   "title_key": "scn_rbmk_mcp_title",
   "brief_key": "scn_rbmk_mcp_brief",
   "duration_s": 3600,
@@ -20,6 +20,10 @@
     "tolerance_mw": 100
   },
   "events": [
+    {
+      "t": 0,
+      "id": "power_regulator_off"
+    },
     {
       "t": 600,
       "id": "mcp_trip",
