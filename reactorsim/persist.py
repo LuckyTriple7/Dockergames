@@ -37,7 +37,12 @@ SLOT_RE = re.compile(r'^[a-z0-9_-]{1,32}$')
 PLAYER_RE = re.compile(r'^[0-9a-f]{32}$')
 
 MAX_SAVE_BYTES = 128 * 1024
-MAX_SLOTS = 20
+# 10 feste Hand-Speicherplaetze je Reaktortyp (DWR/SWR/RBMK, siehe
+# manualSlotName() in main.js) sind allein schon 30 Slots, dazu je ein
+# Autospeicher-Slot pro Reaktortyp UND Szenario (siehe saveSlotName('auto')) --
+# bei neun Szenarien plus freiem Spiel macht das nochmal bis zu zwoelf. 20 war
+# damit zu knapp, sobald jemand alle zehn Handplaetze eines Typs belegt.
+MAX_SLOTS = 60
 MAX_SCORES_PER_LIST = 50
 MAX_NAME_CHARS = 24
 MAX_PREFS_BYTES = 8 * 1024

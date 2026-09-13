@@ -299,8 +299,20 @@ button {
 .rs-start-hint { color: var(--rs-fg-mute); font-size: 12px; }
 
 /* Sitzt unter der zugehoerigen .rs-card in derselben .rs-card-group, siehe
-   dort. */
-.rs-card-resume { display: grid; gap: 6px; }
+   dort. Jetzt <details>/<summary> statt offener Liste -- bei bis zu zehn
+   Handplaetzen plus Autospeicherung waere die Karte sonst schnell voller
+   Text als Inhalt. Collapsed per Default (kein "open"-Attribut im
+   Template), ein Klick auf die Zusammenfassung klappt auf/zu, ganz ohne
+   eigenes JS dafuer -- das kann <details> nativ. */
+.rs-card-resume { font-size: 12px; }
+.rs-card-resume-summary {
+  cursor: pointer;
+  color: var(--rs-fg-mute);
+  list-style-position: outside;
+  user-select: none;
+}
+.rs-card-resume-summary:hover { color: var(--rs-fg-dim); }
+.rs-card-resume-body { display: grid; gap: 6px; margin-top: 8px; }
 .rs-resume-row { display: flex; gap: 8px; align-items: stretch; }
 .rs-resume-row .rs-btn:first-child { flex: 1; text-align: left; }
 

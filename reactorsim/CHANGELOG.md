@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.1
+
+- 💾 **Zehn feste Handspeicherplätze je Reaktortyp.** Der Speichern-Knopf
+  (und Strg+S) öffnet jetzt einen Auswahldialog mit allen zehn Plätzen
+  dieses Reaktortyps -- belegt (mit Datum/Uhrzeit/Szenario) oder frei --
+  statt stillschweigend einen einzigen, an Reaktor+Szenario gekoppelten
+  Slot zu überschreiben. Ein neu ausprobiertes Szenario legt keinen
+  elften Platz mehr an; der Spieler entscheidet selbst, welchen der
+  zehn er überschreibt. Löschen geht direkt im Dialog.
+  Die Autospeicherung bleibt unverändert (ein Slot je Reaktor+Szenario,
+  läuft alle 60s im Hintergrund weiter).
+- Die Spielstände unter jeder Reaktor-Karte sind jetzt **ausklappbar**
+  (`<details>`, collapsed per Default, Zusammenfassung zeigt nur die
+  Anzahl) -- bei bis zu zehn Handplätzen plus Autospeicherung wäre die
+  Karte sonst schnell voller Text als Inhalt. Neuester Stand zuerst.
+- 🔧 Serverseitiges Limit für Spielstände je Konto von 20 auf 60 Plätze
+  angehoben -- 30 Handplätze (10 × 3 Reaktortypen) allein sprengten das
+  alte Limit schon, bevor überhaupt eine Autospeicherung dazukam.
+
 ## 0.1.0
 
 - 🔧 **Fix: Mouseover-Umsetzung aus 0.0.99 war falsch.** Namen erschienen

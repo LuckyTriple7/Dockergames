@@ -57,8 +57,14 @@
         <!-- Von main.js gefuellt, ein Eintrag je Spielstand DIESES Typs
              (Slot "auto-pwr-..."/"manual-pwr-...") -- eigener Stand je
              Karte statt einer gemeinsamen Liste unten, damit ein RBMK-Stand
-             nicht zwischen DWR/SWR untergeht. -->
-        <div class="rs-card-resume" id="rs-card-resume-pwr" hidden></div>
+             nicht zwischen DWR/SWR untergeht. <details>/<summary> statt
+             offener Liste: bei bis zu zehn Handplaetzen plus Autospeicherung
+             waere die Karte sonst schnell voller Text als Inhalt -- collapsed
+             per Default, ein Klick auf die Zusammenfassung klappt auf. -->
+        <details class="rs-card-resume" id="rs-card-resume-pwr" hidden>
+          <summary class="rs-card-resume-summary" id="rs-card-resume-pwr-summary"></summary>
+          <div class="rs-card-resume-body" id="rs-card-resume-pwr-body"></div>
+        </details>
       </div>
       <div class="rs-card-group">
         <button class="rs-card" data-reactor="bwr" type="button">
@@ -67,7 +73,10 @@
           <span class="rs-card-tag">{{ t.reactor_bwr_tag }}</span>
           <span class="rs-card-desc">{{ t.reactor_bwr_desc }}</span>
         </button>
-        <div class="rs-card-resume" id="rs-card-resume-bwr" hidden></div>
+        <details class="rs-card-resume" id="rs-card-resume-bwr" hidden>
+          <summary class="rs-card-resume-summary" id="rs-card-resume-bwr-summary"></summary>
+          <div class="rs-card-resume-body" id="rs-card-resume-bwr-body"></div>
+        </details>
       </div>
       <div class="rs-card-group">
         <button class="rs-card" data-reactor="rbmk" type="button">
@@ -76,7 +85,10 @@
           <span class="rs-card-tag">{{ t.reactor_rbmk_tag }}</span>
           <span class="rs-card-desc">{{ t.reactor_rbmk_desc }}</span>
         </button>
-        <div class="rs-card-resume" id="rs-card-resume-rbmk" hidden></div>
+        <details class="rs-card-resume" id="rs-card-resume-rbmk" hidden>
+          <summary class="rs-card-resume-summary" id="rs-card-resume-rbmk-summary"></summary>
+          <div class="rs-card-resume-body" id="rs-card-resume-rbmk-body"></div>
+        </details>
       </div>
     </div>
 
@@ -518,6 +530,21 @@
     <div class="rs-modal-actions">
       <button type="button" class="rs-btn rs-btn-primary" id="rs-confirm-menu-yes">{{ t.btn_menu }}</button>
       <button type="button" class="rs-btn" id="rs-confirm-menu-no">{{ t.btn_cancel }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Speichern-Dialog ─────────────────────────────────────────────────── -->
+<!-- Zehn feste Handplaetze je Reaktortyp (siehe manualSlotName()/
+     openSaveSlots() in main.js) -- der Speichern-Knopf oeffnet diesen statt
+     direkt zu speichern, damit der Spieler waehlt, welchen er ueberschreibt. -->
+<div class="rs-modal" id="rs-save-slots" hidden>
+  <div class="rs-modal-box rs-modal-wide">
+    <h2>{{ t.save_slots_title }}</h2>
+    <p class="rs-ctl-hint">{{ t.save_slots_intro }}</p>
+    <div class="rs-card-resume-body" id="rs-slot-list"></div>
+    <div class="rs-modal-actions">
+      <button type="button" class="rs-btn" id="rs-save-slots-close">{{ t.btn_cancel }}</button>
     </div>
   </div>
 </div>

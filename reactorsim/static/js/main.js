@@ -305,7 +305,7 @@ function initStart() {
     } else if (key === 's') {
       ev.preventDefault();
       if (!app.engine) return;
-      saveManualGame().then((ok) => flash($('#rs-save'), t(ok ? 'save_ok' : 'save_failed')));
+      openSaveSlots();
     } else if (key === 'x') {
       ev.preventDefault();
       if (!app.engine) return;
@@ -329,19 +329,33 @@ function initStart() {
   refreshResumeList();
 }
 
+// Slot-Schema der zehn Handplaetze (siehe manualSlotName()) -- erkennt, ob
+// ein "manual-"-Stand aus dem neuen Auswahldialog kommt (dann zeigt die
+// Fortsetzen-Zeile die Slot-Nummer statt nur "manuell gespeichert"). Aeltere
+// manuelle Staende aus der Zeit vor CHANGELOG 0.1.1 (Slotname trug noch die
+// Szenario-ID statt einer Nummer) matchen hier nicht und fallen auf die
+// alte, generische Beschriftung zurueck -- sie bleiben ganz normal ladbar
+// und loeschbar, nur eben ohne Slot-Nummer in der Anzeige.
+const MANUAL_SLOT_RE = /^manual-[a-z0-9]+-slot(\d+)$/;
+
 /** Fortsetzen-Zeilen neu vom Server holen -- nicht nur beim allerersten
  *  Laden: ein Spielstand von eben (Knopf "Speichern") oder ein geloeschter
  *  muss beim naechsten Blick auf den Startbildschirm stimmen, siehe
  *  toMenu(). Der Szenariotitel braucht die einmalig geholte Szenarienliste,
  *  sonst zeigt der Hinweis nur die rohe ID.
  *
- *  Ein Container je Reaktortyp (#rs-card-resume-<id>, siehe index.html),
+ *  Ein <details> je Reaktortyp (#rs-card-resume-<id>, siehe index.html),
  *  direkt unter dessen eigener Karte -- nicht mehr eine gemeinsame Liste
  *  unten fuer alle Typen. Wer RBMK gespielt hat und danach die DWR-Karte
  *  anschaut, soll den RBMK-Stand trotzdem noch sehen: er steht unveraendert
- *  bei der RBMK-Karte, ganz ohne von der Auswahl abzuhaengen. */
+ *  bei der RBMK-Karte, ganz ohne von der Auswahl abzuhaengen. Collapsed per
+ *  Default (die Zusammenfassung nennt nur die Anzahl) -- bei bis zu zehn
+ *  Handplaetzen plus Autospeicherung waere die Karte sonst schnell voller
+ *  Text als Inhalt. */
 function refreshResumeList() {
-  const containers = new Map(PLANT_IDS.map((id) => [id, $('#rs-card-resume-' + id)]));
+  const details = new Map(PLANT_IDS.map((id) => [id, $('#rs-card-resume-' + id)]));
+  const summaries = new Map(PLANT_IDS.map((id) => [id, $('#rs-card-resume-' + id + '-summary')]));
+  const bodies = new Map(PLANT_IDS.map((id) => [id, $('#rs-card-resume-' + id + '-body')]));
   Promise.all([app.scenariosPromise, api.listSaves()]).then(([, r]) => {
     const saves = (r.ok && r.data && r.data.saves) || [];
     // Ein Slot je Reaktortyp ("auto-<typ>"), nicht mehr der eine gemeinsame
@@ -350,17 +364,23 @@ function refreshResumeList() {
     // "auto") tauchen hier nicht mehr auf. Seit 0.0.80 zusaetzlich "manual-":
     // der Speichern-Knopf hat seinen eigenen Slot, den die Autospeicherung
     // nie anfasst (siehe saveSlotName()) -- beide stehen hier nebeneinander,
-    // an der Beschriftung unterscheidbar.
-    const autos = saves.filter((x) => x.slot
-      && (x.slot.startsWith('auto-') || x.slot.startsWith('manual-')));
-    for (const box of containers.values()) { if (box) box.replaceChildren(); }
+    // an der Beschriftung unterscheidbar. Neuester Stand zuerst statt
+    // Server-Reihenfolge (die sortiert nur nach Dateiname, "slot10" liefe
+    // dabei alphabetisch VOR "slot2").
+    const autos = saves
+      .filter((x) => x.slot && (x.slot.startsWith('auto-') || x.slot.startsWith('manual-')))
+      .sort((a, b) => b.saved_at - a.saved_at);
+    for (const body of bodies.values()) { if (body) body.replaceChildren(); }
     for (const sv of autos) {
-      const container = containers.get(sv.reactor);
-      if (!container) continue; // unbekannter/kuenftiger Typ -- keine Karte dafuer da
+      const body = bodies.get(sv.reactor);
+      if (!body) continue; // unbekannter/kuenftiger Typ -- keine Karte dafuer da
       const scn = sv.scenario && app.scenarios.find((x) => x.id === sv.scenario);
-      const labelKey = sv.slot.startsWith('manual-') ? 'btn_resume_named_manual' : 'btn_resume_named';
+      const slotMatch = sv.slot.match(MANUAL_SLOT_RE);
+      const labelKey = slotMatch ? 'btn_resume_named_slot'
+        : (sv.slot.startsWith('manual-') ? 'btn_resume_named_manual' : 'btn_resume_named');
       const btn = el('button.rs-btn.rs-btn-sm', { type: 'button' }, [t(labelKey, {
         reactor: t('reactor_' + sv.reactor),
+        n: slotMatch ? slotMatch[1] : '',
         scenario: sv.scenario ? t(scn ? scn.title_key : 'scn_unknown') : t('scn_free'),
         when: new Date(sv.saved_at * 1000).toLocaleString(),
       })]);
@@ -377,10 +397,10 @@ function refreshResumeList() {
       // dazwischen: wer fortsetzt, hat sie schon gesehen.
       btn.addEventListener('click', () => {
         if (!sv.scenario) { boot(sv.reactor, null, sv.slot); return; }
-        const scn = app.scenarios.find((x) => x.id === sv.scenario);
-        if (!scn) { boot(sv.reactor, null, sv.slot); return; }
+        const scn2 = app.scenarios.find((x) => x.id === sv.scenario);
+        if (!scn2) { boot(sv.reactor, null, sv.slot); return; }
         const base = window.RS_CFG ? `/s/${window.RS_CFG.version}` : '';
-        fetch(`${base}/data/scenarios/${scn.file}`)
+        fetch(`${base}/data/scenarios/${scn2.file}`)
           .then((r) => (r.ok ? r.json() : Promise.reject(new Error('scenario'))))
           .then((def) => {
             // app.briefDef nachziehen -- sonst bleibt es beim Fortsetzen leer
@@ -392,16 +412,26 @@ function refreshResumeList() {
           })
           .catch(() => boot(sv.reactor, null, sv.slot));
       });
-      container.append(el('div.rs-resume-row', null, [btn, makeDeleteSaveButton(sv.slot)]));
+      body.append(el('div.rs-resume-row', null, [btn, makeDeleteSaveButton(sv.slot)]));
     }
-    for (const [, container] of containers) { if (container) container.hidden = !container.childElementCount; }
+    for (const id of PLANT_IDS) {
+      const box = details.get(id);
+      const n = bodies.get(id) ? bodies.get(id).childElementCount : 0;
+      if (box) box.hidden = !n;
+      const summary = summaries.get(id);
+      if (summary) setText(summary, t('resume_summary', { n }));
+    }
   });
 }
 
 /** Löschen mit Sicherung wie beim SCRAM: erster Klick bewaffnet nur, der
  *  zweite (binnen 4s) löscht wirklich -- kein Modal fuer eine Aktion, die
- *  sich durchs blosse Weiterspielen jederzeit neu erzeugen liesse. */
-function makeDeleteSaveButton(slot) {
+ *  sich durchs blosse Weiterspielen jederzeit neu erzeugen liesse.
+ *  `onDone` faellt auf refreshResumeList() zurueck (Startbildschirm-Liste),
+ *  der Speichern-Dialog (openSaveSlots()) uebergibt stattdessen sich selbst
+ *  neu -- sonst zeigte er nach dem Loeschen weiter den alten Stand an, bis
+ *  man ihn schliesst und neu oeffnet. */
+function makeDeleteSaveButton(slot, onDone = refreshResumeList) {
   const btn = el('button.rs-btn.rs-btn-ghost.rs-btn-sm', { type: 'button' }, [t('btn_delete')]);
   let armed = 0;
   btn.addEventListener('click', () => {
@@ -411,7 +441,7 @@ function makeDeleteSaveButton(slot) {
       return;
     }
     window.clearTimeout(armed);
-    api.deleteSave(slot).then(() => refreshResumeList());
+    api.deleteSave(slot).then(() => onDone());
   });
   return btn;
 }
@@ -687,11 +717,10 @@ function initControls() {
   $('#rs-stats-close').addEventListener('click', () => { statsModal.hidden = true; });
   statsModal.addEventListener('click', (ev) => { if (ev.target === statsModal) statsModal.hidden = true; });
 
-  $('#rs-save').addEventListener('click', () => {
-    saveManualGame().then((ok) => {
-      flash($('#rs-save'), t(ok ? 'save_ok' : 'save_failed'));
-    });
-  });
+  $('#rs-save').addEventListener('click', openSaveSlots);
+  const saveSlotsModal = $('#rs-save-slots');
+  $('#rs-save-slots-close').addEventListener('click', () => { saveSlotsModal.hidden = true; });
+  saveSlotsModal.addEventListener('click', (ev) => { if (ev.target === saveSlotsModal) saveSlotsModal.hidden = true; });
 
   $('#rs-xenon-skip').addEventListener('click', fastForwardXenon);
 
@@ -840,13 +869,12 @@ async function fastForwardXenon() {
 // Stand kommentarlos wieder mit dem inzwischen weitergelaufenen Zustand.
 const AUTOSAVE_INTERVAL_MS = 60000;
 
-/** Slotname je Reaktortyp UND Szenario (bzw. "-free" fuers freie Spiel) --
- *  siehe CHANGELOG 0.0.60, vorher teilten sich zwei Laeufe auf demselben
- *  Reaktortyp einen Slot und ueberschrieben sich stillschweigend. `prefix`
- *  haelt zusaetzlich Autospeicherung und Speichern-Knopf auseinander (siehe
- *  CHANGELOG 0.0.80) -- ohne das teilten sich beide denselben Slot, und die
- *  naechste Autospeicherung ueberschrieb einen von Hand gesicherten Stand
- *  wieder. */
+/** Slotname der Autospeicherung: je Reaktortyp UND Szenario (bzw. "-free"
+ *  fuers freie Spiel) -- siehe CHANGELOG 0.0.60, vorher teilten sich zwei
+ *  Laeufe auf demselben Reaktortyp einen Slot und ueberschrieben sich
+ *  stillschweigend. Der Speichern-Knopf hat seit CHANGELOG 0.1.1 keinen
+ *  eigenen szenariobezogenen Slot mehr, siehe manualSlotName() -- diese
+ *  Funktion bedient nur noch die Autospeicherung. */
 function saveSlotName(prefix) {
   const scnId = app.session && app.session.scenario ? app.session.scenario.id : null;
   return prefix + '-' + app.lastReactor + '-' + (scnId || 'free');
@@ -858,10 +886,69 @@ function saveCurrentGame() {
   return saveGame(app.engine, scnId, saveSlotName('auto'), app.session && app.session.run);
 }
 
-/** Speichern-Knopf -- eigener Slot, den die Autospeicherung nie anfasst. */
-function saveManualGame() {
+// Zehn feste Handplaetze je Reaktortyp -- ANDERS als die Autospeicherung
+// oben unabhaengig vom Szenario: ein neues ausprobiertes Szenario legt
+// keinen elften Slot an, sondern steht zur Auswahl wie jeder andere. Der
+// Speichern-Knopf oeffnet dafuer einen Auswahldialog (siehe
+// openSaveSlots()) -- der Spieler entscheidet selbst, welchen der zehn er
+// ueberschreibt, statt dass main.js das stillschweigend fuer ihn tut.
+const MANUAL_SLOTS = 10;
+function manualSlotName(reactorId, n) {
+  return `manual-${reactorId}-slot${n}`;
+}
+
+/** Schreibt in EINEN der zehn Handplaetze -- welchen, hat der Spieler im
+ *  Auswahldialog (openSaveSlots()) angeklickt. */
+function saveManualGame(slot) {
   const scnId = app.session && app.session.scenario ? app.session.scenario.id : null;
-  return saveGame(app.engine, scnId, saveSlotName('manual'), app.session && app.session.run);
+  return saveGame(app.engine, scnId, slot, app.session && app.session.run);
+}
+
+/** Speichern-Dialog: zeigt alle zehn Handplaetze DES AKTUELLEN Reaktortyps,
+ *  belegt (mit Datum/Szenario) oder frei, und schreibt beim Anklicken sofort
+ *  in den gewaehlten Slot -- die angezeigten Metadaten SIND die
+ *  Bestaetigung, kein zusaetzliches "Wirklich ueberschreiben?" noetig (das
+ *  gibt es nur beim Loeschen, siehe makeDeleteSaveButton()). */
+function openSaveSlots() {
+  const modal = $('#rs-save-slots');
+  const list = $('#rs-slot-list');
+  const reactorId = app.lastReactor;
+  const slotRe = new RegExp(`^manual-${reactorId}-slot(\\d+)$`);
+  list.replaceChildren();
+  Promise.all([app.scenariosPromise, api.listSaves()]).then(([, r]) => {
+    const saves = (r.ok && r.data && r.data.saves) || [];
+    const bySlot = new Map();
+    for (const sv of saves) {
+      const m = sv.slot && sv.slot.match(slotRe);
+      if (m) bySlot.set(Number(m[1]), sv);
+    }
+    for (let n = 1; n <= MANUAL_SLOTS; n++) {
+      const slot = manualSlotName(reactorId, n);
+      const sv = bySlot.get(n);
+      const scn = sv && sv.scenario && app.scenarios.find((x) => x.id === sv.scenario);
+      const label = sv
+        ? t('save_slot_used', {
+            n,
+            scenario: sv.scenario ? t(scn ? scn.title_key : 'scn_unknown') : t('scn_free'),
+            when: new Date(sv.saved_at * 1000).toLocaleString(),
+          })
+        : t('save_slot_free', { n });
+      const btn = el('button.rs-btn', { type: 'button' }, [label]);
+      btn.addEventListener('click', () => {
+        saveManualGame(slot).then((ok) => {
+          modal.hidden = true;
+          flash($('#rs-save'), t(ok ? 'save_ok' : 'save_failed'));
+          if (ok) refreshResumeList();
+        });
+      });
+      const row = [btn];
+      // Loeschen nur anbieten, wo etwas zum Loeschen da ist -- ein leerer
+      // Slot hat nichts, das verschwinden koennte.
+      if (sv) row.push(makeDeleteSaveButton(slot, openSaveSlots));
+      list.append(el('div.rs-resume-row', null, row));
+    }
+    modal.hidden = false;
+  });
 }
 
 function showFault(detail) {
