@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.75
+
+- ✨ **Acht Tastenkürzel öffnen ein Panel als Fenster** (nur Desktop, wie ein
+  Klick auf die Panel-Kopfzeile): `R` Reaktorkern, `P` Primärkreis,
+  `S` Sekundärkreis, `G` Generator und Netz, `A` Anlagenfließbild,
+  `V` Trendschreiber, `M` Meldetafel, `C` Reaktorchemie
+  (`PANEL_KEYS` in `main.js`). Reagieren nur ohne Strg/Alt/Cmd, damit sie
+  sich nicht mit `Strg+M` (Ton stumm) & Co. beißen.
+
 ## 0.0.74
 
 - ✨ **Vier neue Tastenkürzel** (`ui/shortcuts.js`, `main.js`):

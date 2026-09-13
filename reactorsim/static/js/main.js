@@ -19,6 +19,16 @@ import { STATUS_STATS, sanitizeStatusKeys } from './ui/statusStats.js';
 import { Geiger } from './ui/geiger.js';
 import { enableDragReorder } from './ui/dragReorder.js';
 
+// Panel-Buchstaben fuer die Fenster-Tastenkuerzel (siehe initControls():
+// Tastatur am Rechner). Ungewandeltes Zeichen statt Kachel-Position, damit
+// die Zuordnung unabhaengig von einer per Ziehen geaenderten Statuszeile
+// oder Reaktortyp bleibt -- die acht Panels selbst sind immer da, nur ihr
+// Inhalt wechselt mit dem Typ (buildPanels()).
+const PANEL_KEYS = {
+  r: 'rs-p-core', p: 'rs-p-prim', s: 'rs-p-sec', g: 'rs-p-grid',
+  a: 'rs-p-mimic', v: 'rs-p-trend', m: 'rs-p-alarm', c: 'rs-p-chem',
+};
+
 const app = {
   engine: null,
   loop: null,
@@ -661,7 +671,10 @@ function initControls() {
 
   // Tastatur am Rechner: Leertaste hält an, Zahlen wählen den Zeitraffer,
   // Strg+Pfeil hoch/runter fährt die Stäbe -- ohne Strg kollidiert Pfeil
-  // hoch/runter sonst mit dem Scrollen der Seite.
+  // hoch/runter sonst mit dem Scrollen der Seite. R/P/S/G/A/V/M/C oeffnen ein
+  // Panel als Fenster (PANEL_KEYS oben) -- nur auf dem Desktop wirksam,
+  // openPanelWindow() selbst prueft das (siehe dort); auf dem Handy zeigt der
+  // Reiter das Panel ohnehin schon voll.
   document.addEventListener('keydown', (ev) => {
     if (ev.target instanceof HTMLInputElement) return;
     if (ev.code === 'Space') { ev.preventDefault(); setSpeed(app.loop.speed > 0 ? 0 : 1); }
@@ -671,6 +684,10 @@ function initControls() {
     else if (ev.key === '4') setSpeed(60);
     else if (ev.ctrlKey && ev.key === 'ArrowUp') { ev.preventDefault(); if (app.jogRod) app.jogRod(-1); }
     else if (ev.ctrlKey && ev.key === 'ArrowDown') { ev.preventDefault(); if (app.jogRod) app.jogRod(1); }
+    else if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && PANEL_KEYS[ev.key.toLowerCase()]) {
+      ev.preventDefault();
+      openPanelWindow($('#' + PANEL_KEYS[ev.key.toLowerCase()]));
+    }
   });
 
   // Statuskacheln per Ziehen umsortieren -- gilt je Reaktortyp, unabhaengig
