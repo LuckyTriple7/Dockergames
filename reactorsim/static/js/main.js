@@ -765,11 +765,7 @@ async function fastForwardXenon() {
   while (elapsed < XENON_SKIP_CAP_S && s.X > XENON_SKIP_TARGET && !s.destroyed && !s.fault) {
     for (let i = 0; i < XENON_SKIP_CHUNK; i++) {
       app.engine.step(XENON_SKIP_DT);
-      let worst = 0;
-      for (const tile of app.engine.trips.tiles()) {
-        if ((tile.tile === 'new' || tile.tile === 'ack') && tile.severity > worst) worst = tile.severity;
-      }
-      app.session.step(XENON_SKIP_DT, worst, app.engine.trips.unacknowledgedSeconds());
+      app.session.step(XENON_SKIP_DT, app.engine.trips.tiles(), app.engine.trips.unacknowledgedSeconds());
       elapsed += XENON_SKIP_DT;
       if (s.destroyed || s.fault) break;
     }
@@ -929,18 +925,62 @@ function showDebrief(result, failed) {
   parts.replaceChildren();
   if (result) {
     const sum = result.summary;
-    const rows = [
-      ['debrief_energy', `${Math.round(sum.energy_mwh_delivered)} / ${Math.round(sum.energy_mwh_demanded)} ${t('unit_mwh')}`],
-      ['debrief_deviation', `${sum.deviation_mwh.toFixed(1)} ${t('unit_mwh')}`],
-      ['debrief_alarms', `${sum.alarm_seconds_unacked} ${t('unit_seconds')}`],
-      ['debrief_scram', String(sum.scram_count)],
-      ['debrief_fuel', sum.fuel_damage ? t('state_on') : t('state_off')],
-    ];
-    for (const [key, value] of rows) {
-      parts.append(el('div.rs-row', null, [
-        el('span', { text: t(key) }), el('b', { text: value }),
-      ]));
+    const p = result.parts || {};
+    // Vorzeichen von Hand statt num(): dieselbe Schreibweise wie schon vorher
+    // hier (Math.round() statt lokalisierter Zahl) -- eine Punktezeile ist
+    // kein Messwert, der eine Einheit braucht.
+    const pts = (v) => (v > 0 ? '+' : '') + String(Math.round(v));
+    const row = (label, value) => el('div.rs-row', null, [
+      el('span', { text: label }), el('b', { text: value }),
+    ]);
+    // Messwert UND Punktewirkung nebeneinander, wo es einen echten Messwert
+    // gibt (Energie, Abweichung, Alarme, SCRAM-Anzahl) -- reine Punkte
+    // sonst (Mission, Bonus, Katastrophenflags), da es dort keine zweite
+    // Zahl gibt, die die Punkte nicht schon selbst waeren.
+    const rowWithPts = (label, rawText, ptsVal) => row(label, `${rawText} (${pts(ptsVal)})`);
+
+    // Vollstaendige Zerlegung, direkt aus result.parts -- keine zweite
+    // Rechnung, die vom tatsaechlichen Score abweichen koennte.
+    parts.append(el('div.rs-debrief-breakdown', null, [
+      row(t('debrief_mission'), pts(p.mission)),
+      rowWithPts(t('debrief_energy'),
+        `${Math.round(sum.energy_mwh_delivered)} / ${Math.round(sum.energy_mwh_demanded)} ${t('unit_mwh')}`,
+        p.energy),
+      rowWithPts(t('debrief_deviation'), `${sum.deviation_mwh.toFixed(1)} ${t('unit_mwh')}`, p.deviation),
+      rowWithPts(t('debrief_alarms'), `${sum.alarm_seconds_unacked} ${t('unit_seconds')}`, p.alarms),
+      row(t('debrief_bonus'), pts(p.bonus)),
+      rowWithPts(t('debrief_scram'), String(sum.scram_count), p.scram),
+      rowWithPts(t('debrief_fuel'), sum.fuel_damage ? t('state_on') : t('state_off'), p.fuel),
+      row(t('debrief_cont_failed'), pts(p.cont_failed)),
+      row(t('debrief_h2_exploded'), pts(p.h2_exploded)),
+      // Nur sichtbar, wenn die Bodenregel wirklich etwas angehoben hat --
+      // sonst waere jede saubere Schicht mit einer sinnlosen "+0"-Zeile
+      // zugepflastert. rounding_adjustment bleibt IMMER unsichtbar (siehe
+      // scoring.py-Kommentar): keine Debrief-Zeile fuer Bruchteilspunkte.
+      ...(Math.round(p.floor_adjustment) !== 0 ? [row(t('debrief_floor'), pts(p.floor_adjustment))] : []),
+      el('div.rs-row.rs-debrief-total', null, [
+        el('span', { text: t('debrief_total') }), el('b', { text: String(result.score) }),
+      ]),
+    ]));
+
+    // Betriebszustaende: Zeit UND Punktewirkung nebeneinander -- der ganze
+    // Grund fuer diesen Umbau war "keine Ahnung, wofuer die Punkte weg sind".
+    const vs = sum.violation_seconds || {};
+    const severities = [[1, 'violations_info'], [2, 'violations_warn'], [3, 'violations_trip']];
+    parts.append(el('h3', { text: t('debrief_violations') }));
+    parts.append(el('div.rs-debrief-violations', null, severities.map(([sev, partKey]) => row(
+      `${t(`debrief_sev_${sev}`)} · ${clock(vs[sev] || 0)}`, pts(p[partKey]),
+    ))));
+
+    // Hauptursachen: welche Kachel(n) so lange stand/standen -- result.causes
+    // liegt bewusst NEBEN summary (siehe session.js), geht nie zum Server.
+    if (result.causes && result.causes.length) {
+      parts.append(el('h3', { text: t('debrief_causes') }));
+      parts.append(el('div.rs-debrief-causes', null, result.causes.map((c) => row(
+        t(c.key), clock(c.seconds),
+      ))));
     }
+
     // min_dnbr/min_orm werden schon laenger mitgezaehlt (RunState.summary()),
     // standen aber nirgends in der Auswertung -- eine Einweisung, die "Ziel:
     // ... ohne die Reserve unter 30 zu sehen" verspricht, muss hinterher auch
@@ -1149,11 +1189,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   };
   // Die Spielschicht sieht jeden Simulationsschritt, nicht jedes Bild.
   app.loop.afterStep = (dt) => {
-    let worst = 0;
-    for (const tile of app.engine.trips.tiles()) {
-      if ((tile.tile === 'new' || tile.tile === 'ack') && tile.severity > worst) worst = tile.severity;
-    }
-    app.session.step(dt, worst, app.engine.trips.unacknowledgedSeconds());
+    app.session.step(dt, app.engine.trips.tiles(), app.engine.trips.unacknowledgedSeconds());
   };
 
   initControls();

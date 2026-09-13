@@ -462,6 +462,18 @@ button {
   color: var(--rs-value);
 }
 
+/* Trennt die Summenzeile optisch von den Einzelposten darueber -- dieselbe
+   Reihe wie jede andere (.rs-row), nur mit eigenem oberen Rand statt des
+   gepunkteten unteren, und fett wie der grosse Punktestand oben. */
+.rs-debrief-total {
+  border-bottom: 0;
+  border-top: 1px solid var(--rs-line);
+  margin-top: 4px;
+  padding-top: 6px;
+}
+.rs-debrief-total > span,
+.rs-debrief-total > b { font-weight: 700; }
+
 .rs-debrief-submit { display: flex; gap: 8px; }
 .rs-debrief-submit input {
   flex: 1 1 auto;

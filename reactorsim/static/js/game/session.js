@@ -73,9 +73,18 @@ export class Session {
     s.P_demand += Math.max(-maxStep, Math.min(maxStep, diff));
   }
 
-  /** Ein Rechenschritt. Wird aus der Schleife gerufen, nach engine.step(). */
-  step(dt, worstSeverity, unackedSeconds) {
+  /** Ein Rechenschritt. Wird aus der Schleife gerufen, nach engine.step().
+   *  @param {Array} tiles engine.trips.tiles() dieses Takts -- worstSeverity
+   *  wird daraus abgeleitet (dieselbe Reduktion wie vorher in main.js), UND
+   *  die volle Liste geht an run.accumulate() weiter (Ursachen-Zeiten). */
+  step(dt, tiles, unackedSeconds) {
     if (this.phase !== PHASE.RUNNING) return;
+    let worstSeverity = 0;
+    for (const tile of tiles) {
+      if ((tile.tile === 'new' || tile.tile === 'ack') && tile.severity > worstSeverity) {
+        worstSeverity = tile.severity;
+      }
+    }
     const s = this.engine.state;
     stepEvents(this.engine, dt);
 
@@ -103,7 +112,7 @@ export class Session {
     }
 
     const d = this.engine.derive();
-    this.run.accumulate(s, d, worstSeverity, dt);
+    this.run.accumulate(s, d, worstSeverity, tiles, dt);
     this.unacked = unackedSeconds;
 
     const failed = this.run.checkFail(s, d, dt, worstSeverity);
@@ -119,7 +128,10 @@ export class Session {
       this.run.failed = failed;
       const sum = this.run.summary(this.engine.state);
       sum.alarm_seconds_unacked = Math.round(this.unacked || 0);
-      this.result = { summary: sum, ...score(sum) };
+      // causes liegt als Geschwister von summary, NICHT darin -- summary()
+      // ist unveraendert das, was api.submitScore() als Server-Payload
+      // verschickt (siehe main.js), Diagnosedaten bleiben aussen vor.
+      this.result = { summary: sum, causes: this.run.topCauses(), ...score(sum) };
     }
     if (this.onEnd) this.onEnd(this.result, failed);
   }

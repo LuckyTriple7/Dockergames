@@ -34,11 +34,7 @@ function driveToEnd(engine, scenarioDef, onStep) {
   while (session.phase === PHASE.RUNNING) {
     engine.step(DT);
     n++;
-    let worst = 0;
-    for (const tile of engine.trips.tiles()) {
-      if ((tile.tile === 'new' || tile.tile === 'ack') && tile.severity > worst) worst = tile.severity;
-    }
-    session.step(DT, worst, engine.trips.unacknowledgedSeconds());
+    session.step(DT, engine.trips.tiles(), engine.trips.unacknowledgedSeconds());
     if (onStep) onStep(n);
   }
   return session;

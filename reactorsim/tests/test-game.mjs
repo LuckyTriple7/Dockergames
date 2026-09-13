@@ -66,9 +66,10 @@ test('Wertung: Bestandteile und Vorzeichen', () => {
     deviation_mwh: 0, alarm_seconds_unacked: 0,
     violation_seconds: { 1: 0, 2: 0, 3: 0 },
     scram_count: 0, fuel_damage: false, completed: true, difficulty: 2,
+    duration_s: 3600,
   };
   const a = score(perfect);
-  assert.equal(a.score, 1500);   // 1000 Energie + 2 × 250 Bonus
+  assert.equal(a.score, 2500);   // 1000 Mission + 1000 Energie + 2 × 250 Bonus
 
   const bad = score({ ...perfect, scram_count: 1, fuel_damage: true, completed: false });
   assert.ok(bad.score < 0, `Punkte ${bad.score}`);
@@ -141,7 +142,7 @@ test('jedes Szenario läuft ohne Ausnahme bis zum Ende', async () => {
     const steps = Math.round((def.duration_s + 60) / DT);
     for (let i = 0; i < steps && session.phase === PHASE.RUNNING; i++) {
       e.step(DT);
-      session.step(DT, 0, 0);
+      session.step(DT, [], 0);
       assert.equal(e.state.fault, null, `${def.id}: Simulationsfehler ${e.state.fault}`);
     }
 
@@ -163,7 +164,7 @@ test('Freies Spiel endet nur bei Brennstoffschaden', () => {
   const session = new Session(e, null);
   assert.equal(session.phase, PHASE.RUNNING);
   session.start();
-  for (let i = 0; i < 2000; i++) { e.step(DT); session.step(DT, 0, 0); }
+  for (let i = 0; i < 2000; i++) { e.step(DT); session.step(DT, [], 0); }
   assert.equal(session.phase, PHASE.RUNNING);
   assert.equal(session.result, null);
 });

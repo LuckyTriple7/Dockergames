@@ -149,6 +149,13 @@ export class RunState {
     this.energyDemanded = 0;     // MWh
     this.deviationMWh = 0;       // ∫|P_e − P_soll| dt
     this.violationSeconds = { 1: 0, 2: 0, 3: 0 };
+    // Ursachen-Zeiten fuers Debrief -- Schluessel ist der Uebersetzungs-
+    // schluessel der Kachel (z.B. 'alarm_graphite_hot'), nicht ihre id, damit
+    // die Anzeige spaeter kein zweites Nachschlagen braucht. Anders als
+    // violationSeconds NICHT exklusiv: jede gerade aktive Kachel bekommt
+    // ihren vollen Anteil, unabhaengig von den anderen (siehe accumulate()).
+    // Rein fuer die Anzeige, geht nie in die Punkteformel und nie zum Server.
+    this.causeSeconds = new Map();
     this.scramCount = 0;
     this.maxFuelK = 0;
     this.minDnbr = Infinity;
@@ -159,8 +166,13 @@ export class RunState {
     this.scramSeen = false;
   }
 
-  /** Ein Rechenschritt an Kennzahlen. */
-  accumulate(s, d, worstSeverity, dt) {
+  /** Ein Rechenschritt an Kennzahlen.
+   *  @param {Array} tiles engine.trips.tiles() dieses Takts -- fuer die
+   *  Ursachen-Zeiten (siehe causeSeconds). worstSeverity kommt weiterhin
+   *  separat herein: dieselbe Zahl wird auch fuer checkFail() gebraucht,
+   *  hier zusaetzlich einzupacken waere eine zweite Herleitung derselben
+   *  Groesse. */
+  accumulate(s, d, worstSeverity, tiles, dt) {
     const h = dt / 3600;
     const demand = this.scenario.demandAt(s.t_sim);
     this.energyDelivered += s.P_e * h;
@@ -168,6 +180,13 @@ export class RunState {
     const dev = Math.abs(s.P_e - demand);
     if (dev > this.scenario.tolerance) this.deviationMWh += (dev - this.scenario.tolerance) * h;
     if (worstSeverity > 0) this.violationSeconds[worstSeverity] += dt;
+    // Parallel, nicht exklusiv: jede gerade aktive Kachel zaehlt fuer sich,
+    // unabhaengig davon, ob noch andere gleichzeitig anstehen.
+    for (const tile of tiles) {
+      if (tile.tile === 'new' || tile.tile === 'ack') {
+        this.causeSeconds.set(tile.key, (this.causeSeconds.get(tile.key) || 0) + dt);
+      }
+    }
     if (s.T_f > this.maxFuelK) this.maxFuelK = s.T_f;
     if (Number.isFinite(d.dnbr) && d.dnbr < this.minDnbr) this.minDnbr = d.dnbr;
     if (Number.isFinite(d.orm) && d.orm < this.minOrm) this.minOrm = d.orm;
@@ -218,6 +237,18 @@ export class RunState {
     if (typeof d.scramSeen === 'boolean') this.scramSeen = d.scramSeen;
     if (Number.isFinite(d.tripFor)) this._tripFor = d.tripFor;
     if (Number.isFinite(d.devFor)) this._devFor = d.devFor;
+  }
+
+  /** Top 3 Ursachen fuers Debrief, absteigend nach Sekunden. Liegt bewusst
+   *  NICHT in summary() -- summary() ist zugleich der Server-Payload
+   *  (api.submitScore() verschickt sie unveraendert), reine Diagnosedaten
+   *  gehoeren da strukturell nicht hinein. session.js haengt das Ergebnis
+   *  stattdessen als Geschwister von summary an result.causes. */
+  topCauses() {
+    return [...this.causeSeconds.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([key, seconds]) => ({ key, seconds: round(seconds, 1) }));
   }
 
   /**
@@ -291,6 +322,10 @@ export class RunState {
       alarm_seconds_unacked: 0,   // wird vom Aufrufer gesetzt
       scram_count: this.scramCount,
       fuel_damage: this.destroyed,
+      // Nur beim SWR jemals gesetzt (plants/bwr.js) -- bei DWR/RBMK bleiben
+      // s.contFailed/s.h2Exploded fuer immer undefined, !! macht daraus false.
+      cont_failed: !!s.contFailed,
+      h2_exploded: !!s.h2Exploded,
       max_fuel_c: round(this.maxFuelK - 273.15, 1),
       min_dnbr: Number.isFinite(this.minDnbr) ? round(this.minDnbr, 3) : null,
       min_orm: Number.isFinite(this.minOrm) ? round(this.minOrm, 1) : null,

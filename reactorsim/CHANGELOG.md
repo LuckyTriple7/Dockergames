@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.0.91
+
+- 🔧 **Wertungsformel grundlegend umgebaut.** `violation_seconds`
+  (Sekunden mit aktiver Meldetafel-Kachel, nach Schwere) ging bisher
+  UNGEDECKELT und linear in den Punktestand ein -- eine vier Stunden lang
+  sauber gefahrene Schicht mit einer einzigen harmlosen Dauerwarnung (z.B.
+  Graphittemperatur knapp über dem Normalband) sammelte mehr Minus als ein
+  kurzer Lauf, der in einer echten Katastrophe endete. Ergebnis in einem
+  realen Fall: Schicht vollständig gefahren, Energieziel erfüllt, kein
+  SCRAM, kein Kernschaden -- trotzdem **-2497 Punkte**, ohne jede Anzeige,
+  woher das kommt.
+  - Jede Schwere (INFO/WARN/TRIP) zählt jetzt als **Anteil der tatsächlich
+    gespielten Schichtdauer**, gedeckelt bei -100/-300/-1000 Punkten --
+    eine Warnung, die 25 % der Schicht ansteht, kostet unabhängig davon,
+    ob die Schicht eine oder vier Stunden dauerte, denselben Betrag.
+  - Neue Bodenregel: eine erfolgreich abgeschlossene, katastrophenfreie
+    Schicht (kein Kernschaden, kein Sicherheitsbehälterversagen, keine
+    Wasserstoffexplosion) fällt nie unter 0 Punkte, ganz ohne SCRAM sogar
+    nie unter 500.
+  - SWR-Sicherheitsbehälterversagen und Wasserstoffexplosion
+    (`plants/bwr.js`) setzten bisher nie `fuel_damage` und kosteten dadurch
+    nur die bis dahin aufgelaufenen `violation_seconds` -- jetzt eigene,
+    additive Katastrophenstrafen (-2500/-3000), die auch bei formal zu
+    Ende gelaufenem Schicht-Timer NIE durch die Bodenregel aufgehoben
+    werden.
+  - Gemeinsame Rundungsfunktion (`_round_score`/`roundScore`, "weg von
+    Null") in `scoring.py`/`scoring.js` ersetzt `round()`/`Math.round()`:
+    beide runden exakte `.5`-Werte unterschiedlich (Python zur geraden
+    Zahl, JavaScript immer aufwärts) -- bei Fließkomma-Zwischenwerten ein
+    echtes Risiko, dass Server- und Client-Score auseinanderlaufen.
+  - `parts` (die Zerlegung des Scores) ist jetzt vollständig: jeder
+    Faktor eigens aufgeschlüsselt, inklusive `rounding_adjustment` und
+    `floor_adjustment` -- die Summe aller Teile ergibt IMMER exakt den
+    Score, nicht nur ungefähr.
+- ✨ **Auswertung zeigt jetzt, woher jeder Punkt kommt.** Vollständige
+  Score-Zerlegung (Mission, Energie, Abweichung, Alarme, Bonus, SCRAM,
+  Kernschaden, Sicherheitsbehälterversagen, Wasserstoffexplosion,
+  Mindestwertung), dazu ein neuer Abschnitt "Grenzwertüberschreitungen"
+  (Zeit UND Punktewirkung je Schwere) und "Hauptursachen" (welche
+  Meldetafel-Kachel wie lange stand, bis zu drei). Ursachen-Daten
+  (`result.causes`) liegen bewusst NEBEN der Zusammenfassung, nicht darin
+  -- sie gehen nie zum Server, nur die Wertungs-Kennzahlen selbst.
+  Aus einer Rücksprache mit einer zweiten KI über mehrere Runden entstanden
+  (Formel, Bodenregel-Lücken, Rundungsfehler -- Details im Verlauf).
+
 ## 0.0.90
 
 - ✨ **Rundinstrumente klickbar: eigene Hilfe je Messwert.** Alle 10

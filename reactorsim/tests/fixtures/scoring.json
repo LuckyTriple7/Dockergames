@@ -14,9 +14,10 @@
       "scram_count": 0,
       "fuel_damage": false,
       "completed": true,
-      "difficulty": 1
+      "difficulty": 1,
+      "duration_s": 14400
     },
-    "score": 1250
+    "score": 2250
   },
   {
     "name": "durchwachsen",
@@ -33,9 +34,10 @@
       "scram_count": 0,
       "fuel_damage": false,
       "completed": true,
-      "difficulty": 2
+      "difficulty": 2,
+      "duration_s": 14400
     },
-    "score": 1188
+    "score": 2255
   },
   {
     "name": "Schnellabschaltung",
@@ -52,9 +54,10 @@
       "scram_count": 1,
       "fuel_damage": false,
       "completed": false,
-      "difficulty": 2
+      "difficulty": 2,
+      "duration_s": 1800
     },
-    "score": -3076
+    "score": -826
   },
   {
     "name": "Kernzerstoerung",
@@ -71,8 +74,31 @@
       "scram_count": 1,
       "fuel_damage": true,
       "completed": false,
-      "difficulty": 3
+      "difficulty": 3,
+      "duration_s": 900
     },
-    "score": -6985
+    "score": -6056
+  },
+  {
+    "name": "SWR H2-Explosion trotz erfuellter Schicht",
+    "summary": {
+      "energy_mwh_delivered": 5600,
+      "energy_mwh_demanded": 5600,
+      "deviation_mwh": 0,
+      "alarm_seconds_unacked": 0,
+      "violation_seconds": {
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "scram_count": 0,
+      "fuel_damage": false,
+      "cont_failed": false,
+      "h2_exploded": true,
+      "completed": true,
+      "difficulty": 1,
+      "duration_s": 14400
+    },
+    "score": -750
   }
 ]
