@@ -46,7 +46,7 @@ function coreFlowSeverity(id, kgs) {
   return undefined;
 }
 
-export function buildPanels(engine, render, geiger, helperEnabled) {
+export function buildPanels(engine, render, helperEnabled) {
   const s = engine.state;
   const sp = engine.spec;
   const ctx = engine.ctx;
@@ -584,10 +584,6 @@ export function buildPanels(engine, render, geiger, helperEnabled) {
     } else {
       horn.silence();
     }
-    // Geigerzähler: tickt immer ein bisschen, schneller mit der schwersten
-    // anstehenden Meldung -- dieselbe worst-Kennzahl wie oben, keine eigene
-    // Berechnung noetig.
-    if (geiger) geiger.step(worst, nowMs);
   });
 
   render.add('trend', () => {

@@ -1,20 +1,21 @@
 // Musik & aufgenommene Klangeffekte.
 //
-// Anders als Horn (annunciator.js) und Geiger (geiger.js) -- die Klaenge dort
-// synthetisiert der Browser selbst per WebAudio-Oszillatoren -- sind das hier
-// echte Aufnahmen (static/audio/*.mp3, Pixabay-Lizenz, siehe LICENSE.md).
-// Einfaches <audio>-Element statt AudioContext/decodeAudioData: fuer feste
-// Dateien reicht das, und Lautstaerke/Loop/Pause kommen dann geschenkt.
+// Anders als Horn (annunciator.js) -- die Klaenge dort synthetisiert der
+// Browser selbst per WebAudio-Oszillatoren -- sind das hier echte Aufnahmen
+// (static/audio/*.mp3, Pixabay-Lizenz, siehe LICENSE.md). Einfaches
+// <audio>-Element statt AudioContext/decodeAudioData: fuer feste Dateien
+// reicht das, und Lautstaerke/Loop/Pause kommen dann geschenkt.
 //
-// Wie bei Horn/Geiger gilt: der erste play()-Aufruf muss aus einer echten
+// Wie bei Horn gilt: der erste play()-Aufruf muss aus einer echten
 // Nutzergeste kommen, sonst verweigert der Browser jeden Ton.
 
 const BASE = (window.RS_CFG ? `/s/${window.RS_CFG.version}` : '') + '/audio/';
 
 /**
  * Einmaliger Clip, feuert und vergisst -- fuer SCRAM, Kernschmelze und die
- * Geigerzaehler-Vorwarnung. Eigenes Audio-Objekt je Aufruf: zwei schnell
- * hintereinander kommende Klaenge sollen sich nicht gegenseitig abschneiden.
+ * akustische Vorwarnung vor einem geplanten Ereignis. Eigenes Audio-Objekt
+ * je Aufruf: zwei schnell hintereinander kommende Klaenge sollen sich nicht
+ * gegenseitig abschneiden.
  */
 export function playClip(name, volume = 1) {
   try {

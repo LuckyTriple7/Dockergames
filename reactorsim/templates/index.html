@@ -95,10 +95,10 @@
 
     <div class="rs-start-foot">
       <!-- Hauptschalter für den Ton, schon auf dem Startbildschirm. Vorher
-           lagen die drei Tonschalter ausschließlich im Zahnrad-Dialog INNEN
-           im Leitstand -- wer es still haben wollte, musste erst eine Schicht
-           beginnen. Zustand steckt in prefs.audio.muted und gilt für Musik,
-           Hupe und Geigerzähler zugleich. -->
+           lagen die Tonschalter ausschließlich im Zahnrad-Dialog INNEN im
+           Leitstand -- wer es still haben wollte, musste erst eine Schicht
+           beginnen. Zustand steckt in prefs.audio.muted und gilt für Musik
+           und Hupe zugleich. -->
       <button type="button" class="rs-btn rs-btn-ghost rs-btn-icon rs-mute"
               aria-pressed="false" title="{{ t.btn_mute }}"
               aria-label="{{ t.btn_mute }}">🔊</button>
@@ -464,10 +464,6 @@
     <label class="rs-audio-opt">
       <input type="checkbox" id="rs-audio-horn">
       {{ t.opt_audio_horn }}
-    </label>
-    <label class="rs-audio-opt">
-      <input type="checkbox" id="rs-audio-geiger">
-      {{ t.opt_audio_geiger }}
     </label>
     <label class="rs-audio-opt">
       <input type="checkbox" id="rs-audio-music">

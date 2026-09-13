@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.89
+
+- 🗑️ **Geigerzähler-Ticken entfernt.** Reiner WebAudio-Synthesizer
+  (gefiltertes Rauschen, `ui/geiger.js`), keine echte Aufnahme -- unnoetig
+  neben der Musik (`game_background_1.mp3`, echte Aufnahme, laeuft bereits
+  ueber denselben Musik-Schalter). Datei geloescht, Einstellung
+  "Geigerzähler-Ticken" raus, `Geiger`-Klasse aus `main.js`/`panels.js`
+  entfernt. Die akustische Ereignis-Vorwarnung (`geiger_game_alert.mp3`,
+  eine echte Aufnahme trotz des Dateinamens) bleibt unveraendert -- ein
+  eigenstaendiger Klang, keine Ticken-Synthese.
+
 ## 0.0.88
 
 - ✨ **Thermische Nennleistung auf dem Startbildschirm.** Die Reaktorkarten

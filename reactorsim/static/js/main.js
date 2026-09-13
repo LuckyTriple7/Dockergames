@@ -16,7 +16,6 @@ import { GLOSSARY } from './ui/glossary.js';
 import { SHORTCUTS } from './ui/shortcuts.js';
 import { MusicLoop, playClip } from './ui/music.js';
 import { STATUS_STATS, sanitizeStatusKeys } from './ui/statusStats.js';
-import { Geiger } from './ui/geiger.js';
 import { enableDragReorder } from './ui/dragReorder.js';
 import { attachRecorder } from './game/recorder.js';
 import { record } from './game/coreActions.js';
@@ -38,11 +37,6 @@ const app = {
   reactor: null,
   controlsReady: false,
   horn: null,
-  // Anders als Horn (pro Runde neu gebaut, siehe buildPanels()) lebt der
-  // Geigerzaehler ueber die ganze Sitzung: er soll schon auf dem Startbild-
-  // schirm entsperrt werden koennen (erste Kartenwahl ist die erste echte
-  // Nutzergeste), lange bevor eine Runde ueberhaupt eine Engine hat.
-  geiger: new Geiger(),
   // Musik: eigene Dauerschleifen fuer Startbildschirm und laufende Runde --
   // introMusic laeuft nur VOR boot(), bgMusic nur WAEHREND, nie beide.
   introMusic: new MusicLoop('game_intro.mp3', 0.4),
@@ -71,14 +65,13 @@ app.prefsPromise = api.readPrefs().then((r) => {
  * Hupe), und ein vierter Schalter waere ein vierter Ort zum Vergessen
  * gewesen.
  *
- * `muted` ist der Hauptschalter und sticht die drei Einzelschalter: aus ist
- * aus, ganz gleich was darunter steht. Die Einzelschalter bleiben dabei
- * erhalten, damit sie nach dem Aufdrehen wieder so stehen wie vorher.
+ * `muted` ist der Hauptschalter und sticht die Einzelschalter (Hupe, Musik):
+ * aus ist aus, ganz gleich was darunter steht. Die Einzelschalter bleiben
+ * dabei erhalten, damit sie nach dem Aufdrehen wieder so stehen wie vorher.
  */
 function applyAudioPrefs() {
   const a = app.prefs.audio || {};
   const on = (key) => !a.muted && a[key] !== false;
-  app.geiger.enabled = on('geiger');
   app.introMusic.enabled = on('music');
   app.bgMusic.enabled = on('music');
   if (app.horn) app.horn.enabled = on('horn');
@@ -618,7 +611,6 @@ function initControls() {
     return el('label', null, [box, label]);
   }));
   const audioHornBox = $('#rs-audio-horn');
-  const audioGeigerBox = $('#rs-audio-geiger');
   const audioMusicBox = $('#rs-audio-music');
   $('#rs-stats-cfg').addEventListener('click', () => {
     const reactorId = app.lastReactor;
@@ -629,7 +621,6 @@ function initControls() {
     if (dnbrLabel) setText(dnbrLabel, t((app.engine && app.engine.spec.marginKey) || 'val_dnbr'));
     const a = app.prefs.audio || {};
     audioHornBox.checked = !a.muted && a.horn !== false;
-    audioGeigerBox.checked = !a.muted && a.geiger !== false;
     audioMusicBox.checked = !a.muted && a.music !== false;
     statsModal.hidden = false;
   });
@@ -652,8 +643,7 @@ function initControls() {
     // Hauptschalter mit aufdrehen, sonst bliebe es still und niemand wuesste
     // warum.
     app.prefs.audio = {
-      horn: audioHornBox.checked, geiger: audioGeigerBox.checked,
-      music: audioMusicBox.checked, muted: false,
+      horn: audioHornBox.checked, music: audioMusicBox.checked, muted: false,
     };
     api.writePrefs(app.prefs);
     applyStatusSelection(keys);
@@ -1047,7 +1037,6 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // Fortsetzen, Einweisung akzeptieren) -- die einzige verlaessliche Stelle
   // fuer eine Nutzergeste, die der Browser fuer Audio verlangt. Vor dem
   // ersten await, damit sie noch als "waehrend der Geste" zaehlt.
-  app.geiger.unlock();
   app.introMusic.stop();
   app.bgMusic.start();
 
@@ -1110,8 +1099,8 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   attachRecorder(app.engine);
   app.session = new Session(app.engine, scenarioDef);
   app.session.onEnd = (result, failed) => showDebrief(result, failed);
-  // Geigerzaehler-Vorwarnung, 2-5 Minuten vor einem geplanten Ereignis --
-  // nur bei Szenarien relevant, dueAlerts() bleibt im freien Spiel leer.
+  // Akustische Vorwarnung, 2-5 Minuten vor einem geplanten Ereignis -- nur
+  // bei Szenarien relevant, dueAlerts() bleibt im freien Spiel leer.
   app.session.onAlert = () => playClip('geiger_game_alert.mp3', 0.6);
   app.session.start();
   // Nur ein Szenario hat eine Einweisung, die es wert ist, erneut
@@ -1121,13 +1110,13 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // prefs.helper ist ungesetzt bei jedem Spieler, der die Kopfzeile im
   // Startbildschirm nie angefasst hat -- Standard ist AN, siehe rs-helper-
   // toggle in initStart().
-  const built = buildPanels(app.engine, app.render, app.geiger, app.prefs.helper !== false);
+  const built = buildPanels(app.engine, app.render, app.prefs.helper !== false);
   app.horn = built.horn;
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;
-  // Anders als der Geigerzaehler wird die Hupe bei jeder Runde neu gebaut
-  // (buildPanels()), die Einstellung muss also jedes Mal neu uebertragen
-  // werden -- ueber applyAudioPrefs(), damit auch der Hauptschalter greift.
+  // Die Hupe wird bei jeder Runde neu gebaut (buildPanels()), die Einstellung
+  // muss also jedes Mal neu uebertragen werden -- ueber applyAudioPrefs(),
+  // damit auch der Hauptschalter greift.
   applyAudioPrefs();
 
   const xenonSkipBtn = $('#rs-xenon-skip');
