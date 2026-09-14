@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.32
+
+- Neuer Hotkey Q: quittiert die Meldetafel wie der Knopf selbst (löst
+  `#rs-ack`.click() aus). Rückstellen bleibt bewusst ohne Taste, nur per
+  Klick -- ein Fehlklick dort gibt bei stehendem SCRAM den Reaktorschutz
+  frei. In der Tastenkürzel-Hilfe gelistet (`sc_ack`).
+
 ## 0.1.31
 
 - "Passendes Panel anzeigen" im Tutorial-Anleitung-Dialog wirkte auf breiten

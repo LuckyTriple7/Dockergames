@@ -859,6 +859,12 @@ function initControls() {
     else if (ev.key === '4') setSpeed(60);
     else if (ev.ctrlKey && ev.key === 'ArrowUp') { ev.preventDefault(); if (app.jogRod) app.jogRod(-1); }
     else if (ev.ctrlKey && ev.key === 'ArrowDown') { ev.preventDefault(); if (app.jogRod) app.jogRod(1); }
+    // Q quittiert die Meldetafel wie der Knopf selbst (siehe panels.js
+    // '#rs-ack') -- Rückstellen bleibt bewusst ohne Taste, ein Fehlklick dort
+    // gibt bei stehendem SCRAM den Reaktorschutz frei.
+    else if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key.toLowerCase() === 'q') {
+      $('#rs-ack').click();
+    }
     else if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && PANEL_KEYS[ev.key.toLowerCase()]) {
       ev.preventDefault();
       openPanelWindow($('#' + PANEL_KEYS[ev.key.toLowerCase()]));

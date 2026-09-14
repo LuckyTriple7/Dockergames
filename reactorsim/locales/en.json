@@ -198,6 +198,8 @@
   "sc_scram_d": "Hold for one second to trigger the scram",
   "sc_mute": "Ctrl + M",
   "sc_mute_d": "Mute/unmute sound",
+  "sc_ack": "Q",
+  "sc_ack_d": "Acknowledge the annunciator (Reset stays click-only)",
   "sc_panel_core": "R",
   "sc_panel_core_d": "Open Reactor core as a window",
   "sc_panel_prim": "P",

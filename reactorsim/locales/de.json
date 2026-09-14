@@ -198,6 +198,8 @@
   "sc_scram_d": "Eine Sekunde gedrückt halten löst die Schnellabschaltung aus",
   "sc_mute": "Strg + M",
   "sc_mute_d": "Ton stumm/an",
+  "sc_ack": "Q",
+  "sc_ack_d": "Meldetafel quittieren (Rückstellen bleibt Klick)",
   "sc_panel_core": "R",
   "sc_panel_core_d": "Reaktorkern als Fenster öffnen",
   "sc_panel_prim": "P",
