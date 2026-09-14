@@ -152,7 +152,13 @@ test('jedes Szenario läuft ohne Ausnahme bis zum Ende', async () => {
     if (ended.result) {
       const sum = ended.result.summary;
       assert.ok(def.tutorial ? ended.result.score === null : Number.isFinite(ended.result.score), `${def.id}: Punkte ${ended.result.score}`);
-      assert.ok(def.tutorial ? sum.completed === false : sum.energy_mwh_demanded > 0, `${def.id}: keine Anforderung`);
+      if (def.tutorial) assert.equal(sum.completed, false);
+      else if (def.demand.some(point => point.mw > 0)) assert.ok(sum.energy_mwh_demanded > 0, `${def.id}: keine Anforderung`);
+      else {
+        assert.equal(def.score_mode, 'incident_v1', `${def.id}: zero-demand shift must use safety scoring`);
+        assert.equal(sum.energy_mwh_demanded, 0);
+        assert.equal(sum.completed, false, `${def.id}: waiting alone must not pass the safety goals`);
+      }
       assert.ok(sum.duration_s > 0);
       for (const v of Object.values(sum.violation_seconds)) assert.ok(Number.isFinite(v));
     }

@@ -34,6 +34,13 @@ export const RANGES = {
   T_mod: [250, 4000],
   T_gr: [250, 2000],
   W_core: [0, 1e6],
+  W_fwDemand: [0, 1e6],
+  W_fwMain: [0, 1e6],
+  W_fwAux: [0, 1e6],
+  fwSupplyMax: [0, 1e6],
+  auxFeedDmd: [0, 1],
+  auxWaterKg: [0, 1e9],
+  coolantHeatMW: [-1e12, 1e12],
   p_prim: [0.01, 300],
   I: [0, 100],
   X: [0, 100],
@@ -171,6 +178,10 @@ export function numbers(s) {
            s.P_th, s.P_e, s.P_demand, s.f_grid, s.rho_ext, s.enthalpy, s.enthalpyBase);
   for (let i = 0; i < s.rod.length; i++) out.push(s.rod[i]);
   for (let i = 0; i < s.rodDmd.length; i++) out.push(s.rodDmd[i]);
+  for (const key of ['W_fwDemand', 'W_fwMain', 'W_fwAux', 'fwSupplyMax',
+    'auxFeedDmd', 'auxWaterKg', 'coolantHeatMW']) {
+    if (s[key] !== undefined) out.push(s[key]);
+  }
   return out;
 }
 

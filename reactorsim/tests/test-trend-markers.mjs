@@ -185,7 +185,10 @@ for (const file of readdirSync(scenarioDir).filter(file => file.endsWith('.json'
       const session = new Session(e, def);
       const markers = capture(e);
       session.start();
-      assert.deepEqual(markers, [], 'preparation/scheduling is not an event');
+      assert.deepEqual(markers, def.preparation === 'rbmk_post_az5_v1'
+        ? [{ t: 0, kind: 'scram', key: 'event_scram', severity: 3 }] : [],
+      'only an actual prepared shutdown emits a start marker');
+      markers.length = 0;
       e.state.t_sim = t;
       session.step(0.05, [], 0);
       const expected = schedule.events.filter(ev => ev.t <= t && getEvent(ev.id)).map(ev => eventKey(ev.id));

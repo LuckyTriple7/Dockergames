@@ -557,6 +557,9 @@ async function loadScenario(scn, savedMeta = null) {
     if (!response.ok) throw new Error('http');
     const def = await response.json();
     if (!current()) return;
+    const goalTypes = def?.reactor === 'pwr'
+      ? ['pwr_feedwater', 'pwr_heat_removal', 'pwr_power_limited']
+      : def?.reactor === 'rbmk' ? ['rbmk_inventory', 'rbmk_heat_removal'] : [];
     if (!def || def.id !== intent.scn.id || def.reactor !== intent.scn.reactor
       || (intent.savedMeta && (def.id !== intent.savedMeta.scenario || def.reactor !== intent.savedMeta.reactor))
       || typeof def.title_key !== 'string' || typeof def.brief_key !== 'string'
@@ -564,12 +567,17 @@ async function loadScenario(scn, savedMeta = null) {
       || !Array.isArray(def.demand) || !def.demand.every(p => p && Number.isFinite(p.t) && Number.isFinite(p.mw))
       || !Array.isArray(def.events || []) || !(def.events || []).every(e => e && typeof e.id === 'string')
       || !Array.isArray(def.fail || []) || !(def.fail || []).every(f => f && typeof f.type === 'string')
+      || (def.preparation !== undefined && (def.preparation !== 'rbmk_post_az5_v1'
+        || def.reactor !== 'rbmk' || def.cold || def.score_mode !== 'incident_v1'))
       || (def.score_mode && (def.score_mode !== 'incident_v1' || !Array.isArray(def.objectives)
         || def.objectives.length !== 2 || !def.objectives.every(goal => goal && typeof goal.id === 'string'
-          && ['pwr_feedwater', 'pwr_heat_removal', 'pwr_power_limited'].includes(goal.type)
+          && goalTypes.includes(goal.type)
           && Number.isFinite(goal.hold_s) && goal.hold_s > 0 && Array.isArray(goal.after_events)
           && goal.after_events.length > 0
-          && goal.after_events.every(id => (def.events || []).some(e => e.id === id)))))) {
+          && (goal.max_power_fraction === undefined || (Number.isFinite(goal.max_power_fraction)
+            && goal.max_power_fraction >= 0 && goal.max_power_fraction <= 1))
+          && goal.after_events.every(id => (def.events || []).some(e => e.id === id)))
+        || new Set(def.objectives.map(goal => goal.id)).size !== 2))) {
       throw new Error('definition');
     }
     setText($('#rs-start-message'), '');

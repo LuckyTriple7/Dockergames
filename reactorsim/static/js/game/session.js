@@ -54,12 +54,21 @@ export class Session {
   }
 
   start() {
+    const preparation = this.scenario?.def.preparation;
+    if (preparation !== undefined && (preparation !== 'rbmk_post_az5_v1'
+      || this.engine.spec.id !== 'rbmk' || this.scenario.reactor !== 'rbmk')) {
+      throw new Error('Invalid scenario preparation');
+    }
     this.phase = PHASE.RUNNING;
     if (this.tutorial) this.tutorial.prepare();
     if (this.scenario) {
       const st = this.scenario.def.start_overrides || {};
       for (const [k, v] of Object.entries(st)) this.engine.state[k] = v;
       this.engine.state.P_demand = this.scenario.demandAt(0);
+      if (preparation === 'rbmk_post_az5_v1') {
+        this.engine.state.auxFeedInstalled = true;
+        this.engine.scram('scenario');
+      }
     } else {
       // Erstes Ziel erst ein Stueck nach dem Start waehlen -- sonst zerrt die
       // Anforderung schon in der ersten Minute an einer Anlage, die gerade

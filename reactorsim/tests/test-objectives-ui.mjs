@@ -20,7 +20,7 @@ class Node {
 }
 globalThis.document = { createElement: tag => new Node(tag) };
 const { renderGuidance } = await import('../static/js/ui/guidance.js');
-const { renderObjectiveResult } = await import('../static/js/ui/objectives.js');
+const { renderObjectives, renderObjectiveResult } = await import('../static/js/ui/objectives.js');
 const text = node => [node.textContent, ...node.children.map(text)].join(' ');
 
 test('folded goals track holds, achievement and revocation without rebuilding or resetting scroll', () => {
@@ -99,4 +99,45 @@ test('briefing, saved-run notice, leak limitations and end results remain explic
   const legacy = new Node();
   renderObjectiveResult(legacy, { summary: {} });
   assert.equal(legacy.children.length, 0);
+});
+
+for (const lang of ['de', 'en']) test(`${lang}: RBMK briefing and results use RBMK criteria without PWR leak text`, () => {
+  const translations = JSON.parse(readFileSync(new URL(`../locales/${lang}.json`, import.meta.url)));
+  Object.assign(locale, translations);
+  const rbmk = JSON.parse(readFileSync(new URL('../static/data/scenarios/rbmk_post_az5.json', import.meta.url)));
+  const briefing = new Node();
+  renderGuidance(briefing, rbmk, null, { localOnly: true });
+  const end = new Node();
+  renderObjectiveResult(end, { summary: { scenario: rbmk.id }, objectives: rbmk.objectives.map(g => ({
+    id: g.id, type: g.type, held: g.hold_s, required: g.hold_s, active: true, met: true, achievedAt: 1700,
+  })) });
+  for (const host of [briefing, end]) {
+    const content = text(host);
+    assert.ok(content.includes(locale.obj_rules));
+    assert.ok(content.includes(locale.obj_rbmk_inventory_help));
+    assert.ok(content.includes(locale.obj_rbmk_heat_removal_help));
+    assert.ok(!content.includes(locale.obj_leak_limit));
+    assert.doesNotMatch(content, /Rohrleck|tube leak|DE-|SG |DNBR|140 bis 164|140 to 164|900 s|1080 s/i);
+    assert.doesNotMatch(content, /\bobj_\w+|\{\w+\}/);
+    assert.match(content, /10\s*%/);
+    assert.match(content, /1800 s/);
+  }
+  assert.ok(text(briefing).includes(locale.incident_local_only));
+  assert.ok(text(end).includes('00:28:20'));
+  assert.doesNotMatch(locale.obj_rules, /\d|\{\w+\}/, 'no-argument rules work for every duration');
+
+  for (const scenario of ['pwr_feedwater_loss', 'pwr_sg_tube_leak']) {
+    const pwr = JSON.parse(readFileSync(new URL(`../static/data/scenarios/${scenario}.json`, import.meta.url)));
+    const start = new Node();
+    renderObjectives(start, pwr);
+    const result = new Node();
+    renderObjectiveResult(result, { summary: { scenario }, objectives: pwr.objectives.map(g => ({
+      id: g.id, type: g.type, required: g.hold_s, held: 0, active: false, met: false, achievedAt: null,
+    })) });
+    for (const host of [start, result]) {
+      for (const g of pwr.objectives) assert.ok(text(host).includes(locale[`obj_${g.type}_help`]));
+      assert.equal(text(host).includes(locale.obj_leak_limit), scenario === 'pwr_sg_tube_leak');
+      assert.ok(!text(host).includes(locale.obj_rbmk_inventory_help));
+    }
+  }
 });

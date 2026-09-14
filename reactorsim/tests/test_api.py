@@ -706,3 +706,257 @@ def test_score_versions_have_independent_caps_and_filter_before_limit(client):
     assert [e['score'] for e in global_scores] == [100, 59]
     reactor_scores = client.get('/api/highscores?reactor=pwr&limit=2').get_json()['scores']
     assert reactor_scores == global_scores
+
+
+def _rbmk_post_az5_summary(**over):
+    return _summary(**dict({
+        'reactor': 'rbmk', 'scenario': 'rbmk_post_az5', 'difficulty': 3,
+        'duration_s': 1800, 'score_mode': 'incident_v1',
+        'energy_mwh_delivered': 0, 'energy_mwh_demanded': 0,
+        'deviation_mwh': 0, 'alarm_seconds_unacked': 0,
+        'violation_seconds': {'1': 0, '2': 0, '3': 0}, 'failed': None,
+        'objectives': [{'id': 'supply', 'met': True}, {'id': 'stable', 'met': True}],
+    }, **over))
+
+
+def _record_rbmk_post_az5(action_log):
+    """Fresh live Session, not replayRun or a saved/generated fixture file."""
+    script = """
+        import assert from 'node:assert/strict';
+        import { readFile } from 'node:fs/promises';
+        import rbmk from './static/js/plants/rbmk.js';
+        import { createEngine } from './static/js/sim/engine.js';
+        import { Session, PHASE } from './static/js/game/session.js';
+        import { attachRecorder } from './static/js/game/recorder.js';
+        import { captureKit, recordingKit } from './static/js/game/replayKit.js';
+        import { noteAction } from './static/js/game/learning.js';
+        const def = JSON.parse(await readFile('./static/data/scenarios/rbmk_post_az5.json', 'utf8'));
+        let input = '';
+        for await (const chunk of process.stdin) input += chunk;
+        const actions = JSON.parse(input);
+        const engine = createEngine(rbmk, { seed: def.seed });
+        attachRecorder(engine);
+        const map = {};
+        engine.hooks.uiControls(engine.state, engine.spec, engine.ctx,
+            recordingKit(captureKit(map), (id, value) => {
+                engine.recorder.record(id, value);
+                noteAction(engine, id, value);
+            }));
+        let scrams = 0;
+        const scram = engine.scram;
+        engine.scram = cause => {
+            scrams++;
+            assert.equal(cause, 'scenario');
+            assert.equal(engine.state.t_sim, 0);
+            return scram(cause);
+        };
+        const session = new Session(engine, def);
+        session.start();
+        assert.equal(scrams, 1);
+        assert.equal(engine.state.scram.active, true);
+        assert.equal(engine.state.scram.t, 0);
+        assert.equal(engine.state.P_demand, 0);
+        assert.deepEqual(engine.recorder.serialize(), []);
+        engine.drainLog();
+        for (let n = 0; session.phase === PHASE.RUNNING; n++) {
+            assert.ok(n < 36001, 'session must end at 1800 seconds');
+            for (const action of actions.filter(a => a.n === n)) map[action.id](action.value);
+            engine.step(0.05);
+            assert.equal(engine.state.fault, null);
+            session.step(0.05, engine.trips.tiles(), engine.trips.unacknowledgedSeconds());
+            engine.drainLog();
+        }
+        console.log(JSON.stringify({
+            log: engine.recorder.serialize(), ...session.result,
+            fwSupplyMax: engine.state.fwSupplyMax,
+            auxWaterKg: engine.state.auxWaterKg,
+        }));
+    """
+    node = os.environ.get('REACTORSIM_TEST_NODE', 'node')
+    proc = subprocess.run([node, '--input-type=module', '-e', script], cwd=_ROOT,
+                          input=json.dumps(action_log), capture_output=True,
+                          text=True, timeout=30, check=True)
+    return json.loads(proc.stdout)
+
+
+def test_rbmk_post_az5_catalog_contract(client):
+    import app as appmod
+    scenarios = client.get('/api/meta').get_json()['scenarios']
+    matches = [s for s in scenarios if s['id'] == 'rbmk_post_az5']
+    assert len(matches) == 1
+    scn = matches[0]
+    assert scn == appmod.SCENARIO_BY_ID['rbmk_post_az5']
+    assert scn['file'] == 'rbmk_post_az5.json'
+    assert scn['reactor'] == 'rbmk'
+    assert scn['difficulty'] == 3
+    assert scn['duration_s'] == 1800
+    assert scn['score_mode'] == 'incident_v1'
+    assert not scn['tutorial']
+    assert scn['guidance'] == {
+        'hint_key': 'scn_rbmk_post_az5_hint', 'auto_helper': False, 'event_alerts': False,
+    }
+    assert [(o['id'], o['type'], o['hold_s']) for o in scn['objectives']] == [
+        ('supply', 'rbmk_inventory', 30), ('stable', 'rbmk_heat_removal', 120),
+    ]
+    definition = client.get('/static/data/scenarios/' + scn['file']).get_json()
+    assert definition['objectives'] == scn['objectives']
+    assert definition['preparation'] == 'rbmk_post_az5_v1'
+    assert definition['demand'] == [{'t': 0, 'mw': 0}, {'t': 1800, 'mw': 0}]
+    assert 'start_overrides' not in definition
+
+
+@pytest.mark.parametrize('log_body', [{}, {'log': None}, {'log': {}},
+                                      {'log': ''}, {'log': False}, {'log': 1}])
+def test_rbmk_post_az5_requires_replay(client, log_body):
+    import app as appmod
+    r = client.post('/api/highscores', json={
+        'name': 'No replay', 'summary': _rbmk_post_az5_summary(), **log_body,
+    })
+    assert r.status_code == 400
+    assert r.get_json() == {'error': 'replay_required'}
+    assert appmod.STORE.list_scores() == []
+
+
+def test_rbmk_post_az5_idle_overwrites_forged_goals_and_initial_state(client):
+    import app as appmod
+    import scoring
+    idle = _record_rbmk_post_az5([])
+    # Neither top-level nor summary fields may replace the server's scenario file.
+    injected = {
+        'seed': 1, 'preparation': None, 'cold': True,
+        'demand': [{'t': 0, 'mw': 1000}],
+        'start_overrides': {'fwSupplyMax': 999999, 'auxFeedOn': True},
+        'state': {'P_demand': 1000, 'fwSupplyMax': 999999, 'auxWaterKg': 999999},
+        'scenarioFile': 'rbmk_night_shift.json',
+    }
+    r = client.post('/api/highscores', json={
+        **injected, 'name': 'Forged', 'log': [], 'score': 999999,
+        'score_mode': 'legacy', 'objectives': [{'id': 'invented', 'met': True}],
+        'summary': _rbmk_post_az5_summary(
+            **injected, difficulty=999999, score_mode='legacy',
+            objectives=[{'id': 'supply', 'met': True}, {'id': 'stable', 'met': True},
+                        {'id': 'free_points', 'met': True}]),
+    })
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    verified = data['summary']
+    assert verified == idle['summary']
+    assert verified['reactor'] == 'rbmk'
+    assert verified['scenario'] == 'rbmk_post_az5'
+    assert verified['difficulty'] == 3
+    assert verified['score_mode'] == 'incident_v1'
+    assert verified['completed'] is False
+    assert verified['failed'] == 'fail_objectives_unmet'
+    assert verified['duration_s'] == 1800
+    assert verified['scram_count'] == 1
+    assert verified['energy_mwh_demanded'] == 0
+    assert verified['objectives'] == [
+        {'id': 'supply', 'met': False}, {'id': 'stable', 'met': False},
+    ]
+    assert data['entry']['completed'] is False
+    assert data['parts']['objectives'] == 0
+    assert data['score'] == idle['score'] != 999999
+    assert data['parts'] == idle['parts']
+    assert scoring.validate_summary(verified, appmod.SCENARIO_BY_ID['rbmk_post_az5'], 1000) is None
+    assert scoring.score(verified) == {'score': data['score'], 'parts': data['parts']}
+
+
+def test_rbmk_post_az5_recorded_good_run_is_ranked_in_current_rbmk_partition(client):
+    import app as appmod
+    import scoring
+    settings = [(240, 50), (360, 40), (600, 30), (900, 25), (1200, 22), (1500, 18)]
+    actions = [{'n': round(t / 0.05), 'id': 'write:ctl_rbmk_aux_flow', 'value': value}
+               for t, value in settings]
+    actions.insert(1, {'n': round(240 / 0.05), 'id': 'btn:ctl_rbmk_aux_feed', 'value': '1'})
+    live = _record_rbmk_post_az5(actions)
+    # The actual recording must preserve write-before-on at the same step;
+    # preparation's t=0 SCRAM is not a player action in this seven-entry log.
+    assert live['log'] == actions
+    assert live['fwSupplyMax'] == 15
+    assert live['auxWaterKg'] > 62000
+    store = appmod.STORE
+    legacy = store.add_score('rbmk', 'rbmk_post_az5', 'Old version', 999999, {})
+    pwr = store.add_score('pwr', 'pwr_load_follow', 'Other reactor', 999998, {})
+    r = client.post('/api/highscores', json={
+        'name': 'GOOD', 'log': live['log'],
+        'summary': _rbmk_post_az5_summary(completed=False, objectives=[]),
+    })
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    verified = data['summary']
+    assert verified == live['summary']
+    assert verified['reactor'] == 'rbmk'
+    assert verified['scenario'] == 'rbmk_post_az5'
+    assert verified['completed'] is True
+    assert verified['failed'] is None
+    assert verified['duration_s'] == 1800
+    assert verified['scram_count'] == 1
+    assert verified['energy_mwh_demanded'] == 0
+    assert verified['objectives'] == [{'id': 'supply', 'met': True}, {'id': 'stable', 'met': True}]
+    assert data['parts']['objectives'] == 2000
+    assert data['parts']['energy'] == data['parts']['scram'] == 0
+    assert data['parts']['mission'] == 1000
+    assert data['parts']['bonus'] == 750
+    assert data['score'] == live['score'] == 3650
+    assert data['parts'] == live['parts']
+    assert scoring.score(verified) == {'score': data['score'], 'parts': data['parts']}
+    assert sum(data['parts'].values()) == pytest.approx(data['score'])
+    entry = data['entry']
+    assert entry['reactor'] == 'rbmk'
+    assert entry['scenario'] == 'rbmk_post_az5'
+    assert entry['completed'] is True
+    assert entry['score_mode'] == 'incident_v1'
+    stored = store._read_scores()
+    assert stored['rbmk/rbmk_post_az5'] == [legacy]
+    assert stored['rbmk/rbmk_post_az5/incident_v1'] == [entry]
+    for query in ('reactor=rbmk', 'scenario=rbmk_post_az5',
+                  'reactor=rbmk&scenario=rbmk_post_az5&limit=1'):
+        assert client.get('/api/highscores?' + query).get_json()['scores'] == [entry]
+    assert client.get('/api/highscores?reactor=pwr').get_json()['scores'] == [pwr]
+    assert client.get('/api/highscores?limit=2').get_json()['scores'] == [pwr, entry]
+
+
+@pytest.mark.parametrize('reactor', ['pwr', 'bwr'])
+def test_rbmk_post_az5_wrong_reactor_rejected(client, reactor):
+    import app as appmod
+    r = client.post('/api/highscores', json={
+        'name': 'Wrong reactor', 'log': [], 'summary': _rbmk_post_az5_summary(reactor=reactor),
+    })
+    assert r.status_code == 400
+    assert r.get_json() == {'error': 'reactor_mismatch'}
+    assert appmod.STORE.list_scores() == []
+
+
+@pytest.mark.parametrize('t', [240, 1801])
+def test_rbmk_post_az5_disabled_helper_rejected_even_after_end(client, t):
+    import app as appmod
+    r = client.post('/api/highscores', json={
+        'name': 'Helper', 'summary': _rbmk_post_az5_summary(),
+        'log': [{'n': round(t / 0.05), 'id': 'helper', 'value': 'drum_level_low'}],
+    })
+    assert r.status_code == 400
+    assert r.get_json() == {'error': 'verification_failed'}
+    assert appmod.STORE.list_scores() == []
+
+
+def test_rbmk_post_az5_nonsensical_controls_leave_idle_failure_and_supply_cap(client):
+    actions = [{'n': round(240 / 0.05), 'id': control, 'value': value}
+               for control in ('write:ctl_rbmk_aux_flow', 'btn:ctl_rbmk_aux_feed')
+               for value in (None, False, True, 'repair', '50', -1, 101, 1e9, [], {})]
+    live = _record_rbmk_post_az5(actions)
+    idle = _record_rbmk_post_az5([])
+    assert live['log'] == actions
+    assert live['fwSupplyMax'] == idle['fwSupplyMax'] == 15
+    assert live['auxWaterKg'] == idle['auxWaterKg'] == 160000
+    assert live['summary'] == idle['summary']
+    r = client.post('/api/highscores', json={
+        'name': 'Nonsense', 'log': live['log'], 'summary': _rbmk_post_az5_summary(),
+    })
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    assert data['summary'] == idle['summary']
+    assert data['summary']['completed'] is False
+    assert data['summary']['failed'] == 'fail_objectives_unmet'
+    assert data['entry']['completed'] is False
+    assert data['parts']['objectives'] == 0
+    assert data['score'] == idle['score']

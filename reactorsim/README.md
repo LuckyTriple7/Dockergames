@@ -63,10 +63,11 @@ Neben dem freien Spiel gibt es Schichten mit Auftrag: eine Bedarfskurve, die du
 einhalten sollst, geplante Störungen und eine Wertung am Ende. In den bisherigen
 Betriebsszenarien zählen gelieferte Energie, Abweichung vom Bedarf, unquittierte Alarmsekunden,
 Grenzwertüberschreitungen nach Schwere, Schnellabschaltungen und
-Brennstoffschaden. Die drei neuen DWR-Störungsschichten verwenden seit 0.1.21
-stattdessen die unten beschriebene Sicherheitswertung; das Tutorial bleibt ungewertet.
+Brennstoffschaden. Vier Störungsschichten verwenden stattdessen die unten
+beschriebene Sicherheitswertung: drei DWR-Schichten seit 0.1.21 und die
+RBMK-Nach-AZ-5-Schicht seit 0.1.24. Das Tutorial bleibt ungewertet.
 
-Alle 14 Szenariodateien, einschließlich Tutorial (Dauer in Simulationszeit):
+Alle 15 Szenariodateien, einschließlich Tutorial (Dauer in Simulationszeit):
 
 | Szenario | Typ | Schwierigkeit | Dauer |
 |---|---|---|---|
@@ -84,9 +85,10 @@ Alle 14 Szenariodateien, einschließlich Tutorial (Dauer in Simulationszeit):
 | Ausfall einer Umwälzpumpengruppe | RBMK | 2 | 60 min |
 | Nachtschicht | RBMK | 3 | 180 min |
 | Wiederanlauf aus heissem Stillstand | RBMK | 3 | 150 min |
+| AZ-5 war erst der Anfang | RBMK | 3, anspruchsvoll | 30 min |
 
 Die Auswahl ist je Reaktortyp nach Schwierigkeit sortiert, das Tutorial steht
-zuerst. Die drei neuen DWR-Schichten zeigen ihr Stufenprofil auf der Karte:
+zuerst. Die drei DWR-Störungsschichten zeigen ihr Stufenprofil auf der Karte:
 **geführt** mit konkreten Hinweisen, Ereignisvorwarnungen und erlaubter
 automatischer Hilfe gemäß Einstellungen; **selbständig** mit einer Einzelstörung;
 **anspruchsvoll** mit kombinierten Störungen. Die beiden höheren Profile haben
@@ -104,8 +106,8 @@ Definitionen starten nicht stillschweigend freies Spiel. Ein Auswahlwechsel,
 Zurück oder Menü verwirft verspätete Ergebnisse, auch beim anschließenden Laden
 des Spielstands. Ein unpassender Spielstand erhält eine allgemeine Ladefehlermeldung.
 
-Die Physik bleibt unverändert. Speisewasserverlust bedeutet hier nur Regler auf
-Hand/null: Automatik und Handstellwert bleiben bedienbar, ohne permanenten
+Für diese drei DWR-Schichten bleibt die Physik unverändert. Speisewasserverlust
+bedeutet hier nur Regler auf Hand/null: Automatik und Handstellwert bleiben bedienbar, ohne permanenten
 Pumpendefekt oder Hilfsspeisung. Das Rohrleck ist ein vereinfachter Masseneintrag
 in einen zusammengefassten Dampferzeuger mit sinkendem Druckhalterfüllstand,
 keine vollständige Primärleckbilanz; Einzelisolation und Aktivitätsmessung fehlen.
@@ -124,6 +126,39 @@ zurück, auch nach erstmaligem Erreichen. Beide Ziele müssen am festen Ende
 bei 900 beziehungsweise 1080 Simulationssekunden aktuell erfüllt sein.
 Abwarten genügt nicht; Zwischenziele beenden die Schicht nicht vorzeitig.
 
+**RBMK: AZ-5 war erst der Anfang** (`rbmk_post_az5`) startet mit echtem SCRAM
+bei t=0 und noch fahrenden Stäben, nicht mit einem kalten oder wärmefreien Kern.
+Nachwärme, heißer Brennstoff und Graphit bleiben erhalten; der Netzbedarf ist
+0 MW. Vier Hauptumwälzpumpen fallen bei 90 s aus, die normale Speisung wird
+bei 180 s physisch auf 15 kg/s begrenzt. Ab 240 s ist Hilfsspeisung verfügbar,
+aber erst von dir einzuschalten und zu dosieren, ohne Vorwarnung/Auto-Helfer.
+Maximal 220 kg/s aus 160.000 kg Vorrat speisen in die bestehende Bilanz ein.
+Beide Wege verwenden im Spiel abstrahiert 165 °C warmes Wasser; dies ist
+keine reale Anlage oder Störfallprozedur. Reglerauftrag umgeht keine Kapazität,
+Helfer oder Replay können ausgefallene Pumpen auch nicht kurz neu starten.
+
+Die zusätzliche Bedienung erscheint nur in dieser Übung. Sekundär- und
+Sicherheitspanel zeigen angeforderten und tatsächlichen Durchfluss, Grenze,
+Verfügbarkeit, Vorrat und Restlaufzeit, tatsächliche Trommelmasse, Gesamtbilanz,
+Kühlmittel-/Graphitwärmestrom in MW und Graphittemperatur. Mit sinkender Wärme
+muss die Speisung dosiert werden; AZ-5 allein ersetzt keine Wärmeabfuhr.
+Es gibt keine vorgeschriebene „magische“ Bedienfolge.
+
+Genau zwei RBMK-Ziele prüfen nach allen drei Ereignissen und dem nächsten
+Physikschritt die Inventarversorgung für 30 s und stabile Wärmeabfuhr für 120 s.
+Erforderlich sind unter anderem wirksame Abschaltung, Kernumlauf, 144 bis 176 t
+Trommelwasser, 35 bis 70 % Pegel und begrenzte Temperaturen/Druck. Stabilität
+verlangt passende reale Speise-/Dampfströme, höchstens zwei Prozentpunkte
+Pegelspanne, höchstens 1 K Erwärmung von mittlerem Kühlmittel und Graphit sowie
+mindestens 10.000 kg oder den Bedarf für 300 s beim aktuellen Hilfsstrom als
+Reserve, je nachdem, was größer ist. Haltezeiten werden bei Verletzung zurückgesetzt, erfüllte
+Ziele widerrufen; der erste Erfolg bleibt nur Historie. Beide Ziele müssen
+bei genau 1800 s aktuell erfüllt sein, sonst scheitert die Schicht. Kein
+versteckter Fehlertimer; Brennstoffschaden bleibt ein früher Abbruchgrund.
+Grenzwerte, gemessene Bedienbeispiele und Modellgrenzen:
+[RBMK-Audit](audit/RBMK-POST-AZ5-2026-09-14.md).
+
+Für alle vier `incident_v1`-Schichten gilt dieselbe Wertung:
 Je aktuell erfülltem Ziel gibt es 1000 Punkte; erfolgreicher Abschluss bringt
 zusätzlich 1000 plus 250 je Schwierigkeitsstufe. Energie, Netzabweichung,
 RESA und Grenzwertdauer tragen jeweils null Punkte bei. Unquittierte Alarme
@@ -134,10 +169,10 @@ Erneut geöffnete Einweisungen zeigen den aktuellen Zielstand.
 
 Speichern erhält den Zielfortschritt; alte Spielstände ohne gültigen Zielblock
 beginnen die Haltezeiten neu. Geladene Läufe werden nur lokal ausgewertet:
-Ohne vollständiges Replay ab Schichtbeginn ist für diese drei Szenarien kein
+Ohne vollständiges Replay ab Schichtbeginn ist für diese vier Szenarien kein
 Bestenlisteneintrag möglich. Alte Betriebswertungen bleiben gespeichert und
 werden nicht mit den neuen Sicherheitswertungen vermischt. Grenzwerte,
-Balancing und Nachweise: [Ziel-Audit](audit/SZENARIOZIELE-2026-09-14.md).
+Balancing und Nachweise für die DWR-Ziele: [Ziel-Audit](audit/SZENARIOZIELE-2026-09-14.md).
 Der [Szenario-Audit](audit/SZENARIEN-2026-09-14.md) hält den historischen
 Stand 0.1.20 fest.
 
@@ -159,8 +194,8 @@ Der Server rechnet den Punktestand **selbst**; ein mitgeschicktes `score`-Feld
 wird nicht gelesen. Mitgelieferte Bedienprotokolle werden in Node durch
 dieselbe Engine und Session nachgerechnet. Das Replay-Ergebnis ersetzt die
 Client-Kennzahlen; scheitert die Nachrechnung, wird die Einreichung abgelehnt.
-Für die drei `incident_v1`-Szenarien ist dieses Replay Pflicht. Aufgezeichnete
-Helfereingriffe werden auf bekannte Aktionen und die Erlaubnis laut `guidance`
+Für die vier `incident_v1`-Szenarien ist dieses kanonische Server-Replay Pflicht.
+Aufgezeichnete Helfereingriffe werden auf bekannte Aktionen und die Erlaubnis laut `guidance`
 geprüft. Die Auswertung übernimmt die autoritative Server-Summary samt
 Ergebnis und Punkten, ohne verspätete Antworten in eine andere Sitzung zu übernehmen.
 
@@ -186,9 +221,13 @@ bleibt für den Server undurchsichtig und wird beim Laden im Browser geprüft.
   `X <= 1` führt zu Erfolg, Log-/Trendmarker und Weiterlauf bei 1×.
   Das Limit von 48 Simulationsstunden ist kein Erfolg; Abbruch, Fehler oder
   Zerstörung führen ebenfalls nicht zum automatischen Weiterlauf.
-- **Kein automatischer Schutz.** Die Meldetafel warnt zuverlässig, greift aber nie selbst ein — die Schnellabschaltung ist allein Sache des Bedieners. Wer eine Meldung ignoriert, riskiert echten Brennstoffschaden.
+- **Kein automatischer Schutz.** Die Meldetafel warnt zuverlässig, löst aber
+  selbst keine Schnellabschaltung aus. Diese bedienst du; in der RBMK-Nach-AZ-5-
+  Übung gehört sie bereits zur Startvorbereitung. Wer eine Meldung ignoriert,
+  riskiert Brennstoffschaden im Spiel.
 - **Hochformat** zeigt die Panels als Reiter, breite Bildschirme als Raster mit
-  dem Fließbild in der Mitte.
+  dem Fließbild in der Mitte. Die Meldetafel-/Loggruppe behält mobil 180 px
+  Mindesthöhe, damit Log-Scrollen per Touch und Alarmhilfe erreichbar bleiben.
 - **Sprache** DE/EN über den Startbildschirm.
 - **Hinweise einklappen:** Die Überschrift des Laufzeit-Hinweisbereichs
   klappt den gesamten Inhalt samt Zielübersicht auf 40 px ein. Standardmäßig
@@ -202,9 +241,9 @@ bleibt für den Server undurchsichtig und wird beim Laden im Browser geprüft.
 
 ## Trends
 
-Seit 0.1.22 teilen alle 14 Szenarien und das freie Spiel aller drei Reaktortypen
-dieselbe Trendhistorie. Sie erfasst einmal je Simulationssekunde unabhängig
-von Zeitraffer, sichtbarem Panel oder Rendering und hält maximal 28.800
+Die seit 0.1.22 gemeinsame Trendhistorie gilt aktuell für alle 15 Szenarien
+und das freie Spiel aller drei Reaktortypen. Sie erfasst einmal je Simulationssekunde
+unabhängig von Zeitraffer, sichtbarem Panel oder Rendering und hält maximal 28.800
 Messpunkte der letzten acht Simulationsstunden vor.
 
 Vier Hauptdiagramme zeigen Leistung in Prozent, Druck in bar, Füllstand in
@@ -219,7 +258,8 @@ Die Ereignisliste unterscheidet Bedienaufträge von tatsächlichen
 Zustandswechseln wie Schnellabschaltung, Rücksetzen/Wiederherstellung und
 Alarm-/Störungsflanken. Zielstart, Rücksetzen der Haltezeit, Erreichen und
 Verlust eines Ziels werden dort erfasst, wo Ziele implementiert sind:
-in den drei DWR-Störungsschichten und im Anfahren-Tutorial. Andere Szenarien
+in vier Störungsschichten (drei DWR, eine RBMK) mit je zwei Sicherheitszielen
+und im Anfahren-Tutorial mit eigenen fünf Lernzielen. Andere Szenarien
 erhalten dadurch keine neuen Ziele. Die Liste hält höchstens 600 Marker aus
 den letzten acht Stunden vor und zeigt keine zukünftigen Ereignisse.
 
@@ -262,6 +302,15 @@ Alte Spielstände ohne Trendblock oder mit ungültigem Trendblock starten mit
 leerer, ausdrücklich als fehlend gekennzeichneter Historie; ein ansonsten
 gültiger Anlagenzustand wird deshalb nicht abgelehnt. Trendhistorie ist kein
 Replay und ändert weder Punkte noch Regeln für Bestenlisten.
+
+Seit 0.1.24 werden neue RBMK-Versorgungsfelder streng validiert; alte Stände
+erhalten neutrale Vorgaben. Äußeres Speicherformat v1, Trendformat v1 mit
+15 Kanälen und Wertungsversion bleiben unverändert. `pendingLog: {engine, trips}`
+sichert je bis zu 120 noch nicht dargestellte Ereignisse. Fortsetzen ersetzt
+die frischen Start-/Vorbereitungsmeldungen durch diese echten Warteschlangen;
+Altstände ohne Feld starten mit leeren Queues. Das verhindert doppelte
+Start-/SCRAM-Meldungen und erhält ausstehende Meldungen genau einmal, auch
+bei DWR und SWR, ohne Vorräte aufzufüllen.
 
 Für `PUT /api/saves/<slot>` gilt ein Limit von **4 MiB = 4.194.304 Bytes**.
 Andere Flask-Anfragen bleiben auf 256 KiB begrenzt, Einstellungen auf 8 KiB;

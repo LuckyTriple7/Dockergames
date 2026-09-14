@@ -4,6 +4,10 @@ Stand: 13.09.2026. Ergänzung zum [Spielaudit](AUDIT-2026-09-13.md) und zum [Phy
 
 Neben den gefundenen Bugs und der Physik sollten vor allem Verständlichkeit, Bedienung und Langzeitmotivation verbessert werden. Die folgenden Punkte dokumentieren die ursprünglichen Vorschläge. Stand 14.09.2026: Die erste Etappe mit Diagnoseanzeigen (Punkt 2) und Schichtauswertung (Punkt 4) ist in Version 0.1.18 umgesetzt; Umfang und Grenzen stehen in [VERBESSERUNGEN-2026-09-14.md](VERBESSERUNGEN-2026-09-14.md). Das DWR-Anfahren-Tutorial (Punkt 1) ist in Version 0.1.19 umgesetzt; siehe [TUTORIAL-2026-09-14.md](TUTORIAL-2026-09-14.md). Version 0.1.20 setzt Punkt 6 teilweise und Punkt 7 für die beiden genannten Einzelstörungen mit Modellgrenzen um; siehe [SZENARIEN-2026-09-14.md](SZENARIEN-2026-09-14.md). Version 0.1.21 setzt Punkt 5 für die drei neuen DWR-Schichten um; siehe [SZENARIOZIELE-2026-09-14.md](SZENARIOZIELE-2026-09-14.md). Version 0.1.22 setzt Punkt 3 global und den Trendhistorien-Teil von Punkt 8 um; siehe [TRENDS-2026-09-14.md](TRENDS-2026-09-14.md). Version 0.1.23 erfüllt Punkt 8 mit Speicherstatus und Zeitsprung-Abbruch vollständig; siehe [KOMFORT-2026-09-14.md](KOMFORT-2026-09-14.md). Ziele für die übrigen Szenarien und die weiteren fachlichen Erweiterungen bleiben offen.
 
+Version 0.1.24 erweitert Punkt 5 auf eine RBMK-Schicht und ergänzt Punkt 7 um
+aktive Versorgung nach AZ-5; aktuell 15 Szenarien, davon vier mit `incident_v1`.
+Siehe [RBMK-POST-AZ5-2026-09-14.md](RBMK-POST-AZ5-2026-09-14.md).
+
 ## 1. Interaktives Anfahren-Tutorial — DWR-Einstieg umgesetzt in 0.1.19
 
 Kurze Aufgaben wie „Leistung stabilisieren“ oder „Druckanstieg abfangen“. Jede Handlung bekommt eine Erklärung ihrer Wirkung.
@@ -20,13 +24,14 @@ Anzeigen unterscheiden zwischen Bedienwunsch und tatsächlichem Zustand:
 
 Ereignismarker für Stabfahrten, Abschaltungen und Störungen ergänzen. Leistung, Druck und Durchsatz sollen zeitlich gemeinsam vergleichbar sein.
 
-Umgesetzt für alle 14 Szenarien und freies Spiel aller drei Reaktortypen:
+Umgesetzt für aktuell alle 15 Szenarien und freies Spiel aller drei Reaktortypen:
 gemeinsame 1-Hz-Historie der letzten acht Simulationsstunden, vier Haupt- und
 vier erweiterte Diagramme mit gemeinsamer Zeitachse, bis zu 600 Marker sowie
 Markerwahl mit weißem Cursor, festgehaltener Ansicht und Live-Rückkehr.
 Bedienaufträge sind von tatsächlichen Zustandswechseln getrennt; fehlende
-Messwerte bleiben Lücken. Zielmarker gelten nur für die drei DWR-Störungsschichten
-und das Anfahren-Tutorial, nicht als neue Ziele für alle Szenarien.
+Messwerte bleiben Lücken. Zielmarker gelten aktuell für vier Störungsschichten
+(drei DWR, eine RBMK) und die fünf eigenen Lernziele des Anfahren-Tutorials,
+nicht als neue Ziele für alle Szenarien.
 
 ## 4. Lehrreiche Auswertung — umgesetzt in 0.1.18
 
@@ -37,7 +42,7 @@ Nach der Schicht erklären:
 - Welche Reaktion hat geholfen?
 - Wo begann die Verschlechterung?
 
-## 5. Nachvollziehbare Szenarioziele - für drei neue DWR-Schichten umgesetzt in 0.1.21
+## 5. Nachvollziehbare Szenarioziele - drei DWR-Schichten 0.1.21, eine RBMK-Schicht 0.1.24
 
 Neben „bestanden“ auch Zwischenziele zeigen: Anlage stabilisiert, Wärmeabfuhr hergestellt, Versorgung wiederhergestellt. Punkte sollten gute Störfallbeherrschung erkennbar belohnen.
 
@@ -50,6 +55,14 @@ erster Erfolg als Verlauf und Detailkriterien sind in DE/EN sichtbar.
 `incident_v1` belohnt aktuelle Ziele statt Stromproduktion, ohne RESA-Abzug.
 Speicherung erhält Fortschritt; Bestenlisten verlangen ein vollständiges
 Server-Replay und bleiben von alten Betriebswertungen getrennt.
+
+Seit 0.1.24 zusätzlich `rbmk_post_az5`: genau zwei Ziele, Inventarversorgung
+30 s und stabile Wärmeabfuhr 120 s, nach allen drei Ereignissen und dem nächsten
+Physikschritt. Reale Speisung, Trommelinventar, Wärmeabfuhr und Reserve zählen;
+beide Ziele müssen bei 1800 s aktuell erfüllt sein. Rücksetzen/Widerruf und
+`incident_v1` bleiben gleich, der erste Erfolg ist nur Historie. Für alle vier
+Schichten ist kanonisches Server-Replay Pflicht; geladene Läufe bleiben lokal.
+Details: [RBMK-Audit 0.1.24](RBMK-POST-AZ5-2026-09-14.md).
 
 Offen bleiben die vollständige Übertragung auf die übrigen Szenarien und
 weitergehende Diagnoseprüfungen. Die Ziele sind kalibrierte Spielkriterien,
@@ -65,7 +78,7 @@ Spiel. Vorwarnung und automatischer Helfer sind szenarioabhängig begrenzt,
 ohne Änderung der Physik oder globalen Helferpräferenz. Unvollständige
 Messinformationen und generische Messausfälle bleiben späterem Ausbau vorbehalten.
 
-## 7. Mehr Abwechslung durch vorhandene Mechanik - zwei Einzelstörungen umgesetzt in 0.1.20
+## 7. Mehr Abwechslung - DWR-Etappe 0.1.20, RBMK-Erweiterung 0.1.24
 
 Dampferzeugerrohrbruch oder Speisewasserausfall als eigenständige Diagnoseaufgabe anbieten. Zunächst jeweils eine klare Störung verwenden, bevor mehrere Ereignisse kombiniert werden.
 
@@ -78,6 +91,16 @@ neuen Zustandsziele begrenzte Stabilisierung (Punkt 5); beim Rohrleck genügt
 Nichtstun nicht mehr zum Erfolg. Eine vollständige Diagnosewertung fehlt
 weiterhin, Scores beweisen keine richtige reale Behandlung. Die DE-/EN-Texte
 benennen diese Grenzen ausdrücklich.
+
+Neue Etappe 0.1.24: **AZ-5 war erst der Anfang**, RBMK, Schwierigkeit 3,
+30 Minuten. Echtes SCRAM bei t=0 erhält die gespeicherte Wärme; vier
+Pumpenausfälle, physisch begrenzte normale Speisung und erst später verfügbare,
+manuell zu dosierende Hilfsspeisung verlangen aktive Wärmeabfuhr statt weiterer
+AZ-5-Betätigung. Auftrag, Iststrom, Bilanz und endlicher Vorrat sind sichtbar.
+Die neue Versorgungsmechanik ergänzt die bestehende Massen-/Energiebilanz;
+beide Speisewege bei 165 °C sind ausdrücklich eine Spielabstraktion, keine
+reale Prozedur. Alte Szenario-JSONs und historische Berichte bleiben unverändert.
+Andere Szenarioziele, detaillierte Diagnose und generische Messausfälle bleiben offen.
 
 ## 8. Komfort beim Spielen - vollständig erfüllt in 0.1.23
 

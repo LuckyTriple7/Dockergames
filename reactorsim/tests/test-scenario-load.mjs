@@ -100,6 +100,32 @@ test('malformed definitions and wrong identities cannot open a briefing', async 
   }
 });
 
+test('prepared RBMK scenarios reject foreign goal types, unknown profiles and duplicate goals', async () => {
+  const entry = definitions.find(x => x.def.id === 'rbmk_post_az5');
+  assert.ok(entry);
+  const def = entry.def;
+  const invalid = [
+    { ...def, preparation: 'unknown' }, { ...def, cold: true },
+    { ...def, objectives: [def.objectives[0], def.objectives[0]] },
+    { ...def, objectives: def.objectives.map(goal => ({ ...goal, type: 'pwr_heat_removal' })) },
+    { ...def, objectives: def.objectives.map(goal => ({ ...goal, max_power_fraction: -1 })) },
+    { ...def, objectives: def.objectives.map(goal => ({ ...goal, after_events: ['missing'] })) },
+  ];
+  for (const candidate of invalid) {
+    const h = harness();
+    const pending = h.ctx.loadScenario(meta(entry));
+    h.deliver(h.requests[0], candidate);
+    await pending;
+    assert.equal(h.briefs.length, 0);
+    assert.equal(h.$('#rs-start-retry').hidden, false);
+  }
+  const h = harness();
+  const pending = h.ctx.loadScenario(meta(first));
+  h.deliver(h.requests[0], { ...first.def, preparation: 'rbmk_post_az5_v1' });
+  await pending;
+  assert.equal(h.briefs.length, 0, 'RBMK preparation is never applied to a PWR');
+});
+
 test('late success, late failure and late JSON cannot replace a new selection or boot', async () => {
   for (const late of ['success', 'error', 'json']) {
     const h = harness();

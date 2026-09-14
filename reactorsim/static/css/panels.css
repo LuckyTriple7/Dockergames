@@ -35,6 +35,8 @@
   padding: 8px 10px 10px;
 }
 .rs-group-grow { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* Alarm tiles may exceed the viewport; keep a scrollable log below them. */
+#rs-p-alarm .rs-group-grow { flex: 1 0 180px; min-height: 180px; }
 
 .rs-group > h3 {
   font-size: 10px;

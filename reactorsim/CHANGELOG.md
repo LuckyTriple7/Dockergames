@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.1.24
+
+- 15. Szenario: **AZ-5 war erst der Anfang**, RBMK, Schwierigkeit 3,
+  30 Simulationsminuten bei 0 MW Netzbedarf. `rbmk_post_az5_v1` löst bei t=0
+  echtes Engine-SCRAM aus; Stäbe fahren noch, Nachwärmegruppen, heißer Brennstoff
+  und Graphit bleiben erhalten. Nach 90 s fallen vier Hauptumwälzpumpen aus,
+  nach 180 s ist die normale Speisung physisch auf 15 kg/s begrenzt; nach 240 s
+  ist die Hilfsspeisung verfügbar, aber nicht automatisch eingeschaltet.
+- Begrenzte Hilfsspeisung mit maximal 220 kg/s und 160.000 kg Vorrat vor der
+  bestehenden Massen-/Energiebilanz; beide Speisewege verwenden abstrahiert
+  165 °C warmes Wasser. Tatsächliche Ströme statt bloßer Regleraufträge zählen.
+  Ausgefallene Pumpen bleiben auch gegen Helfer-/Replay-Neustarts gesperrt.
+  Übungsspezifische Bedienung und Diagnose zeigen Auftrag, Kapazität, Iststrom,
+  Vorrat/Reichweite, Trommelmasse, Bilanz, Kühlmittel-/Graphitwärme und T_gr.
+- Genau zwei Ziele mit unverändertem `incident_v1`: Inventarversorgung 30 s,
+  stabile Wärmeabfuhr 120 s, erst nach allen drei Ereignissen und dem nächsten
+  Physikschritt. Grenzverletzungen setzen Haltezeiten zurück und widerrufen
+  Erfolg; beide Ziele müssen bei 1800 s aktuell erfüllt sein. Kein versteckter
+  Fehlertimer, keine Energie-/SCRAM-Strafe; Server-Replay für die Bestenliste
+  zwingend, geladene Läufe weiterhin nur lokal. Sinkende Wärme verlangt dosierte
+  Speisung, keine vorgeschriebene Bedienfolge. Gemessene erfolgreiche Läufe:
+  3650 Punkte ohne Quittierung; Nichtstun und alle 111 geprüften konstanten
+  Stellwerte ab 240 s scheitern, kein Beweis über beliebige spätere Eingaben.
+- Neue flache Speicherfelder streng geprüft, Altstände neutral ergänzt;
+  äußeres Format v1, Trendformat v1 mit 15 Kanälen und Wertungsversion unverändert.
+  `pendingLog: {engine, trips}` bewahrt je die letzten 120 noch nicht dargestellten
+  Meldungen. Laden ersetzt frische Start-/Vorbereitungsqueues durch gespeicherte
+  Ereignisse, ohne Feld durch leere Queues: keine doppelten Startmeldungen,
+  echte ausstehende Ereignisse genau einmal, auch bei DWR/SWR.
+- Mobile Meldetafel-/Loggruppe schrumpft nicht mehr auf null: 180 px Gruppe,
+  gemessen 142 px Log; Touch-Scrollen und Alarmhilfe bleiben erreichbar.
+  Alte Szenario-JSONs unverändert, bisherige RBMK-Physik per Regression geprüft;
+  zusätzlich `srv` initial auf 0 gesetzt. Kein identischer globaler Zustandshash
+  behauptet, da neue Felder hinzukommen. Modell weiterhin zusammengefasst,
+  sättigungsbasiert, ohne detaillierte Oxidation oder Sicherheitszertifizierung.
+- Finale vollständige Prüfungen: Node 380/380, Python 175/175, darunter 14 neue
+  API-Tests für echte RBMK-Bestenlisten ohne Änderung der Produktions-API-Formeln.
+  Browser 1350/1350 in 108 Fällen, vier DE/EN-Desktop-/Mobil-Kombinationen;
+  vier authentische UI-Läufe mit identischen Server-Replays zu je 3650 Punkten.
+  Geprüft am finalen Code unter 0.1.23 vor der reinen Versionsanhebung;
+  Methodik, Fortsetzung und Grenzen: [RBMK-Audit](audit/RBMK-POST-AZ5-2026-09-14.md).
+
 ## 0.1.23
 
 - Globaler Speicherstatus unter den Bedienelementen: letzter erfolgreicher

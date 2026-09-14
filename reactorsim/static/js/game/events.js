@@ -151,6 +151,28 @@ const EVENTS = {
   },
 
   // ── RBMK ─────────────────────────────────────────────────────────────────
+  rbmk_feed_supply_limit: {
+    key: 'ev_rbmk_feed_supply_limit',
+    severity: 2,
+    apply(e, args) {
+      if (e.state.reactor !== 'rbmk' || !args || typeof args !== 'object' || Array.isArray(args)
+        || !Object.hasOwn(args, 'max_kgs') || !Number.isFinite(args.max_kgs) || args.max_kgs < 0) return;
+      e.state.fwSupplyMax = Math.min(args.max_kgs, 1.3 * e.spec.drum.W_steam0);
+    },
+  },
+
+  rbmk_aux_feed_ready: {
+    key: 'ev_rbmk_aux_feed_ready',
+    severity: 1,
+    apply(e, args) {
+      // Availability neither starts the pump nor refills the finite tank.
+      if (e.state.reactor !== 'rbmk' || e.state.auxFeedInstalled !== true) return;
+      if (args !== undefined && (!args || typeof args !== 'object' || Array.isArray(args)
+        || Object.keys(args).length !== 0)) return;
+      e.state.auxFeedAvailable = true;
+    },
+  },
+
   mcp_trip: {
     key: 'ev_mcp_trip',
     severity: 2,

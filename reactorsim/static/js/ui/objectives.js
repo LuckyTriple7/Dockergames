@@ -13,7 +13,7 @@ export function renderObjectives(parent, def, tracker = null, render = null) {
     el('details', null, [el('summary', { text: t('obj_criteria') }),
       el('p', { text: t('obj_rules') }),
       ...def.objectives.map(goal => el('p', { text: t('obj_' + goal.type + '_help') })),
-      ...(def.objectives.some(goal => goal.max_power_fraction !== undefined)
+      ...(def.objectives.some(goal => goal.type.startsWith('pwr_') && goal.max_power_fraction !== undefined)
         ? [el('p', { text: t('obj_leak_limit') })] : []),
     ]));
   parent.append(host);

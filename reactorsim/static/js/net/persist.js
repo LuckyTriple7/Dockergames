@@ -75,6 +75,8 @@ export function pack(engine, scenarioId, runState, session) {
     // Rollendes Protokoll-Gedaechtnis (siehe ctx.history in sim/engine.js) --
     // ohne das startete das Log-Panel nach jedem Laden leer.
     history: engine.ctx.history,
+    // Keep real events not yet drained by the renderer separate from history.
+    pendingLog: { engine: engine.ctx.log.slice(-120), trips: engine.trips.events.slice(-120) },
     learning: learningReport(engine),
     // Laufende Stoerungs-Merker aus game/events.js (stepEvents()) -- leben
     // NUR auf ctx, nicht in engine.state, und waren deshalb komplett aus dem
@@ -120,6 +122,40 @@ export function apply(blob, engine, runState, session) {
   }
 
   const s = engine.state;
+  let rbmkFeed;
+  if (s.reactor === 'rbmk') {
+    const normal = 1.3 * engine.spec.drum.W_steam0;
+    rbmkFeed = {
+      auxFeedInstalled: false, auxFeedAvailable: false, auxFeedOn: false,
+      auxFeedDmd: 0, auxWaterKg: engine.spec.auxFeed.capacityKg,
+      W_fwDemand: src.W_fw, W_fwMain: src.W_fw, W_fwAux: 0,
+      fwSupplyMax: normal, coolantHeatMW: 0,
+    };
+    const bounds = {
+      auxFeedDmd: [0, 1], auxWaterKg: [0, engine.spec.auxFeed.capacityKg],
+      W_fwDemand: [0, 1e6], W_fwMain: [0, 1e6], W_fwAux: [0, engine.spec.auxFeed.maxFlow],
+      fwSupplyMax: [0, normal], coolantHeatMW: [-1e12, 1e12],
+    };
+    const hasFeedState = Object.keys(rbmkFeed).some(key => key !== 'coolantHeatMW' && Object.hasOwn(src, key));
+    for (const key of Object.keys(rbmkFeed)) {
+      if (Object.hasOwn(src, key)) rbmkFeed[key] = src[key];
+      // An equipped save needs its complete inventory/request history. Only
+      // legacy unequipped saves may reconstruct demand from the W_fw alias.
+      else if (hasFeedState && key !== 'coolantHeatMW'
+        && !(key === 'W_fwDemand' && src.auxFeedInstalled === false)) return `rbmk:${key}`;
+      const value = rbmkFeed[key];
+      const range = bounds[key];
+      if (range ? (!Number.isFinite(value) || value < range[0] || value > range[1])
+        : typeof value !== 'boolean') return `rbmk:${key}`;
+    }
+    if ((rbmkFeed.auxFeedAvailable && !rbmkFeed.auxFeedInstalled)
+      || (rbmkFeed.auxFeedOn && !rbmkFeed.auxFeedAvailable)
+      || (rbmkFeed.W_fwAux > 0 && !rbmkFeed.auxFeedAvailable)) return 'rbmk:auxFeed';
+    // Flows describe the completed physics step, not the latest button state:
+    // switching off or emptying the tank may still leave a positive sample.
+    if (rbmkFeed.auxFeedInstalled
+      && src.W_fw !== rbmkFeed.W_fwMain + rbmkFeed.W_fwAux) return 'rbmk:W_fw';
+  }
   for (const [k, v] of Object.entries(src)) {
     const cur = s[k];
     if (k === 'D' && Array.isArray(v) && v.length === 4 && cur.length !== 4) {
@@ -137,6 +173,7 @@ export function apply(blob, engine, runState, session) {
       s[k] = v;
     }
   }
+  if (rbmkFeed) Object.assign(s, rbmkFeed);
   if (src.scram && typeof src.scram === 'object') {
     s.scram = { active: !!src.scram.active, t: Number(src.scram.t) || 0, cause: src.scram.cause || null };
   }
@@ -188,6 +225,12 @@ export function apply(blob, engine, runState, session) {
   if (Array.isArray(blob.history)) {
     engine.ctx.history = blob.history.filter((e) => e && typeof e === 'object' && typeof e.key === 'string');
   }
+  // Discard startup events from the fresh engine; only the saved run may speak.
+  const pending = entries => Array.isArray(entries) ? entries.filter(e => e
+    && typeof e.key === 'string' && Number.isFinite(e.t) && e.t >= 0 && e.t <= s.t_sim)
+    .slice(-120).map(e => ({ ...e })) : [];
+  engine.ctx.log = pending(blob.pendingLog?.engine);
+  engine.trips.events = pending(blob.pendingLog?.trips);
 
   // Laufende Stoerungs-Merker -- ebenso optional: ein Stand von vor diesem
   // Fix hat kein malfunctions-Feld, dann bleibt es wie bisher (die

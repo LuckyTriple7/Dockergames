@@ -71,26 +71,44 @@ Bestenliste mit Namen Sinn.
 
 ## Weitere Störszenarien
 
-Stand 0.1.23: 14 Szenariodateien einschließlich Anfahren-Tutorial. Zwei
+Stand 0.1.24: 15 Szenariodateien einschließlich Anfahren-Tutorial. Zwei
 Einzelstörungen aus der Ideensammlung sind jetzt als eigene DWR-Schichten
 umgesetzt, ergänzt um eine kombinierte Stufe. Details und Nachweise:
 [historischer Szenario-Audit 0.1.20](audit/SZENARIEN-2026-09-14.md) und
-[Ziel-Audit 0.1.21](audit/SZENARIOZIELE-2026-09-14.md).
+[Ziel-Audit 0.1.21](audit/SZENARIOZIELE-2026-09-14.md). Die RBMK-Nach-AZ-5-Schicht
+ergänzt seit 0.1.24 die aktive Versorgung nach der Abschaltung:
+[RBMK-Audit 0.1.24](audit/RBMK-POST-AZ5-2026-09-14.md).
 
-**Sicherheitsziele umgesetzt in 0.1.21, weiterer Ausbau offen:**
-Die drei neuen DWR-Schichten haben je zwei widerrufbare Zustandsziele mit
+**Sicherheitsziele in 0.1.21 umgesetzt und 0.1.24 erweitert, weiterer Ausbau offen:**
+Die drei DWR-Störungsschichten haben je zwei widerrufbare Zustandsziele mit
 15/120 Sekunden Haltezeit und `incident_v1`-Wertung statt Produktionswertung.
 Beide Ziele müssen am ursprünglichen Ende aktuell erfüllt sein. Speicherung
 erhält Zielzeiten und Haltefenster; geladene Läufe bleiben ohne vollständiges
 Replay lokal, die neuen Bestenlisten verlangen Server-Nachrechnung und sind
 von alten Scores getrennt. Gemeinsame Trends und Ereignismarker sind seit
-0.1.22 für alle Szenarien und freies Spiel aller drei Reaktortypen umgesetzt;
-Zielmarker betreffen nur diese drei Schichten und das Anfahren-Tutorial.
+0.1.22 für alle Szenarien und freies Spiel aller drei Reaktortypen umgesetzt.
+Die RBMK-Schicht ergänzt zwei Ziele mit 30/120 s Haltezeit und derselben
+`incident_v1`-Wertung. Zielmarker betreffen aktuell diese vier Störungsschichten
+und das Anfahren-Tutorial mit seinen eigenen fünf Lernzielen, nicht alle Szenarien.
 Vollständige Übertragung der Ziele auf die übrigen Szenarien, weitergehende
 Diagnoseziele, unvollständige Messinformationen und generische Messausfälle
 bleiben offen; die genannten Komfortpunkte sind in 0.1.23 erledigt. Die bestehende
 SWR-Füllstandslücke bei Gleichstromverlust ist kein generisches Sensormodell.
 Die kalibrierten Spielziele ersetzen keine reale Störfallprozedur.
+
+**Umgesetzt in 0.1.24, RBMK-Nach-AZ-5-Schicht:**
+- `rbmk_post_az5`, Schwierigkeit 3, 30 Minuten, 0 MW Netzbedarf; echtes
+  SCRAM bei t=0 mit Stabfahrt und erhaltener Brennstoff-/Graphit-/Nachwärme.
+  Vier Pumpenausfälle bei 90 s, normale Speisung ab 180 s physisch auf 15 kg/s
+  begrenzt, Hilfsspeisung ab 240 s verfügbar, aber nicht automatisch an.
+- Dosierbare Hilfsspeisung bis 220 kg/s aus 160.000 kg Vorrat; tatsächliche
+  Ströme und Restvorrat zählen. Übungsspezifische Bedienung und Diagnose trennen
+  Auftrag, Kapazität und Wirkung. Inventarversorgung und stabile Wärmeabfuhr
+  müssen bei 1800 s aktuell erfüllt sein; bloßes AZ-5 oder Abwarten genügt nicht.
+- Aggregiertes Sättigungsmodell, beide Speisewege abstrahiert bei 165 °C;
+  keine reale Prozedur, detaillierte Oxidation oder Sicherheitszertifizierung.
+  Alte Szenario-JSONs bleiben unverändert. Das erfüllt weder sämtliche übrigen
+  Szenarioziele noch offene Sensor-, Diagnose- oder Physikerweiterungen.
 
 **Umgesetzt in 0.1.20, mit Modellgrenzen:**
 - **DWR: Dampferzeuger-Rohrleck.** `pwr_sg_tube_leak`, Schwierigkeit 2,

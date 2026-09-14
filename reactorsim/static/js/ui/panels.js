@@ -18,7 +18,7 @@ import { runHelper } from '../game/helper.js';
 import { record } from '../game/coreActions.js';
 import { recordingKit } from '../game/replayKit.js';
 import { noteAction } from '../game/learning.js';
-import { buildDiagnostics } from './diagnostics.js';
+import { buildDiagnostics, buildRbmkFeedDiagnostics } from './diagnostics.js';
 
 const U = (key) => ' ' + t(key);
 
@@ -304,6 +304,8 @@ export function buildPanels(engine, render, helperEnabled) {
 
   const diagnostics = buildDiagnostics(engine);
   $('#rs-pumps').append(diagnostics.node);
+  const rbmkFeedDiagnostics = buildRbmkFeedDiagnostics(engine);
+  if (rbmkFeedDiagnostics) $('#rs-safety-ctl').append(rbmkFeedDiagnostics.node);
 
   // ── Trendschreiber ─────────────────────────────────────────────────────────
   const trendView = buildTrends(engine, render);
@@ -592,6 +594,7 @@ export function buildPanels(engine, render, helperEnabled) {
     rho.set(d.breakdown, d.rho, rhoScale);
     pumps.set(d.pumpStates || [], d.pumpStuckList);
     diagnostics.set();
+    rbmkFeedDiagnostics?.set(d);
     demand.set(Math.round(s.P_demand));
     turbineResume.disabled = !s.turbineTripped || s.scram.active;
     if (rodAuto && rodCtl) rodAuto.set(rodCtl.auto);

@@ -181,6 +181,9 @@ export const spec = {
 
   mcp: { count: 8, W0: 10500, coastTau: 8, rampTau: 5 },
 
+  // Scenario equipment in the reduced model, not a historical plant claim.
+  auxFeed: { maxFlow: 220, capacityKg: 160000 },
+
   // workFactor so gewaehlt, dass 3200 MWth die 1000 MWe der beiden Turbosaetze
   // ergeben -- 31 % Gesamtwirkungsgrad, der niedrigste der drei Typen.
   turbine: { Cv: 44, strokeS: 3, workFactor: 0.2467, bypassCv: 22, bypassStrokeS: 1.0 },
@@ -199,6 +202,8 @@ export const spec = {
     power_high: 'core', period_short: 'core', orm_low: 'core', orm_critical: 'core',
     void_positive: 'core', graphite_hot: 'core', axial_tilt: 'core', clad_temp: 'core',
     drum_press_high: 'drum', drum_level_low: 'drum', drum_level_high: 'drum',
+    rbmk_feed_limited: 'drum', rbmk_aux_ready: 'drum',
+    rbmk_aux_low: 'drum', rbmk_aux_empty: 'drum',
     mcp_cavitation: 'rcp', mcp_stuck: 'rcp',
     turbine_trip: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
   },
@@ -251,6 +256,18 @@ export const spec = {
     // nichts gewesen (siehe pumpsStuck-Fix in game/events.js).
     { id: 'mcp_stuck', key: 'alarm_mcp_stuck', severity: SEVERITY.WARN,
       test: (s, d) => !!d.pumpStuck, delay_s: 0, hold_s: 0 },
+    { id: 'rbmk_feed_limited', key: 'alarm_rbmk_feed_limited', severity: SEVERITY.WARN,
+      test: (s) => s.auxFeedInstalled && s.fwSupplyMax < 1.3 * spec.drum.W_steam0,
+      delay_s: 0, hold_s: 0 },
+    { id: 'rbmk_aux_ready', key: 'alarm_rbmk_aux_ready', severity: SEVERITY.INFO,
+      test: (s) => s.auxFeedInstalled && s.auxFeedAvailable && !s.auxFeedOn,
+      delay_s: 0, hold_s: 0 },
+    { id: 'rbmk_aux_low', key: 'alarm_rbmk_aux_low', severity: SEVERITY.WARN,
+      test: (s) => s.auxFeedInstalled && s.auxFeedAvailable && s.auxWaterKg < 0.15 * spec.auxFeed.capacityKg,
+      delay_s: 0, hold_s: 0 },
+    { id: 'rbmk_aux_empty', key: 'alarm_rbmk_aux_empty', severity: SEVERITY.WARN,
+      test: (s) => s.auxFeedInstalled && s.auxFeedAvailable && s.auxWaterKg <= 0,
+      delay_s: 0, hold_s: 0 },
   ],
 };
 
@@ -264,6 +281,16 @@ export const hooks = {
     s.dTsub = sp.drum.subcool0;
     s.W_steam = sp.drum.W_steam0;
     s.W_fw = sp.drum.W_steam0;
+    s.W_fwDemand = s.W_fw;
+    s.W_fwMain = s.W_fw;
+    s.W_fwAux = 0;
+    s.fwSupplyMax = 1.3 * sp.drum.W_steam0;
+    s.auxFeedInstalled = false;
+    s.auxFeedAvailable = false;
+    s.auxFeedOn = false;
+    s.auxFeedDmd = 0;
+    s.auxWaterKg = sp.auxFeed.capacityKg;
+    s.coolantHeatMW = 0;
     s.gov = 0.8;
     s.bypass = 0;
     s.p_cond = sp.condenser.p0;
@@ -289,6 +316,7 @@ export const hooks = {
     // draußen stand, schiebt Graphit in die untere Wassersäule.
     s.tipArmed = [0, 0];
     s.az5 = { armed: false, t: 0 };
+    s.srv = 0;
 
     ctx.mcp = [];
     for (let i = 0; i < sp.mcp.count; i++) {
@@ -374,6 +402,9 @@ export const hooks = {
     const Tsat = tsat(s.p_drum);
     s.W_steam = (P * 1000) / (hg(s.p_drum) - H_FW);
     s.W_fw = s.W_steam;
+    s.W_fwDemand = s.W_fw;
+    s.W_fwMain = s.W_fw;
+    s.W_fwAux = 0;
     s.dTsub = _subcooling(s, sp);
     s.T_ci = Tsat - s.dTsub;
     s.T_co = Tsat;
@@ -461,10 +492,35 @@ export const hooks = {
   },
 
   stepLoop(s, sp, ctx, dt) {
+    if (!Number.isFinite(dt) || dt <= 0) return;
     // ── Hauptumwälzpumpen ───────────────────────────────────────────────────
     let W = 0;
-    for (const p of ctx.mcp) { p.demand = clamp(s.mcpDmd, 0, 1.1); p.step(dt); W += p.flow(0.06); }
+    for (let i = 0; i < ctx.mcp.length; i++) {
+      const p = ctx.mcp[i];
+      p.demand = clamp(s.mcpDmd, 0, 1.1);
+      // Helpers and direct replay calls must not restart a failed pump for a tick.
+      if (ctx.pumpsStuck?.has(i)) p.trip();
+      p.step(dt);
+      W += p.flow(0.06);
+    }
     s.W_core = W;
+
+    if (s.auxFeedInstalled || s.fwSupplyMax < 1.3 * sp.drum.W_steam0) {
+      s.W_fwMain = Math.min(s.W_fwDemand, s.fwSupplyMax);
+      s.W_fwAux = s.auxFeedInstalled && s.auxFeedAvailable && s.auxFeedOn
+        ? Math.min(s.auxFeedDmd * sp.auxFeed.maxFlow, s.auxWaterKg / dt) : 0;
+      // On the last partial step avoid a rounding residue from (water / dt) * dt.
+      s.auxWaterKg = s.W_fwAux === s.auxWaterKg / dt ? 0
+        : Math.max(0, s.auxWaterKg - s.W_fwAux * dt);
+      // Both supplies use H_FW (165 C): a deliberate common-enthalpy abstraction.
+      s.W_fw = s.W_fwMain + s.W_fwAux;
+    } else {
+      // Preserve the legacy W_fw alias and controller timing when inactive.
+      s.W_fwDemand = s.W_fw;
+      s.W_fwMain = s.W_fw;
+      s.W_fwAux = 0;
+    }
+    s.coolantHeatMW = s.coolantHeatKJ / dt / 1000;
 
     // ── Dampfabgabe ─────────────────────────────────────────────────────────
     ctx.govValve.demand = s.turbineTripped ? 0 : s.gov;
@@ -528,7 +584,8 @@ export const hooks = {
         s.rodDmd[1] = clamp(s.rodDmd[1] + d, 0, 1);
       }
     }
-    s.W_fw = ctx.fwCtl.step(s.L_drum, s.W_steam, dt);
+    s.W_fwDemand = ctx.fwCtl.step(s.L_drum, s.W_steam, dt);
+    if (!s.auxFeedInstalled && s.fwSupplyMax >= 1.3 * sp.drum.W_steam0) s.W_fw = s.W_fwDemand;
     s.gov = ctx.govCtl.step(s.P_e, s.P_demand, s.p_drum, dt);
     s.bypass = s.p_drum > sp.drum.p0 + 4 ? clamp((s.p_drum - sp.drum.p0 - 4) / 6, 0, 1) : 0;
   },
@@ -551,14 +608,35 @@ export const hooks = {
       value: Math.round(s.mcpDmd * 100), digits: 0, unitKey: 'unit_percent',
       onInput: (v) => { s.mcpDmd = v / 100; },
     });
+    // Always register callbacks: replay builds its kit before Session.start().
+    const auxFeed = kit.buttonGroup('ctl_rbmk_aux_feed', [
+      { key: 'state_off', value: '0' }, { key: 'state_on', value: '1' },
+    ], s.auxFeedOn ? '1' : '0', (v) => {
+      if (v !== '0' && v !== '1' && v !== 0 && v !== 1) return;
+      if (!s.auxFeedInstalled) return;
+      if (v === '0' || v === 0) s.auxFeedOn = false;
+      else if (s.auxFeedAvailable) s.auxFeedOn = true;
+    });
+    const auxFlow = kit.slider({
+      labelKey: 'ctl_rbmk_aux_flow', min: 0, max: 100, step: 1,
+      value: Math.round(s.auxFeedDmd * 100), digits: 0, unitKey: 'unit_percent',
+      onInput: (v) => {
+        if (s.auxFeedInstalled && Number.isFinite(v) && v >= 0 && v <= 100) s.auxFeedDmd = v / 100;
+      },
+    });
     return [
       { mount: 'primary', node: mcp.node, set: (st) => mcp.set(Math.round(st.mcpDmd * 100)) },
+      ...(s.auxFeedInstalled ? [
+        { mount: 'safety', node: auxFeed.node, set: (st) => auxFeed.set(st.auxFeedOn ? '1' : '0') },
+        { mount: 'secondary', node: auxFlow.node, set: (st) => auxFlow.set(Math.round(st.auxFeedDmd * 100)) },
+      ] : []),
     ];
   },
 
   togglePump(s, sp, ctx, i) {
     const p = ctx.mcp[i];
     if (!p) return;
+    if (ctx.pumpsStuck?.has(i)) { p.trip(); return; }
     if (p.state === 'run') p.trip(); else p.start();
   },
 
@@ -568,6 +646,15 @@ export const hooks = {
       L_sg: s.L_drum,
       W_steam: s.W_steam,
       W_fw: s.W_fw,
+      W_fwDemand: s.W_fwDemand,
+      W_fwMain: s.W_fwMain,
+      W_fwAux: s.W_fwAux,
+      fwSupplyMax: s.fwSupplyMax,
+      auxWaterKg: s.auxWaterKg,
+      auxFeedAvailable: s.auxFeedAvailable,
+      inventoryRateKgS: s.W_fwMain + s.W_fwAux - s.W_steam,
+      graphiteHeatMW: sp.graphite.UA * (s.T_gr - tsat(s.p_drum)) / 1000,
+      coolantHeatMW: s.coolantHeatMW,
       gov: s.gov,
       bypass: s.bypass,
       p_cond: s.p_cond,

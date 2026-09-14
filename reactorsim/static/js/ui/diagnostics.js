@@ -53,3 +53,44 @@ export function buildDiagnostics(engine) {
   set();
   return { node, set };
 }
+
+export function buildRbmkFeedDiagnostics(engine) {
+  if (!engine.state.auxFeedInstalled) return null;
+  const flow = v => `${num(v, 1)} ${t('unit_kgs')}`;
+  const mass = v => `${num(v / 1000, 2)} ${t('unit_t')}`;
+  const heat = v => `${num(v, 1)} ${t('unit_mwth')}`;
+  const rows = [
+    ['diag_rbmk_main', s => t('diag_rbmk_main_text', {
+      request: flow(s.W_fwDemand), actual: flow(s.W_fwMain), cap: flow(s.fwSupplyMax),
+    })],
+    ['ctl_rbmk_aux_feed', s => t('diag_rbmk_aux_text', {
+      availability: t(s.auxFeedAvailable ? 'diag_rbmk_ready' : 'diag_rbmk_waiting'),
+      on: t(s.auxFeedOn ? 'state_on' : 'state_off'),
+      request: num(s.auxFeedDmd * 100, 0), actual: flow(s.W_fwAux),
+    })],
+    ['diag_rbmk_tank', s => t('diag_rbmk_tank_text', {
+      remaining: mass(s.auxWaterKg), required: mass(Math.max(10000, s.W_fwAux * 300)),
+      runtime: s.W_fwAux === 0 ? t('diag_rbmk_no_flow')
+        : `${num(s.auxWaterKg / s.W_fwAux, 0)} ${t('unit_seconds')}`,
+    })],
+    ['diag_rbmk_inventory', s => mass(s.M_drum)],
+    ['diag_rbmk_balance', s => t('diag_rbmk_balance_text', {
+      feed: flow(s.W_fw), steam: flow(s.W_steam), balance: flow(s.W_fw - s.W_steam),
+    })],
+    ['diag_rbmk_coolant_heat', (s, d) => heat(d.coolantHeatMW)],
+    ['diag_rbmk_graphite_heat', (s, d) => heat(d.graphiteHeatMW)],
+    ['val_graphite_temp', (s, d) => `${num(d.T_gr - 273.15, 1)} ${t('unit_celsius')}`],
+  ];
+  const values = rows.map(() => el('span'));
+  const node = el('details.rs-diagnostics', { open: true }, [
+    el('summary', { text: t('diag_rbmk_feed_title') }),
+    ...rows.map(([label], i) => el('div.rs-ctl-block', null, [
+      el('b', { text: t(label) }), el('div', null, [values[i]]),
+    ])),
+    el('p.rs-ctl-hint', { text: t('diag_rbmk_feed_note') }),
+  ]);
+  const set = (d = engine.derive()) => rows.forEach(([, text], i) =>
+    setText(values[i], text(engine.state, d)));
+  set();
+  return { node, set };
+}
