@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.33
+
+- "keine Störung"-Zeile in der Kopfzeile entfernt, solange nichts ansteht --
+  derselbe Zustand steht schon in der Meldetafel. Die Zeile (samt farbigem
+  Schweregrad-Hintergrund) erscheint jetzt nur noch bei tatsächlich aktivem
+  Alarm oder Slip-/Kritisch-Hinweis.
+- Trends-Kachel steht im Desktop-Raster nur noch mit Kopfzeile da, Diagramme
+  eingeklappt -- die volle Ansicht ist über den bestehenden Klick auf die
+  Kopfzeile bzw. Taste V (openPanelWindow(), siehe PANEL_KEYS) weiterhin nur
+  einen Schritt entfernt, gibt beim Schließen des Fensters aber wieder Platz
+  für Kern/Primär/Sekundär/Netz/Chemie/Meldetafel frei. Nur ab 1024px --
+  auf dem Handy bleibt der Trends-Reiter unverändert voll sichtbar.
+
 ## 0.1.32
 
 - Neuer Hotkey Q: quittiert die Meldetafel wie der Knopf selbst (löst

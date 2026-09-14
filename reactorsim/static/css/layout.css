@@ -295,7 +295,7 @@
     display: grid;
     overflow: hidden;
     grid-template-columns: minmax(260px, 1fr) minmax(360px, 1.5fr) minmax(260px, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.75fr) minmax(0, 0.9fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.75fr) auto;
     grid-template-areas:
       "core  mimic sec"
       "prim  mimic grid"
@@ -310,6 +310,16 @@
   #rs-p-mimic { grid-area: mimic; }
   #rs-p-trend { grid-area: trend; }
   #rs-p-alarm { grid-area: alarm; }
+
+  /* Trends bleiben im Desktop-Raster auf die Kopfzeile eingeklappt -- die
+     volle Ansicht mit allen Diagrammen ist über den bestehenden Klick auf
+     die Kopfzeile (bzw. Taste V, siehe PANEL_KEYS in main.js) ohnehin nur
+     einen Schritt entfernt (openPanelWindow()). Das Zurückholen aus dem
+     Fenster haengt den Panel-Body per insertBefore() wieder genau hier ein
+     (main.js closePanelWindow()) -- die Regel greift dann sofort wieder,
+     ohne eigenen Zustand oder Knopf. Nur ab 1024px: auf dem Handy ist der
+     Reiter die einzige Ansicht, dort bleibt der Inhalt sichtbar. */
+  #rs-p-trend > .rs-panel-body { display: none; }
 
   /* Die Chemie hatte auf dem Desktop kein eigenes Feld und stand hier auf
      display:none -- mit der Begruendung, ihre Werte stuenden ja unten im

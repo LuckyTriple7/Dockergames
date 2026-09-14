@@ -143,8 +143,8 @@
          der Spieler je Reaktortyp selbst, siehe #rs-stats-modal. -->
     <div class="rs-status-scroll" id="rs-status-scroll"></div>
 
-    <div class="rs-status-bar" id="rs-status-alarm" data-sev="0">
-      <span class="rs-status-alarm-text" data-v="worst_alarm">{{ t.status_alarm_none }}</span>
+    <div class="rs-status-bar" id="rs-status-alarm" data-sev="0" hidden>
+      <span class="rs-status-alarm-text" data-v="worst_alarm" hidden></span>
       <span class="rs-status-slip" id="rs-slip" hidden>{{ t.status_slip }}</span>
       <span class="rs-prompt-crit" id="rs-prompt" hidden>{{ t.prompt_critical }}</span>
     </div>

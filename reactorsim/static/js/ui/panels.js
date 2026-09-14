@@ -457,6 +457,8 @@ export function buildPanels(engine, render, helperEnabled) {
 
   // ── Nachführung ────────────────────────────────────────────────────────────
   const statusBar = $('#rs-status-alarm');
+  const alarmText = $('.rs-status-alarm-text');
+  const slipNode = $('#rs-slip');
   const tabAlarm = $('#rs-tab-alarm-label');
   const promptNode = $('#rs-prompt');
 
@@ -613,7 +615,13 @@ export function buildPanels(engine, render, helperEnabled) {
       }
     }
     setAttr(statusBar, 'data-sev', worst);
-    put('worst_alarm', worstKey ? t(worstKey) : t('status_alarm_none'));
+    // "Keine Störung" stand hier dauerhaft, obwohl derselbe Zustand schon in
+    // der Meldetafel steht -- die Zeile zeigt sich jetzt nur noch, wenn es
+    // wirklich etwas zu sagen gibt (aktiver Alarm, Slip- oder Kritisch-
+    // Hinweis; die beiden bleiben eigenständig ein-/ausgeblendet).
+    alarmText.hidden = !worstKey;
+    put('worst_alarm', worstKey ? t(worstKey) : '');
+    statusBar.hidden = !worstKey && promptNode.hidden && slipNode.hidden;
     setAttr(tabAlarm, 'data-sev', worst);
     setAttr(tabAlarm, 'data-unack', engine.trips.horn ? '1' : '0');
 

@@ -142,7 +142,6 @@
   "status_margin": "Margin",
   "status_period": "Period",
   "status_clock": "Run time",
-  "status_alarm_none": "no alarm",
   "status_speed": "Time factor",
   "status_paused": "Paused",
   "status_slip": "Falling behind — time factor reduced",
