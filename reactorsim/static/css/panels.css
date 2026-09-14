@@ -15,6 +15,17 @@
 }
 .rs-panel-h-actions { margin-left: auto; display: flex; gap: 6px; }
 
+/* "Passendes Panel anzeigen" (Tutorial): on a wide desktop grid the target
+   panel is usually already visible, so scrollIntoView + focus alone can
+   look like nothing happened -- this flashes the header briefly. Respects
+   prefers-reduced-motion via the global animation-duration override in
+   base.css. */
+@keyframes rs-panel-jump {
+  0%, 100% { background: var(--rs-panel-2); }
+  30% { background: var(--rs-accent, #59b7ef); }
+}
+.rs-panel-jump { animation: rs-panel-jump 1s ease-out; }
+
 .rs-panel-body {
   flex: 1 1 auto;
   min-height: 0;

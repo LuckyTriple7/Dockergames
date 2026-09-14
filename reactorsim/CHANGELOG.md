@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.31
+
+- "Passendes Panel anzeigen" im Tutorial-Anleitung-Dialog wirkte auf breiten
+  Bildschirmen wie ein toter Knopf: der Reiterwechsel ist dort unsichtbar
+  (alle Panels stehen ohnehin im Raster), und scrollIntoView+focus allein
+  auf ein bereits sichtbares Panel fiel direkt nach dem Schliessen des
+  Dialogs kaum auf. Kopfzeile des Zielpanels blinkt jetzt kurz auf
+  (`rs-panel-jump`), respektiert prefers-reduced-motion.
+
 ## 0.1.30
 
 - Anfahren-Tutorial nimmt keine eigene Zeile über dem Arbeitsbereich mehr

@@ -38,7 +38,19 @@ export function buildTutorial(session, render) {
     if (panel) {
       panel.scrollIntoView({ block: 'nearest' });
       const title = panel.querySelector('h2');
-      if (title) { title.setAttribute('tabindex', '-1'); title.focus({ preventScroll: true }); }
+      if (title) {
+        title.setAttribute('tabindex', '-1');
+        title.focus({ preventScroll: true });
+        // On a wide desktop grid every panel is already visible and
+        // scrollIntoView/focus alone can be too subtle to notice, especially
+        // right after the modal that had the button just closed -- flash the
+        // header so the jump is actually seen. Restart cleanly on a repeat
+        // click within the animation's second.
+        title.classList.remove('rs-panel-jump');
+        void title.offsetWidth;
+        title.classList.add('rs-panel-jump');
+        setTimeout(() => title.classList.remove('rs-panel-jump'), 1000);
+      }
     }
   };
   const update = () => {
