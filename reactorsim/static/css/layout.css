@@ -75,20 +75,6 @@
 .rs-stat-v[data-sev="2"] { color: var(--rs-hot); }
 .rs-stat-v[data-sev="3"] { color: var(--rs-alarm); }
 
-.rs-status-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 3px 12px;
-  font-size: 12px;
-  color: var(--rs-fg-mute);
-  border-top: 1px solid var(--rs-line-soft);
-  margin-top: 5px;
-}
-.rs-status-bar[data-sev="1"] { background: #3a2a05; color: #ffd98a; }
-.rs-status-bar[data-sev="2"] { background: #4a1f05; color: #ffc08a; }
-.rs-status-bar[data-sev="3"] { background: #4d0d16; color: #ffb3bd; }
-.rs-status-slip { margin-left: auto; color: var(--rs-warn); }
 
 .rs-status-controls {
   display: flex;

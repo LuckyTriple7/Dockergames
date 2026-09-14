@@ -95,8 +95,27 @@
   animation: rs-blink-fast .5s steps(2, jump-none) infinite;
 }
 
+/* Kopfzeile der Meldetafel selbst: die einzige Anzeige, die auf JEDER
+   Bildschirmgroesse gleichzeitig mit allen anderen Kacheln dasteht -- der
+   Tab-Reiter oben existiert nur in der mobilen Tabbar (ab 1024px verschwindet
+   sie, siehe layout.css). Dieselben data-sev/data-unack, dieselbe Bedeutung:
+   gefaerbt so lange etwas weder quittiert noch rueckgestellt ist (data-sev
+   bleibt bei 'new' UND 'ack'), Blinken nur, solange es wirklich unquittiert
+   ist (data-unack, an der Hupe haengend). */
+#rs-p-alarm > .rs-panel-h[data-sev="1"],
+#rs-p-alarm > .rs-panel-h[data-sev="2"],
+#rs-p-alarm > .rs-panel-h[data-sev="3"] { color: #080c10; }
+#rs-p-alarm > .rs-panel-h[data-sev="1"] { background: var(--rs-warn); }
+#rs-p-alarm > .rs-panel-h[data-sev="2"] { background: var(--rs-hot); }
+#rs-p-alarm > .rs-panel-h[data-sev="3"] { background: var(--rs-alarm); }
+#rs-p-alarm > .rs-panel-h[data-sev="1"] .rs-btn,
+#rs-p-alarm > .rs-panel-h[data-sev="2"] .rs-btn,
+#rs-p-alarm > .rs-panel-h[data-sev="3"] .rs-btn { color: #080c10; border-color: rgba(8, 12, 16, .4); }
+#rs-p-alarm > .rs-panel-h[data-unack="1"] { animation: rs-blink-fast .5s steps(2, jump-none) infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .rs-tile[data-st="new"],
   .rs-tile[data-st="clear"],
-  .rs-tab-alarm[data-unack="1"]::after { animation: none; }
+  .rs-tab-alarm[data-unack="1"]::after,
+  #rs-p-alarm > .rs-panel-h[data-unack="1"] { animation: none; }
 }

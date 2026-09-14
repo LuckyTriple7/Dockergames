@@ -456,11 +456,14 @@ export function buildPanels(engine, render, helperEnabled) {
   $('#rs-alarm-reset').addEventListener('click', () => record(engine, 'reset', null));
 
   // ── Nachführung ────────────────────────────────────────────────────────────
-  const statusBar = $('#rs-status-alarm');
-  const alarmText = $('.rs-status-alarm-text');
-  const slipNode = $('#rs-slip');
+  // tabAlarm ist der Tab-Reiter (nur auf dem Handy sichtbar, die Tabbar
+  // verschwindet ab 1024px); alarmHeader ist die Kopfzeile der Meldetafel
+  // selbst, die im Desktop-Raster stattdessen gleichzeitig mit allen anderen
+  // Kacheln dasteht. Beide bekommen dieselben data-sev/data-unack wie die
+  // Kacheln (siehe annunciator.css) -- kein eigener Statusbalken mehr, der
+  // beim Auftauchen Inhalte darunter verschiebt.
   const tabAlarm = $('#rs-tab-alarm-label');
-  const promptNode = $('#rs-prompt');
+  const alarmHeader = $('#rs-p-alarm > .rs-panel-h');
 
   render.add('gauge', () => {
     const d = engine.derive();
@@ -601,29 +604,25 @@ export function buildPanels(engine, render, helperEnabled) {
     fwStation.set();
     for (const x of extras) if (x.set) x.set(s, d);
 
-    promptNode.hidden = !s.promptCritical;
-
     // Meldetafel und Protokoll
     annun.update(tiles);
     const entries = engine.drainLog();
     if (entries.length) annun.log(entries);
 
-    let worst = 0, worstKey = null;
+    let worst = 0;
     for (const tile of tiles) {
-      if (tile.tile === 'new' || tile.tile === 'ack') {
-        if (tile.severity > worst) { worst = tile.severity; worstKey = tile.key; }
-      }
+      if ((tile.tile === 'new' || tile.tile === 'ack') && tile.severity > worst) worst = tile.severity;
     }
-    setAttr(statusBar, 'data-sev', worst);
-    // "Keine Störung" stand hier dauerhaft, obwohl derselbe Zustand schon in
-    // der Meldetafel steht -- die Zeile zeigt sich jetzt nur noch, wenn es
-    // wirklich etwas zu sagen gibt (aktiver Alarm, Slip- oder Kritisch-
-    // Hinweis; die beiden bleiben eigenständig ein-/ausgeblendet).
-    alarmText.hidden = !worstKey;
-    put('worst_alarm', worstKey ? t(worstKey) : '');
-    statusBar.hidden = !worstKey && promptNode.hidden && slipNode.hidden;
+    // Bis 0.1.32 stand der schwerste Zustand zusaetzlich als eigene Zeile in
+    // der Kopfzeile -- verschob beim Auftauchen alles darunter und
+    // wiederholte nur, was auf der Meldetafel eh schon steht. Jetzt faerben
+    // sich Tab-Reiter (Handy, Tabbar) und Meldetafel-Kopfzeile selbst
+    // (Desktop-Raster, wo es keine Tabbar gibt) -- dieselbe Farbe/Blinken wie
+    // eine Kachel, so lange etwas weder quittiert noch rueckgestellt ist.
     setAttr(tabAlarm, 'data-sev', worst);
     setAttr(tabAlarm, 'data-unack', engine.trips.horn ? '1' : '0');
+    setAttr(alarmHeader, 'data-sev', worst);
+    setAttr(alarmHeader, 'data-unack', engine.trips.horn ? '1' : '0');
 
     // Hupe im Takt der blinkenden Kachel -- laeuft als Dauerschleife, solange
     // etwas unquittiert ist (siehe Horn.alarm()), und wird sofort abgestellt,

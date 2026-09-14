@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.34
+
+- `#rs-status-alarm`-Zeile ganz entfernt statt nur bei Bedarf ein-/
+  auszublenden -- das Ein-/Ausblenden selbst verschob Inhalte darunter.
+  Ersatz: Meldetafel-Kopfzeile (`#rs-p-alarm > .rs-panel-h`) färbt sich wie
+  eine Kachel (gelb/orange/rot je Schwere), blinkt, solange etwas
+  unquittiert ist, bleibt farbig, solange es nicht rückgestellt ist -- sie
+  steht im Desktop-Raster ohnehin immer da, verschiebt beim Auftauchen also
+  nichts. Auf dem Handy übernimmt weiterhin der Tab-Reiter (unverändert).
+  Als Nebenwirkung sind die eigenständigen Slip- und Prompt-kritisch-
+  Hinweise (`#rs-slip`, `#rs-prompt`) mit entfernt -- sie hingen an
+  derselben Zeile und hatten sonst keine Anzeige; kein Ersatz dafür in
+  dieser Version.
+
 ## 0.1.33
 
 - "keine Störung"-Zeile in der Kopfzeile entfernt, solange nichts ansteht --
