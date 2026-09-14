@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.27
+
+- Kopfzeilen-Icon-Buttons (Stummschalten/?/⌨/⚙/Einweisung) wieder gleich
+  breit. `.rs-status-controls > button` setzte `min-width: 0` fuer alle
+  Knoepfe (noetig, damit lange Text-Knoepfe auf schmalen Ansichten
+  umbrechen), das ueberschrieb `.rs-btn-icon`s eigenes `min-width: 38px` --
+  jedes Icon zog sich auf seine eigene Zeichenbreite zusammen. Icon-Knoepfe
+  jetzt per `flex: 0 0 38px` fest quadratisch, Text-Knoepfe schrumpfen
+  weiterhin.
+
 ## 0.1.26
 
 - Trendpanel: Live-/Auswahl-Statuszeile (`trend_following`/`trend_selected`,

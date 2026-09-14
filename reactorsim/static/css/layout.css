@@ -118,10 +118,20 @@
 
 .rs-status-controls #rs-menu { margin-left: auto; }
 
-.rs-status-controls > button {
+.rs-status-controls > button:not(.rs-btn-icon) {
   min-width: 0;
   max-width: 100%;
   overflow-wrap: anywhere;
+}
+/* Icon buttons stay a fixed square -- the shrink rule above (needed so long
+   text buttons wrap on narrow views) was overriding .rs-btn-icon's
+   min-width, so each icon ended up a different width based on its own
+   glyph metrics ("?" vs "⌨" vs "📋" ...). */
+.rs-status-controls > .rs-btn-icon {
+  flex: 0 0 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .rs-status-feedback {
