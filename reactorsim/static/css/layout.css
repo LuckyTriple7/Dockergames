@@ -124,22 +124,6 @@
   overflow-wrap: anywhere;
 }
 
-/* Alle Status-Symbolbuttons haben dieselbe Klickflaeche wie der Mute-Schalter.
-   Die Toolbar bleibt bei wenig Platz vollstaendig erreichbar, ohne Inhalte zu
-   stauchen oder umzubrechen. */
-.rs-status-controls > .rs-btn-icon { width: 56px; }
-
-@media (max-width: 700px) {
-  .rs-status-controls {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: thin;
-  }
-  .rs-status-controls > button,
-  .rs-status-controls > .rs-speed { flex: 0 0 auto; }
-  .rs-status-controls #rs-menu { margin-left: 0; }
-}
-
 .rs-status-feedback {
   display: flex;
   flex-wrap: wrap;

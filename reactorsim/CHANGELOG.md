@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.29
+
+- Die Szenario-Einweisung verwendet wieder den kompakten Clipboard-Button
+  links von „Speichern“. Die Toolbar entspricht damit wieder der Anordnung vor
+  dem Textbutton und den nachfolgenden Responsive-Anpassungen.
+
 ## 0.1.28
 
 - Mute, Hilfe, Tastaturhilfe und Statuskonfiguration haben in der Leitstands-
