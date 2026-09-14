@@ -226,8 +226,7 @@ export function buildPanels(engine, render, helperEnabled) {
   };
   const rodJog = jogButtons('ctl_rods', jogRod);
   $('#rs-rod-ctl').replaceChildren(
-    ...(rodAuto ? [rodAuto.node] : []), rodJog.node,
-    el('p.rs-ctl-hint', { text: t('hint_rods') }));
+    ...(rodAuto ? [rodAuto.node] : []), rodJog.node);
 
   // Wie viele Pumpen es gibt, sagt der Typ ueber seine Anzeigewerte -- ein
   // Druckwasserreaktor hat vier Hauptkuehlmittelpumpen, ein Siedewasserreaktor
@@ -244,7 +243,6 @@ export function buildPanels(engine, render, helperEnabled) {
   // Handwert auf Volllast stand.
   const govStation = station({
     labelKey: 'ctl_gov_valve', min: 0, max: 100, step: 1, unitKey: 'unit_percent',
-    hint: 'hint_gov',
     read: () => ctxPos(ctx.govValve) * 100,
     write: (v) => record(engine, 'gov_write', v),
     isAuto: () => ctx.govCtl.auto,
@@ -252,7 +250,6 @@ export function buildPanels(engine, render, helperEnabled) {
   });
   const fwStation = station({
     labelKey: 'ctl_fw_flow', min: 0, max: 130, step: 1, unitKey: 'unit_percent',
-    hint: 'hint_fw',
     read: () => (s.W_fw / fwNominal(sp)) * 100,
     write: (v) => record(engine, 'fw_write', v),
     isAuto: () => ctx.fwCtl.auto,

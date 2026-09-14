@@ -88,7 +88,7 @@ export function autoSwitch(labelKey, initial, onChange) {
  * @param {(v:boolean)=>void} o.setAuto  umschalten; bekommt den Ist-Wert schon übernommen
  */
 export function station({ labelKey, min = 0, max = 100, step = 1, digits = 0,
-                          unitKey, read, write, isAuto, setAuto, hint }) {
+                          unitKey, read, write, isAuto, setAuto }) {
   let auto = isAuto();
   const input = el('input.rs-slider', { type: 'range', min, max, step, value: read() });
   const readout = el('span.rs-ctl-v');
@@ -139,7 +139,6 @@ export function station({ labelKey, min = 0, max = 100, step = 1, digits = 0,
       el('div.rs-segs', null, [autoBtn, manBtn]),
     ]),
     el('div.rs-ctl-row', null, [input, readout]),
-    hint ? el('p.rs-ctl-hint', { text: t(hint) }) : null,
   ]);
 
   return {

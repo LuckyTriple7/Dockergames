@@ -580,7 +580,6 @@ export const hooks = {
     // Hand beide Schieber nebeneinander.
     const heater = kit.station({
       labelKey: 'ctl_pzr_heater', min: 0, max: 100, step: 1, unitKey: 'unit_percent',
-      hint: 'hint_pzr',
       read: () => (s.pzr_htr / sp.pressurizer.heaterMaxKW) * 100,
       write: (v) => { ctx.pzrCtl.heaterManual = v / 100; },
       isAuto: () => ctx.pzrCtl.auto,

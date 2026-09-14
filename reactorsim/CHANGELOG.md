@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.28
+
+- Ein-Zeiler-Hinweise unter Ventilstellung, Speisewasserstrom, Druckhalter
+  und Stäbe entfernt (`hint_gov`, `hint_fw`, `hint_pzr`, `hint_rods`) --
+  offensichtlich, kosteten nur Platz unter jeder Regelstation.
+
 ## 0.1.27
 
 - Kopfzeilen-Icon-Buttons (Stummschalten/?/⌨/⚙/Einweisung) wieder gleich
