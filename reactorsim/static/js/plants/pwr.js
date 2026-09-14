@@ -185,6 +185,12 @@ export const spec = {
     { id: 'period_short', key: 'trip_period_short', severity: SEVERITY.TRIP,
       test: (s, d) => s.n > 1e-3 && d.period > 0 && d.period < 10,
       delay_s: 0.5, action: 'scram' },
+    // s.promptCritical kommt fertig aus der Kinetik (sim/kinetics.js: rho > beta),
+    // hier nur noch als eigene Kachel gemeldet statt bisher nur als Kopfzeilen-
+    // text ohne Hupe/Protokoll/Quittierung. Kein delay_s: das ist kein
+    // verrauschter Messwert, sondern ein direktes Bit aus der Physik.
+    { id: 'prompt_critical', key: 'trip_prompt_critical', severity: SEVERITY.TRIP,
+      test: (s) => s.promptCritical, delay_s: 0, action: 'scram' },
     { id: 'pzr_press_low', key: 'trip_pzr_press_low', severity: SEVERITY.TRIP,
       test: (s) => s.pzr_p < 132, delay_s: 1.0, action: 'scram' },
     { id: 'pzr_press_high', key: 'trip_pzr_press_high', severity: SEVERITY.TRIP,

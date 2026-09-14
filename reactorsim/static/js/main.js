@@ -1725,6 +1725,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
         && state.scram.active && state.X > XENON_SKIP_TARGET);
     }
   });
+  app.loop.onSlip = (slipping) => { $('#rs-slip').hidden = !slipping; };
   // Absicherung gegen lautloses Einfrieren: jeder Fehler, der die rAF-Kette
   // sonst unbemerkt gerissen haette, landet hier als sichtbarer Stoerfall
   // mit Reload-Knopf statt als stehende Kopfzeile ohne jede Erklaerung.

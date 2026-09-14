@@ -94,6 +94,7 @@ const PWR_FIXES = {
   // Reine Kinetik/Reaktivitaet -- die Hilfe nennt keinen anderen Weg als RESA.
   power_high: () => UNFIXABLE,
   period_short: () => UNFIXABLE,
+  prompt_critical: () => UNFIXABLE,
   dnbr_low: (e) => { const a = []; startPumps(e.ctx, a); return fixed(a); },
   rcp_lost: (e) => { const a = []; startPumps(e.ctx, a); pwrClosePorvBlock(e, a); return fixed(a); },
   subcool_low: (e) => {
@@ -180,6 +181,7 @@ function fixRecircUp(engine) {
 const BWR_FIXES = {
   power_high: () => UNFIXABLE,
   period_short: () => UNFIXABLE,
+  prompt_critical: () => UNFIXABLE,
   oprm: () => UNFIXABLE,
   dome_press_high: (e) => {
     const s = e.state, ctx = e.ctx;
@@ -239,6 +241,7 @@ const BWR_FIXES = {
 const RBMK_FIXES = {
   power_high: () => UNFIXABLE,
   period_short: () => UNFIXABLE,
+  prompt_critical: () => UNFIXABLE,
   orm_low: () => UNFIXABLE,
   orm_critical: () => UNFIXABLE,
   void_positive: () => UNFIXABLE,

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.35
+
+- "Prompt kritisch" (ρ > β, s.promptCritical aus sim/kinetics.js) ist jetzt
+  eine echte Meldetafel-Kachel (`prompt_critical`, höchste Schwere) in allen
+  drei Reaktortypen statt nur ein Kopfzeilentext ohne Hupe, Protokoll oder
+  Quittierung. Eigener Hilfetext mit Handlungsschritten; automatischer
+  Helfer meldet bewusst "nicht behebbar" -- nur SCRAM/RESA/AZ-5 wirkt, wie
+  bei "Leistung hoch"/"Periode kurz".
+- Rechenrückstand (Simulation kommt beim Zeitraffer nicht hinterher) zeigt
+  sich wieder, jetzt als rotes ❗ fest links in der oberen Werteleiste --
+  ausserhalb der frei wähl-/verschiebbaren Werte, nur sichtbar, wenn's
+  wirklich klemmt, mit Erklärung als Mouseover.
+
 ## 0.1.34
 
 - `#rs-status-alarm`-Zeile ganz entfernt statt nur bei Bedarf ein-/

@@ -139,9 +139,16 @@
 <div class="rs-app" id="rs-app" hidden>
 
   <header class="rs-status" id="rs-status">
-    <!-- Von main.js gefuellt (buildStatusBar): welche Werte hier stehen, waehlt
-         der Spieler je Reaktortyp selbst, siehe #rs-stats-modal. -->
-    <div class="rs-status-scroll" id="rs-status-scroll"></div>
+    <div class="rs-status-top">
+      <!-- Rechenrueckstand: fest links, ausserhalb der frei waehlbaren Werte
+           unten -- kein Vorzug, den man abwaehlen koennte, nur sichtbar,
+           wenn main.js (app.loop.onSlip) das Attribut setzt. -->
+      <span class="rs-slip-warn" id="rs-slip" hidden title="{{ t.status_slip }}"
+            aria-label="{{ t.status_slip }}" role="img">❗</span>
+      <!-- Von main.js gefuellt (buildStatusBar): welche Werte hier stehen, waehlt
+           der Spieler je Reaktortyp selbst, siehe #rs-stats-modal. -->
+      <div class="rs-status-scroll" id="rs-status-scroll"></div>
+    </div>
 
     <div class="rs-status-controls">
       <div class="rs-speed" role="group" aria-label="{{ t.status_speed }}">

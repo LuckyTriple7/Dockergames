@@ -226,6 +226,9 @@ export const spec = {
     { id: 'period_short', key: 'trip_period_short', severity: SEVERITY.TRIP,
       test: (s, d) => s.n > 1e-3 && d.period > 0 && d.period < 10,
       delay_s: 2.0, action: 'scram' },
+    // s.promptCritical kommt fertig aus der Kinetik (sim/kinetics.js: rho > beta).
+    { id: 'prompt_critical', key: 'trip_prompt_critical', severity: SEVERITY.TRIP,
+      test: (s) => s.promptCritical, delay_s: 0, action: 'scram' },
     { id: 'dome_press_high', key: 'trip_dome_press_high', severity: SEVERITY.TRIP,
       test: (s) => s.p_dome > 78.5, delay_s: 0.5, action: 'scram' },
     { id: 'level_low', key: 'trip_level_low', severity: SEVERITY.TRIP,

@@ -23,14 +23,32 @@
   padding-top: env(safe-area-inset-top);
 }
 
+.rs-status-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 0;
+}
+
 .rs-status-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   gap: 2px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 6px 8px 0;
 }
 .rs-status-scroll::-webkit-scrollbar { display: none; }
+
+/* Rotes Ausrufezeichen bei Rechenrueckstand (app.loop.onSlip in main.js) --
+   steht fest links vor den frei waehlbaren Werten, kein Bestandteil davon. */
+.rs-slip-warn {
+  flex: 0 0 auto;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--rs-alarm);
+  cursor: help;
+}
 
 .rs-stat {
   flex: 0 0 auto;
@@ -318,7 +336,7 @@
      konnte, weil es nicht da war. */
   #rs-p-chem { grid-area: chem; }
 
-  .rs-status-scroll { padding: 8px 12px 0; }
+  .rs-status-top { padding: 8px 12px 0; }
   .rs-status-controls { padding: 8px 12px; }
   .rs-status-feedback { padding-inline: 12px; }
 
