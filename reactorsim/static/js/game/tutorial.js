@@ -62,9 +62,16 @@ export class StartupTutorial {
   step(dt) {
     if (this.done) return;
     this.elapsed += dt;
+    const heldBefore = this.held;
+    const key = `tut_${TUTORIAL_STEPS[this.index]}_title`;
     this.held = this.conditions()[this.index] ? this.held + dt : 0;
+    if (heldBefore === 0 && this.held > 0) this.engine.ctx.trends?.mark({
+      t: this.engine.state.t_sim, kind: 'goal_start', key });
+    if (heldBefore > 0 && this.held === 0) this.engine.ctx.trends?.mark({
+      t: this.engine.state.t_sim, kind: 'goal_reset', key });
     if (this.held + 1e-8 >= HOLD_SECONDS[this.index]) {
       this.completed.push({ id: TUTORIAL_STEPS[this.index], t: this.engine.state.t_sim });
+      this.engine.ctx.trends?.mark({ t: this.engine.state.t_sim, kind: 'goal_met', key });
       this.index++;
       this.held = 0;
       this.elapsed = 0;

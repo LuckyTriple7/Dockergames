@@ -10,6 +10,7 @@ import { Rng } from '../rng.js';
 import { StartupTutorial, STARTUP_TUTORIAL } from './tutorial.js';
 import { noteEvent, observeAlarms, learningReport } from './learning.js';
 import { ScenarioObjectives } from './objectives.js';
+import { TrendHistory } from './trendHistory.js';
 
 // Freies Spiel ohne Bedarfskurve hiesse: "folge der Netzanforderung" waere
 // nichts als "lass die Anforderung, wie sie ist" -- kein Unterschied zum
@@ -35,6 +36,7 @@ export class Session {
    */
   constructor(engine, scenarioDef) {
     this.engine = engine;
+    new TrendHistory(engine);
     this.free = !scenarioDef;
     this.scenario = scenarioDef ? new Scenario(scenarioDef) : null;
     this.run = this.scenario ? new RunState(this.scenario, engine.spec) : null;
@@ -65,6 +67,7 @@ export class Session {
       this.demandTarget = this.engine.state.P_demand;
       this.demandNextChangeT = this.demandRng.range(...FREE_DEMAND_INTERVAL_S);
     }
+    this.engine.ctx.trends.sample();
   }
 
   snapshot() {
@@ -115,6 +118,7 @@ export class Session {
 
     if (!this.scenario) {
       this._stepFreeDemand(s, dt);
+      this.engine.ctx.trends.sample(s);
       if (s.destroyed) this._finish(false, 'fail_fuel_damage');
       return;
     }
@@ -143,20 +147,24 @@ export class Session {
     this.unacked = unackedSeconds;
 
     const failed = this.run.checkFail(s, d, dt, worstSeverity);
-    if (failed) { this._finish(false, failed); return; }
+    if (failed) { this._finish(false, failed, d); return; }
     if (this.tutorial) {
       this.tutorial.step(dt);
       s.P_demand = this.tutorial.demand;
-      if (this.tutorial.done) this._finish(true, null);
-      else if (s.t_sim >= this.scenario.duration) this._finish(false, 'tut_timeout');
+    }
+    this.engine.ctx.trends.sample(s, d);
+    if (this.tutorial) {
+      if (this.tutorial.done) this._finish(true, null, d);
+      else if (s.t_sim >= this.scenario.duration) this._finish(false, 'tut_timeout', d);
     } else if (s.t_sim >= this.scenario.duration) {
       const completed = !this.objectives || this.objectives.done;
-      this._finish(completed, completed ? null : 'fail_objectives_unmet');
+      this._finish(completed, completed ? null : 'fail_objectives_unmet', d);
     }
   }
 
-  _finish(completed, failed) {
+  _finish(completed, failed, d) {
     if (this.phase === PHASE.DEBRIEF) return;
+    this.engine.ctx.trends.sample(this.engine.state, d, true);
     this.phase = PHASE.DEBRIEF;
     if (this.run) {
       this.run.completed = completed;

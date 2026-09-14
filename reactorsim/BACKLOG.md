@@ -44,9 +44,20 @@ laufenden Betrieb.
 
 ### Lauf-Export als CSV
 
-Der Trendpuffer (`ui/trend.js`) hält die Verläufe ohnehin. Ein Knopf in der
-Auswertung, der sie als CSV herausgibt, kostet fast nichts und macht einen Lauf
-außerhalb des Spiels auswertbar.
+Die gemeinsame Historie `ctx.trends` (`static/js/game/trendHistory.js`) hält
+seit 0.1.22 maximal 28.800 Samples der letzten acht Simulationsstunden und
+600 Marker vor, einschließlich Speicherung und exaktem Fortsetzen.
+`static/js/ui/trend.js` stellt diese Daten nur dar. Ein CSV-Export der noch
+vorhandenen Werte bleibt offen; fehlende Messwerte und gekürzte Historie
+müssten dabei ausdrücklich erkennbar bleiben.
+
+### Verbleibender Spielkomfort
+
+Trendhistorie nach Fortsetzen und gemeinsame Ereignismarker sind in 0.1.22
+global umgesetzt; der gesamte Laufzeit-Hinweisbereich ist mit gemerkter Wahl
+einklappbar. Offen bleiben die Anzeige des letzten erfolgreichen
+(Auto-)Speicherzeitpunkts und ein ausdrücklicher Abbruch eines laufenden
+Zeitsprungs. Details: [Trend-Audit 0.1.22](audit/TRENDS-2026-09-14.md).
 
 ### Mehrbenutzerbetrieb
 
@@ -56,7 +67,7 @@ Bestenliste mit Namen Sinn.
 
 ## Weitere Störszenarien
 
-Stand 0.1.21: 14 Szenariodateien einschließlich Anfahren-Tutorial. Zwei
+Stand 0.1.22: 14 Szenariodateien einschließlich Anfahren-Tutorial. Zwei
 Einzelstörungen aus der Ideensammlung sind jetzt als eigene DWR-Schichten
 umgesetzt, ergänzt um eine kombinierte Stufe. Details und Nachweise:
 [historischer Szenario-Audit 0.1.20](audit/SZENARIEN-2026-09-14.md) und
@@ -68,11 +79,14 @@ Die drei neuen DWR-Schichten haben je zwei widerrufbare Zustandsziele mit
 Beide Ziele müssen am ursprünglichen Ende aktuell erfüllt sein. Speicherung
 erhält Zielzeiten und Haltefenster; geladene Läufe bleiben ohne vollständiges
 Replay lokal, die neuen Bestenlisten verlangen Server-Nachrechnung und sind
-von alten Scores getrennt. Vollständige Übertragung auf die übrigen Szenarien,
-weitergehende Diagnoseziele, Ereignismarker/gemeinsame Trends, unvollständige
-Messinformationen und generische Messausfälle sowie Komfortpunkte aus dem
-Verbesserungsaudit bleiben offen. Die kalibrierten Spielziele ersetzen keine
-reale Störfallprozedur.
+von alten Scores getrennt. Gemeinsame Trends und Ereignismarker sind seit
+0.1.22 für alle Szenarien und freies Spiel aller drei Reaktortypen umgesetzt;
+Zielmarker betreffen nur diese drei Schichten und das Anfahren-Tutorial.
+Vollständige Übertragung der Ziele auf die übrigen Szenarien, weitergehende
+Diagnoseziele, unvollständige Messinformationen und generische Messausfälle
+sowie die verbleibenden Komfortpunkte bleiben offen. Die bestehende
+SWR-Füllstandslücke bei Gleichstromverlust ist kein generisches Sensormodell.
+Die kalibrierten Spielziele ersetzen keine reale Störfallprozedur.
 
 **Umgesetzt in 0.1.20, mit Modellgrenzen:**
 - **DWR: Dampferzeuger-Rohrleck.** `pwr_sg_tube_leak`, Schwierigkeit 2,
@@ -128,9 +142,10 @@ Szenario verpackt:**
   mit `ctx.fwCtl` dieselbe Reglerklasse wie DWR/SWR.
 
 **Größerer Aufwand -- echte neue Mechanik noetig:**
-- **DWR: Fehlerhafte Druckmessung.** Kein "die Anzeige zeigt etwas anderes
-  als die Physik"-Mechanismus vorhanden -- jeder angezeigte Wert ist heute
-  der wahre. Braucht einen eigenen Drift-Zustand pro Messstelle und eine
+- **DWR: Fehlerhafte Druckmessung.** Kein generischer Mechanismus für
+  Messwertdrift vorhanden; die SWR-Füllstandsanzeige und ihr Trend kennen
+  bereits Messausfall bei Gleichstromverlust. Druckmessfehler brauchen
+  einen eigenen Drift-Zustand pro Messstelle und eine
   Stelle in `ui/panels.js`, die zwischen Anzeige- und Ist-Wert
   unterscheidet.
 - **SWR: Schleichendes Vakuumversagen.** `p_cond` wird in `pwr.js`/`bwr.js`

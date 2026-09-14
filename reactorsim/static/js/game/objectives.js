@@ -52,6 +52,9 @@ export class ScenarioObjectives {
         continue;
       }
       if (s.t_sim <= entry.activatedAt) continue;
+      const heldBefore = entry.held;
+      const metBefore = heldBefore >= def.hold_s;
+      const key = `obj_${def.type}_title`;
       const heat = def.type === 'pwr_heat_removal';
       const temperature = (s.T_ci + s.T_co) / 2;
       const low = entry.levelMin === null ? s.L_sg : Math.min(entry.levelMin, s.L_sg);
@@ -63,14 +66,19 @@ export class ScenarioObjectives {
         Object.assign(entry, this._empty(def.id), {
           activatedAt: entry.activatedAt, achievedAt: entry.achievedAt,
         });
+        if (heldBefore > 0) this.engine.ctx.trends?.mark({ t: s.t_sim,
+          kind: metBefore ? 'goal_lost' : 'goal_reset', key, id: def.id });
         continue;
       }
       if (entry.startedAt === null) entry.startedAt = Math.max(entry.activatedAt, s.t_sim - dt);
       if (heat) Object.assign(entry, { levelMin: low, levelMax: high, tempBaseline: baseline });
       entry.held = Math.min(def.hold_s, entry.held + Math.min(dt, elapsed, s.t_sim - entry.activatedAt));
+      if (heldBefore === 0 && entry.held > 0) this.engine.ctx.trends?.mark({
+        t: s.t_sim, kind: 'goal_start', key, id: def.id });
       if (entry.held >= def.hold_s - EPS) {
         entry.held = def.hold_s;
         if (entry.achievedAt === null) entry.achievedAt = s.t_sim;
+        if (!metBefore) this.engine.ctx.trends?.mark({ t: s.t_sim, kind: 'goal_met', key, id: def.id });
       }
     }
   }

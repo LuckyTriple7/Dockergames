@@ -173,13 +173,75 @@ bleibt für den Server undurchsichtig und wird beim Laden im Browser geprüft.
 - **Hochformat** zeigt die Panels als Reiter, breite Bildschirme als Raster mit
   dem Fließbild in der Mitte.
 - **Sprache** DE/EN über den Startbildschirm.
+- **Hinweise einklappen:** Die Überschrift des Laufzeit-Hinweisbereichs
+  klappt den gesamten Inhalt samt Zielübersicht auf 40 px ein. Standardmäßig
+  ist er offen; die Wahl bleibt unter `rs-guidance-open` als `true`/`false`
+  in `localStorage` über Neuladen und Szenariowechsel erhalten. Bei gesperrtem
+  Speicher gilt sie nur im Arbeitsspeicher bis zum Neuladen. Zielprüfung und
+  Haltezeiten laufen geschlossen weiter. Die erneut geöffnete Einweisung
+  hat keinen zusätzlichen äußeren Klappbereich.
+- **Tastatur:** Leertaste und Enter aktivieren fokussierte native
+  Schaltflächen und Klappüberschriften, ohne dabei das Tempo umzuschalten.
+
+## Trends
+
+Seit 0.1.22 teilen alle 14 Szenarien und das freie Spiel aller drei Reaktortypen
+dieselbe Trendhistorie. Sie erfasst einmal je Simulationssekunde unabhängig
+von Zeitraffer, sichtbarem Panel oder Rendering und hält maximal 28.800
+Messpunkte der letzten acht Simulationsstunden vor.
+
+Vier Hauptdiagramme zeigen Leistung in Prozent, Druck in bar, Füllstand in
+Prozent sowie Speisewasser-/Dampfstrom in kg/s. Aufklappbar folgen Temperatur
+in °C, Reaktivität in pcm, Xenon in Prozent und Kernstrom in kg/s. Alle teilen
+dieselbe Zeitachse; wähle **10 Minuten**, **1 Stunde** oder **8 Stunden**.
+Die Leistungskurven zeigen Wärmeleistung, elektrische Leistung und Bedarf
+bezogen auf die jeweilige Nennleistung. Fehlende Messwerte werden nicht
+überbrückt: Beim SWR unterbricht Gleichstromverlust die Füllstandskurve.
+
+Die Ereignisliste unterscheidet Bedienaufträge von tatsächlichen
+Zustandswechseln wie Schnellabschaltung, Rücksetzen/Wiederherstellung und
+Alarm-/Störungsflanken. Zielstart, Rücksetzen der Haltezeit, Erreichen und
+Verlust eines Ziels werden dort erfasst, wo Ziele implementiert sind:
+in den drei DWR-Störungsschichten und im Anfahren-Tutorial. Andere Szenarien
+erhalten dadurch keine neuen Ziele. Die Liste hält höchstens 600 Marker aus
+den letzten acht Stunden vor und zeigt keine zukünftigen Ereignisse.
+
+Ein Markerlisten-Knopf setzt einen weißen Cursor auf allen Diagrammen und
+hält das Zeitfenster fest, **nicht die Simulation**. **Live** löscht die Auswahl
+und folgt wieder der aktuellen Zeit. Hinweise kennzeichnen fehlende Historie
+und gekürzte Markerlisten. Die Darstellung verdichtet Messpunkte je Pixel
+unter Erhalt von Min/Max und Kurvenlücken, nicht die gespeicherten Daten.
+
+## Spielstände
+
+Speichern erhält alle noch vorgehaltenen Trendwerte und Marker. Die 15
+Float32-Kanäle und Float64-Zeitwerte werden vollständig binär/Base64 abgelegt,
+ohne Ausdünnung oder weiteren Präzisionsverlust gegenüber dem Live-Puffer.
+Nach Fortsetzen läuft die Erfassung exakt ohne doppelte Messpunkte weiter.
+Alte Spielstände ohne Trendblock oder mit ungültigem Trendblock starten mit
+leerer, ausdrücklich als fehlend gekennzeichneter Historie; ein ansonsten
+gültiger Anlagenzustand wird deshalb nicht abgelehnt. Trendhistorie ist kein
+Replay und ändert weder Punkte noch Regeln für Bestenlisten.
+
+Für `PUT /api/saves/<slot>` gilt ein Limit von **4 MiB = 4.194.304 Bytes**.
+Andere Flask-Anfragen bleiben auf 256 KiB begrenzt, Einstellungen auf 8 KiB;
+Waitress erlaubt transportseitig 4 MiB, ohne die engeren Anwendungsgrenzen
+aufzuheben. Bei 60 Slots sind bis zu **240 MiB je Konto** allein für
+Spielstände einzuplanen, zuzüglich Backups und sonstiger Daten.
+
+Ein voller Trendblock umfasst 1.958.400 Rohdatenbytes beziehungsweise
+2.611.200 Base64-Bytes, jeweils ohne JSON und übrigen Spielstand. Gemessene
+synthetische Stress-Spielstände mit 28.800 Samples, 600 maximal großen
+Markern und 600 Lernprotokolleinträgen: DWR 4.001.083, SWR 3.999.431,
+RBMK 3.999.653 Bytes. Das sind Speicherprüfungen, keine achtstündigen
+Physikläufe. Prüfumfang und offene Punkte: [Trend-Audit](audit/TRENDS-2026-09-14.md).
 
 ## Entwicklung
 
 ```bash
 python3 dev_run.py          # http://127.0.0.1:17779, Daten in dev_data/
-node --test tests/          # Physik, Spielschicht, Determinismus
-python3 -m pytest tests/    # Schnittstelle, Wertung, Struktur, Sprachdateien
+node --test "tests/*.mjs"   # Physik, Spielschicht, Determinismus
+python -m pytest tests/     # Schnittstelle, Wertung, Struktur, Sprachdateien
 ```
 
 Die gesamte Simulation läuft im Browser in reinen ES-Modulen — kein npm, kein

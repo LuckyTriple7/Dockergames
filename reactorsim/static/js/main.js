@@ -779,6 +779,7 @@ function initControls() {
   // Reiter das Panel ohnehin schon voll.
   document.addEventListener('keydown', (ev) => {
     if (ev.target instanceof HTMLInputElement) return;
+    if (ev.code === 'Space' && ev.target.closest?.('button, summary, select, textarea, a[href]')) return;
     if (ev.code === 'Space') { ev.preventDefault(); setSpeed(app.loop.speed > 0 ? 0 : 1); }
     else if (ev.key === '1') setSpeed(1);
     else if (ev.key === '2') setSpeed(4);

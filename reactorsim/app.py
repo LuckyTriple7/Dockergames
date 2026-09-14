@@ -381,6 +381,8 @@ def save_read(slot: str):
 
 @app.route('/api/saves/<slot>', methods=['PUT'])
 def save_write(slot: str):
+    # Only saves carry the full eight-hour binary trend history (Flask 3.1).
+    request.max_content_length = persist.MAX_SAVE_BYTES
     if _limited('save', 30, 60):
         return jsonify({'error': 'rate_limited'}), 429
     if not persist.SLOT_RE.match(slot):
@@ -634,7 +636,7 @@ def _serve() -> None:
     log.info("ReactorSim %s laeuft auf Port %d", APP_VERSION, PORT)
     serve(app, host='0.0.0.0', port=PORT, threads=8,
           ident=None,
-          max_request_body_size=app.config['MAX_CONTENT_LENGTH'])
+          max_request_body_size=persist.MAX_SAVE_BYTES)
 
 
 if __name__ == '__main__':

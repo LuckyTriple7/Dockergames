@@ -9,6 +9,7 @@ import { api } from './api.js';
 import { learningReport, restoreJournal } from '../game/learning.js';
 import { numbers } from '../sim/state.js';
 import { decaySum, equilibriumDecay } from '../sim/decayheat.js';
+import { TrendHistory } from '../game/trendHistory.js';
 
 const CONTEXT_NUMBERS = ['controlAcc', 'decayFrac', 'nPrev', 'period', 'substeps',
   'tAvgPrev', 'pPrev', 'decayRatio', 'displayLevel'];
@@ -60,6 +61,7 @@ export function pack(engine, scenarioId, runState, session) {
       .map((key) => [key, engine.ctx[key]])),
     rng: engine.ctx.rng.snapshot(),
     session: session ? session.snapshot() : undefined,
+    ...(engine.ctx.trends ? { trends: engine.ctx.trends.snapshot() } : {}),
     // Pumpen, Ventile, Regler -- eigenes Gedaechtnis ausserhalb von
     // engine.state, siehe ctx.saveable je Typ. Ohne das kam nach dem Laden
     // jede Pumpe wieder hochgefahren und jede Hand-Stellung sprang auf
@@ -223,6 +225,8 @@ export function apply(blob, engine, runState, session) {
   restoreJournal(engine, blob.learning);
   engine.reactivity.compute(s, engine.spec);
   if (session && blob.session) session.restore(blob.session);
+  if (!ctx.trends && blob.trends) new TrendHistory(engine);
+  if (ctx.trends) ctx.trends.restore(blob.trends, s.t_sim);
   return null;
 }
 

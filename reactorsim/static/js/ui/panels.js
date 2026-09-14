@@ -7,7 +7,7 @@
 import { $, el, setText, setAttr } from './dom.js';
 import { t, num, clock, has } from './i18n.js';
 import { gauge, bar, reactivityBars } from './gauges.js';
-import { TrendRecorder } from './trend.js';
+import { buildTrends } from './trend.js';
 import { Annunciator, Horn } from './annunciator.js';
 import { PulseLoop } from './music.js';
 import {
@@ -306,40 +306,7 @@ export function buildPanels(engine, render, helperEnabled) {
   $('#rs-pumps').append(diagnostics.node);
 
   // ── Trendschreiber ─────────────────────────────────────────────────────────
-  const trends = [
-    new TrendRecorder([
-      { id: 'pth', key: 'trend_ch_pth', color: '#64d8ff', get: (st, d) => d.power_th_pct },
-      { id: 'pe', key: 'trend_ch_pe', color: '#3fd67f', get: (st) => (100 * st.P_e) / sp.P0_e },
-      { id: 'dem', key: 'trend_ch_demand', color: '#ffb020', get: (st) => (100 * st.P_demand) / sp.P0_e },
-    ], { titleKey: 'trend_power', fmt: 1 }),
-    new TrendRecorder([
-      { id: 'thot', key: 'trend_ch_thot', color: '#ff7a3d', get: (st) => st.T_co - 273.15 },
-      { id: 'tavg', key: 'trend_ch_tavg', color: '#ffd27a', get: (st, d) => d.T_avg - 273.15 },
-      { id: 'tcold', key: 'trend_ch_tcold', color: '#4b8fd6', get: (st) => st.T_ci - 273.15 },
-    ], { titleKey: 'trend_temp', fmt: 1 }),
-    new TrendRecorder([
-      { id: 'pprim', key: 'trend_ch_pprim', color: '#64d8ff', get: (st) => st.p_prim },
-      { id: 'psg', key: 'trend_ch_psg', color: '#cfd9e2', get: (st, d) => d.p_sg },
-    ], { titleKey: 'trend_pressure', fmt: 1 }),
-    new TrendRecorder([
-      { id: 'rho', key: 'trend_ch_rho', color: '#ff4d4d', get: (st, d) => d.rho_pcm },
-      { id: 'xe', key: 'trend_ch_xenon', color: '#b489ff', get: (st) => st.X * 100 },
-    ], { titleKey: 'trend_reactivity', fmt: 0 }),
-  ];
-  const trendBox = $('#rs-trends');
-  trendBox.replaceChildren(...trends.map((r) => r.node));
-
-  const ranges = [['trend_10min', 600], ['trend_1h', 3600], ['trend_8h', 28800]];
-  const rangeBtns = ranges.map(([key, secs]) => {
-    const b = el('button.rs-gbtn', { type: 'button' }, [t(key)]);
-    b.addEventListener('click', () => {
-      for (const r of trends) r.setRange(secs);
-      for (const other of rangeBtns) other.classList.toggle('rs-on', other === b);
-    });
-    return b;
-  });
-  rangeBtns[0].classList.add('rs-on');
-  $('#rs-trend-range').replaceChildren(...rangeBtns);
+  const trendView = buildTrends(engine, render);
 
   // Der Abstand zur Siedekrise heisst je nach Kern anders -- DNBR beim
   // Druckwasserreaktor, CPR bei den beiden siedenden. Die Zeile steht fest im
@@ -462,7 +429,6 @@ export function buildPanels(engine, render, helperEnabled) {
     const { status, actions } = runHelper(engine, sp.id, helpDef.id);
     fixResult.hidden = false;
     if (status === 'fixed') {
-      for (const a of actions) noteAction(engine, 'helper:' + a.key, a.params);
       setText(fixMsg, t('alarm_fix_heading'));
       fixList.replaceChildren(...actions.map((a) => el('li', null, [t(a.key, a.params)])));
       annun.log(actions.map((a) => ({ t: s.t_sim, key: a.key, params: a.params, severity: 1 })));
@@ -662,10 +628,6 @@ export function buildPanels(engine, render, helperEnabled) {
     }
   });
 
-  render.add('trend', () => {
-    for (const r of trends) r.draw();
-  });
-
   if (mimic) {
     // Welches Bauteil gerade eine anstehende Meldung trägt -- dieselbe
     // Zuordnung wie die Meldetafel, nur am Bild statt in der Liste. "clear"
@@ -690,11 +652,7 @@ export function buildPanels(engine, render, helperEnabled) {
   // ctx.history (siehe sim/engine.js) ins Log-Panel nachzutragen -- das Panel
   // selbst startet immer mit leerem DOM (siehe Annunciator-Konstruktor).
   return { horn, jogRod, rodSound, annun,
-    sampleTrends() {
-      if (trends.every((r) => s.t_sim + 1e-8 < r.nextSample)) return;
-      const d = engine.derive();
-      for (const r of trends) r.sample(s, d);
-    },
+    sampleTrends: trendView.sampleTrends,
   };
 }
 

@@ -1,151 +1,236 @@
-// Trendschreiber auf Canvas.
-//
-// Ringpuffer je Kanal, abgetastet in Simulationszeit (1 Hz), nicht in
-// Realzeit -- sonst hätte der Zeitraffer eine gestauchte Kurve zur Folge.
-//
-// Gezeichnet wird mit Min/Max-Dezimierung je Bildspalte: bei 8 Stunden auf
-// 400 Pixeln fielen sonst genau die Spitzen heraus, die interessant sind.
-// Kein Blit-Scrolling -- das bricht bei Geräteskalierung und bei jedem
-// Größenwechsel.
+// Read-only plots of the session history; sampling belongs to TrendHistory.
+import { $, el, setText, setAttr } from './dom.js';
+import { t, num, clock } from './i18n.js';
+import { actionText } from './debrief.js';
+import { TrendHistory } from '../game/trendHistory.js';
 
-import { el } from './dom.js';
-import { t, num } from './i18n.js';
+const LEFT = 12, RIGHT = 80, TOP = 10, BOTTOM = 22;
+const COLORS = { action: '#ffb020', event: '#ff7a3d', on: '#ff4d4d', off: '#3fd67f',
+  scram: '#ff4d4d', goal_start: '#b489ff', goal_reset: '#ffb020',
+  goal_met: '#3fd67f', goal_lost: '#ff7a3d' };
 
-const CAPACITY = 3600 * 8;   // acht Stunden bei einer Abtastung je Sekunde
-
-export class TrendRecorder {
-  /** @param {{id:string, key:string, color:string, get:(s,d)=>number}[]} channels */
-  constructor(channels, { titleKey, fmt = 1 }) {
+class TrendRecorder {
+  constructor(channels, titleKey, unitKey, fmt = 1) {
     this.channels = channels;
     this.fmt = fmt;
-    this.data = channels.map(() => new Float32Array(CAPACITY));
-    this.time = new Float64Array(CAPACITY);
-    this.count = 0;
-    this.head = 0;
-    this.rangeS = 600;
-    this.nextSample = 0;
-
-    this.canvas = el('canvas.rs-trend-canvas');
-    this.legend = el('div.rs-trend-legend');
-    for (const c of channels) {
-      this.legend.append(el('span.rs-trend-key', { '--rs-c': c.color }, [
-        el('i'), document.createTextNode(t(c.key)),
-      ]));
-    }
-    this.node = el('div.rs-trend', null, [
+    const title = `${t(titleKey)} [${t(unitKey)}]`;
+    this.canvas = el('canvas.rs-trend-canvas', { role: 'img', 'aria-label': title });
+    this.node = el('section.rs-trend', null, [
       el('div.rs-trend-head', null, [
-        el('span.rs-trend-title', { text: t(titleKey) }),
-        this.legend,
-      ]),
-      this.canvas,
+        el('h3.rs-trend-title', { text: title }),
+        el('div.rs-trend-legend', null, channels.map(([id, key, color]) =>
+          el('span.rs-trend-key', { '--rs-c': color, 'data-channel': id }, [el('i'), t(key)]))),
+      ]), this.canvas,
     ]);
-    this.ctx = this.canvas.getContext('2d');
+    try { this.ctx = this.canvas.getContext('2d'); } catch { this.ctx = null; }
+    if (!this.ctx) this.node.append(el('p.rs-trend-note', { text: t('trend_canvas_unavailable') }));
   }
 
-  setRange(seconds) { this.rangeS = seconds; }
-
-  /** Abtasten -- in Simulationssekunden, nicht in Bildern. */
-  sample(s, d) {
-    if (s.t_sim + 1e-8 < this.nextSample) return;
-    this.nextSample = Math.floor(s.t_sim + 1e-8) + 1;
-    const i = this.head;
-    this.time[i] = s.t_sim;
-    for (let c = 0; c < this.channels.length; c++) {
-      const v = this.channels[c].get(s, d);
-      this.data[c][i] = Number.isFinite(v) ? v : NaN;
-    }
-    this.head = (i + 1) % CAPACITY;
-    if (this.count < CAPACITY) this.count++;
-  }
-
-  draw() {
-    const cv = this.canvas;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  draw(history, frame) {
+    const cv = this.canvas, g = this.ctx;
     const w = cv.clientWidth, h = cv.clientHeight;
-    if (w === 0 || h === 0) return;
-    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
-      cv.width = Math.round(w * dpr);
-      cv.height = Math.round(h * dpr);
-    }
-    const g = this.ctx;
+    if (!g || w <= LEFT + RIGHT || h <= TOP + BOTTOM) return;
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.round(w * dpr), height = Math.round(h * dpr);
+    if (cv.width !== width || cv.height !== height) { cv.width = width; cv.height = height; }
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
-    if (this.count < 2) return;
-
-    const tNow = this.time[(this.head - 1 + CAPACITY) % CAPACITY];
-    const tMin = tNow - this.rangeS;
-
-    // Wertebereich über alle Kanäle im Fenster.
+    const { indices, start, end, markers, selectedTime } = frame;
+    const x = time => LEFT + (time - start) / Math.max(1, end - start) * (w - LEFT - RIGHT);
     let lo = Infinity, hi = -Infinity;
-    const idx = [];
-    for (let k = 0; k < this.count; k++) {
-      const i = (this.head - 1 - k + CAPACITY * 2) % CAPACITY;
-      if (this.time[i] < tMin) break;
-      idx.push(i);
-      for (let c = 0; c < this.channels.length; c++) {
-        const v = this.data[c][i];
-        if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; }
-      }
+    for (const [id] of this.channels) for (const i of indices) {
+      const v = history.data[id][i];
+      if (Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     }
-    if (!Number.isFinite(lo) || idx.length < 2) return;
-    if (hi - lo < 1e-6) { hi = lo + 1; lo -= 1; }
+    const hasData = Number.isFinite(lo);
+    if (!hasData) { lo = 0; hi = 1; }
+    if (hi - lo < 1e-6) { lo -= 1; hi += 1; }
     const pad = (hi - lo) * 0.12;
     lo -= pad; hi += pad;
-
-    const x = (tt) => ((tt - tMin) / this.rangeS) * (w - 34) + 2;
-    const y = (v) => h - 14 - ((v - lo) / (hi - lo)) * (h - 20);
-
-    // Gitter
-    g.strokeStyle = '#1b2430';
+    const y = v => h - BOTTOM - (v - lo) / (hi - lo) * (h - TOP - BOTTOM);
     g.lineWidth = 1;
+    g.strokeStyle = '#1b2430';
     g.beginPath();
-    for (let i = 0; i <= 4; i++) {
-      const yy = Math.round(y(lo + ((hi - lo) * i) / 4)) + 0.5;
-      g.moveTo(2, yy); g.lineTo(w - 32, yy);
+    for (let n = 0; n <= 4; n++) {
+      const yy = y(lo + (hi - lo) * n / 4);
+      g.moveTo(LEFT, yy); g.lineTo(w - RIGHT, yy);
     }
     g.stroke();
-
-    g.fillStyle = '#56656f';
-    g.font = '9px ui-monospace, monospace';
+    g.fillStyle = '#8b98a4';
+    g.font = '10px ui-monospace, monospace';
     g.textAlign = 'left';
-    g.fillText(num(hi, this.fmt), w - 30, y(hi) + 8);
-    g.fillText(num(lo, this.fmt), w - 30, y(lo) - 2);
+    if (hasData) {
+      g.fillText(num(hi, this.fmt), w - RIGHT + 6, TOP + 8, RIGHT - 8);
+      g.fillText(num(lo, this.fmt), w - RIGHT + 6, h - BOTTOM, RIGHT - 8);
+    } else {
+      g.fillText(t('trend_no_data'), LEFT, TOP + 16, w - LEFT - RIGHT);
+    }
+    const ticks = Math.max(1, Math.min(4, Math.floor((w - LEFT - RIGHT) / 90)));
+    for (let n = 0; n <= ticks; n++) {
+      const time = start + (end - start) * n / ticks;
+      g.textAlign = n === 0 ? 'left' : n === ticks ? 'right' : 'center';
+      g.fillText(clock(time), x(time), h - 5);
+    }
 
-    // Min/Max je Bildspalte: bei acht Stunden auf 400 Pixeln kommen 28 800
-    // Abtastungen auf 400 Spalten. Wer da jeden Punkt zeichnet, malt siebzig
-    // Linien uebereinander und verliert trotzdem die Spitzen -- die letzte
-    // gezeichnete Linie gewinnt. Mit Min und Max je Spalte bleibt jeder
-    // Ausschlag sichtbar, und es sind zwei Werte statt siebzig.
-    const cols = Math.max(1, Math.floor(w - 34));
-    const mins = new Float64Array(cols);
-    const maxs = new Float64Array(cols);
-
-    for (let c = 0; c < this.channels.length; c++) {
-      mins.fill(Infinity);
-      maxs.fill(-Infinity);
-      for (let k = 0; k < idx.length; k++) {
-        const i = idx[k];
-        const v = this.data[c][i];
-        if (!Number.isFinite(v)) continue;
-        let col = Math.floor(x(this.time[i]) - 2);
-        if (col < 0) col = 0; else if (col >= cols) col = cols - 1;
-        if (v < mins[col]) mins[col] = v;
-        if (v > maxs[col]) maxs[col] = v;
-      }
-
-      g.strokeStyle = this.channels[c].color;
-      g.lineWidth = 1.4;
+    for (const [id, , color] of this.channels) {
+      g.strokeStyle = color; g.fillStyle = color; g.lineWidth = 1.4;
       g.beginPath();
-      let started = false;
-      for (let col = 0; col < cols; col++) {
-        if (mins[col] === Infinity) { continue; }
-        const px = col + 2.5;
-        const yTop = y(maxs[col]);
-        const yBot = y(mins[col]);
-        if (!started) { g.moveTo(px, yBot); started = true; } else g.lineTo(px, yBot);
-        if (yTop !== yBot) g.lineTo(px, yTop);
+      let bucket = null, connected = false, previousTime = -Infinity;
+      // One pass per channel. Keep first/min/max/last in time order per pixel,
+      // but flush BEFORE every missing value or time gap, even within a pixel.
+      const flush = () => {
+        if (!bucket) return;
+        const points = [...new Set([bucket.first, bucket.min, bucket.max, bucket.last])]
+          .sort((a, b) => history.time[a] - history.time[b]);
+        for (const i of points) {
+          const px = x(history.time[i]), py = y(history.data[id][i]);
+          if (connected) g.lineTo(px, py);
+          else { g.moveTo(px, py); g.fillRect(px - 0.7, py - 0.7, 1.4, 1.4); }
+          connected = true;
+        }
+        bucket = null;
+      };
+      for (const i of indices) {
+        const time = history.time[i], v = history.data[id][i];
+        if (!Number.isFinite(v) || time - previousTime > 1.5) { flush(); connected = false; }
+        previousTime = time;
+        if (!Number.isFinite(v)) continue;
+        const col = Math.floor(x(time));
+        if (bucket && bucket.col !== col) flush();
+        if (!bucket) bucket = { col, first: i, last: i, min: i, max: i };
+        else {
+          bucket.last = i;
+          if (v < history.data[id][bucket.min]) bucket.min = i;
+          if (v > history.data[id][bucket.max]) bucket.max = i;
+        }
       }
-      g.stroke();
+      flush(); g.stroke();
+    }
+    for (const m of markers) {
+      g.strokeStyle = COLORS[m.kind] || '#8b98a4';
+      g.lineWidth = 1;
+      g.setLineDash(m.kind === 'action' ? [2, 4] : [5, 3]);
+      g.beginPath(); g.moveTo(x(m.t), TOP); g.lineTo(x(m.t), h - BOTTOM); g.stroke();
+    }
+    g.setLineDash([]);
+    if (selectedTime !== null) {
+      g.strokeStyle = '#ffffff'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(x(selectedTime), TOP); g.lineTo(x(selectedTime), h - BOTTOM); g.stroke();
     }
   }
+}
+
+export function buildTrends(engine, render) {
+  const ctx = engine.ctx;
+  if (!ctx.trends) ctx.trends = new TrendHistory(engine);
+  const pwr = engine.spec.id === 'pwr', bwr = engine.spec.id === 'bwr';
+  const pressure = pwr ? 'trend_ch_pprim' : bwr ? 'val_dome_press' : 'val_drum_press';
+  const level = pwr ? 'trend_level_sg' : bwr ? 'val_rpv_level' : 'val_drum_level';
+  const charts = [
+    new TrendRecorder([['pth', 'trend_ch_pth', '#64d8ff'], ['pe', 'trend_ch_pe', '#3fd67f'],
+      ['dem', 'trend_ch_demand', '#ffb020']], 'trend_power', 'unit_percent'),
+    new TrendRecorder([['pprim', pressure, '#64d8ff'],
+      ...(pwr ? [['psg', 'trend_ch_psg', '#cfd9e2']] : [])], 'trend_pressure', 'unit_bar'),
+    new TrendRecorder([['level', level, '#64d8ff'],
+      ...(pwr ? [['pzrlevel', 'val_pzr_level', '#ffb020']] : [])], 'trend_level', 'unit_percent'),
+    new TrendRecorder([['feedflow', 'val_feed_flow', '#64d8ff'], ['steamflow', 'val_steam_flow', '#ffb020']],
+      'trend_flow', 'unit_kgs', 0),
+    new TrendRecorder([['thot', 'trend_ch_thot', '#ff7a3d'], ['tavg', 'trend_ch_tavg', '#ffd27a'],
+      ['tcold', 'trend_ch_tcold', '#4b8fd6']], 'trend_temp', 'unit_celsius'),
+    new TrendRecorder([['rho', 'trend_ch_rho', '#ff4d4d']], 'trend_reactivity', 'unit_pcm', 0),
+    new TrendRecorder([['xe', 'trend_ch_xenon', '#b489ff']], 'trend_xenon', 'unit_percent'),
+    new TrendRecorder([['coreflow', 'val_flow_core', '#64d8ff']], 'trend_coreflow', 'unit_kgs', 0),
+  ];
+  let rangeS = 600, heldEnd = null, selectedKey = null, selectedTime = null;
+  let fingerprint = '', markerButtons = new Map();
+  const caption = el('p.rs-trend-note', { role: 'status', 'aria-live': 'polite' });
+  const info = el('p.rs-trend-note');
+  const list = el('ol.rs-trend-events');
+  const summary = el('summary');
+  const events = el('details.rs-trend-details', null, [summary, list]);
+  const extra = el('details.rs-trend-details', null, [
+    el('summary', { text: t('trend_extra') }), ...charts.slice(4).map(c => c.node),
+  ]);
+  const live = el('button.rs-gbtn', { type: 'button', text: t('trend_live') });
+  const reset = () => { heldEnd = selectedKey = selectedTime = null; };
+  // Keep native button/summary activation out of the global pause shortcut.
+  const nativeActivation = ev => {
+    if (ev.key === ' ' || ev.key === 'Enter') ev.stopPropagation();
+  };
+  const ranges = [['trend_10min', 600], ['trend_1h', 3600], ['trend_8h', 28800]];
+  const buttons = ranges.map(([key, seconds]) => {
+    const button = el('button.rs-gbtn', { type: 'button', text: t(key) });
+    button.addEventListener('click', () => { rangeS = seconds; draw(); });
+    return button;
+  });
+  live.addEventListener('click', () => { reset(); draw(); });
+  for (const node of [...buttons, live, summary, extra.children[0]]) {
+    node.addEventListener('keydown', nativeActivation);
+  }
+  $('#rs-trend-range').replaceChildren(...buttons, live);
+  $('#rs-trend-range').setAttribute('aria-label', t('trend_range'));
+  $('#rs-trends').replaceChildren(
+    el('p.rs-trend-note', { text: t('trend_help') }), caption, info,
+    ...charts.slice(0, 4).map(c => c.node), extra, events,
+    el('p.rs-trend-note', { text: t('trend_retention') }),
+  );
+
+  function draw() {
+    const history = ctx.trends;
+    const now = Math.max(0, engine.state.t_sim);
+    // Fingerprints include values and parameters: continuous commands may be
+    // replaced in-place, and a full marker ring can rotate without growing.
+    const available = history.markers.filter(m => m.t <= now);
+    if (selectedKey !== null && (!available.some(m => JSON.stringify(m) === selectedKey)
+      || selectedTime < Math.max(0, heldEnd - rangeS) || selectedTime > now)) reset();
+    const end = heldEnd ?? now, start = Math.max(0, end - rangeS);
+    const markers = available.filter(m => m.t >= start && m.t <= end);
+    const nextFingerprint = JSON.stringify(markers);
+    if (fingerprint !== nextFingerprint) {
+      const nextButtons = new Map();
+      const nodes = markers.map((m, n) => {
+        const key = JSON.stringify(m), identity = key + ':' + n;
+        let item = markerButtons.get(identity);
+        if (!item) {
+          const label = m.kind === 'action' ? actionText({ ...m, id: m.id || '' })
+            : m.key ? t(m.key, m.params) : t('trend_kind_' + m.kind);
+          const button = el('button.rs-trend-event', { type: 'button',
+            'data-kind': m.kind, text: `${clock(m.t)} / ${num(m.t, 1)} ${t('unit_seconds')} | ${t('trend_kind_' + m.kind)} | ${label}` });
+          button.addEventListener('keydown', nativeActivation);
+          button.addEventListener('click', () => {
+            if (m.t > engine.state.t_sim || !ctx.trends.markers.some(e => JSON.stringify(e) === key)) return;
+            selectedKey = key; selectedTime = m.t; heldEnd ??= engine.state.t_sim; draw();
+          });
+          item = { node: el('li', null, [button]), button, key };
+        }
+        nextButtons.set(identity, item);
+        return item.node;
+      });
+      list.replaceChildren(...nodes);
+      markerButtons = nextButtons;
+      fingerprint = nextFingerprint;
+    }
+    for (const item of markerButtons.values()) setAttr(item.button, 'aria-pressed', item.key === selectedKey);
+    setText(summary, t('trend_events', { n: markers.length }));
+    setText(caption, selectedTime === null ? t('trend_following')
+      : t('trend_selected', { time: clock(selectedTime), seconds: num(selectedTime, 1) }));
+    const indices = history.indices(end - start, end);
+    setText(info, [!indices.length ? t('trend_no_data') : '',
+      history.missingBefore ? t('trend_missing') : '',
+      history.markerTruncated ? t('trend_truncated') : '',
+      !markers.length ? t('trend_no_events') : ''].filter(Boolean).join(' '));
+    for (let n = 0; n < buttons.length; n++) {
+      setAttr(buttons[n], 'aria-pressed', ranges[n][1] === rangeS);
+      buttons[n].classList.toggle('rs-on', ranges[n][1] === rangeS);
+    }
+    setAttr(live, 'aria-pressed', selectedTime === null);
+    const frame = { start, end, indices, markers, selectedTime };
+    for (const chart of charts) chart.draw(history, frame);
+  }
+  // The render tick also catches resized/reopened panels without observers
+  // that would outlive a session. Details redraw immediately when opened.
+  extra.addEventListener('toggle', draw);
+  render.add('trend', draw);
+  draw();
+  return { sampleTrends() { ctx.trends.sample(); } };
 }

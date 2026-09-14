@@ -273,6 +273,20 @@
 .rs-tutorial-hint { color: var(--rs-fg-dim); }
 .rs-tutorial details { margin-top: 6px; }
 .rs-tutorial summary { cursor: pointer; }
+.rs-tutorial > .rs-guidance-fold { margin: 0; }
+.rs-guidance-fold > summary {
+  display: list-item;
+  cursor: pointer;
+  line-height: 18px;
+  color: var(--rs-fg);
+}
+.rs-guidance-fold > summary::marker { color: var(--rs-value); }
+.rs-guidance-fold > summary:focus-visible {
+  outline: 2px solid var(--rs-value);
+  outline-offset: 2px;
+  border-radius: var(--rs-radius);
+}
+.rs-guidance-fold > summary > h2 { display: inline; margin: 0; line-height: inherit; }
 .rs-guidance p { white-space: pre-line; }
 .rs-objectives h3 { margin: 8px 0 4px; font-size: 14px; }
 .rs-objectives ol { margin: 4px 0; padding-left: 22px; }

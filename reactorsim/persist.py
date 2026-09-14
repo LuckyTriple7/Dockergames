@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 SLOT_RE = re.compile(r'^[a-z0-9_-]{1,32}$')
 PLAYER_RE = re.compile(r'^[0-9a-f]{32}$')
 
-MAX_SAVE_BYTES = 128 * 1024
+MAX_SAVE_BYTES = 4 * 1024 * 1024
 # 10 feste Hand-Speicherplaetze je Reaktortyp (DWR/SWR/RBMK, siehe
 # manualSlotName() in main.js) sind allein schon 30 Slots, dazu je ein
 # Autospeicher-Slot pro Reaktortyp UND Szenario (siehe saveSlotName('auto')) --

@@ -9,7 +9,7 @@ import { Session, PHASE } from '../static/js/game/session.js';
 import { gridDeviationTrips } from '../static/js/game/scenario.js';
 import { pack, apply } from '../static/js/net/persist.js';
 import { attachRecorder } from '../static/js/game/recorder.js';
-import { TrendRecorder } from '../static/js/ui/trend.js';
+import { TrendHistory } from '../static/js/game/trendHistory.js';
 import { Loop } from '../static/js/loop.js';
 
 const source = readFileSync(new URL('../static/js/main.js', import.meta.url), 'utf8');
@@ -146,20 +146,17 @@ test('trend sampling captures the same second-long pulse at 1x and 60x', () => {
   const previousRAF = globalThis.requestAnimationFrame;
   globalThis.requestAnimationFrame = () => {};
   const capture = (speed) => {
-    const trend = Object.assign(Object.create(TrendRecorder.prototype), {
-      channels: [{ get: (s) => s.value }], data: [new Float32Array(28800)],
-      time: new Float64Array(28800), count: 0, head: 0, nextSample: 0,
-    });
-    const state = { t_sim: 0, value: 0 };
-    const engine = { state, step(dt) {
-      state.t_sim += dt; state.value = state.t_sim >= 2 && state.t_sim < 4 ? 100 : 0;
+    const state = { t_sim: 0, P_e: 0 };
+    const engine = { state, spec: { id: 'pwr', P0_e: 100 }, ctx: {}, step(dt) {
+      state.t_sim += dt; state.P_e = state.t_sim >= 2 && state.t_sim < 4 ? 100 : 0;
     } };
+    const trend = new TrendHistory(engine);
     const loop = new Loop(engine, () => {});
     trend.sample(state, {});
     loop.afterStep = () => trend.sample(state, {});
     loop.running = true; loop.speed = speed; loop.last = 0;
     for (let now = 20; state.t_sim < 59.99; now += 20) loop._frame(now);
-    return [...trend.data[0].slice(0, 60)];
+    return [...trend.data.pe.slice(0, 60)];
   };
   try {
     const normal = capture(1), fast = capture(60);

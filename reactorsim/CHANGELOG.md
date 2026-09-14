@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.1.22
+
+- Gemeinsame Trends für alle 14 Szenarien und das freie Spiel aller drei
+  Reaktortypen: 1 Hz Simulationszeit, letzte acht Stunden, maximal 28.800
+  Messpunkte. Vier Hauptdiagramme für Leistung, Druck, Füllstand und
+  Speise-/Dampfstrom sowie vier erweiterte Diagramme teilen die Zeitachse
+  mit Ansichten für 10 Minuten, eine und acht Stunden.
+- Bis zu 600 Ereignismarker unterscheiden Bedienaufträge von tatsächlicher
+  Schnellabschaltung, Rücksetzen/Wiederherstellung und Alarm-/Störungsflanken.
+  Zielmarker gibt es für die drei DWR-Störungsschichten und das Anfahren-Tutorial,
+  nicht für sämtliche Szenarien. Markerlisten-Schaltflächen setzen einen weißen
+  Cursor und halten die Ansicht fest; „Live“ hebt die Auswahl auf. Fehlende
+  Messwerte bleiben Kurvenlücken, auch beim SWR-Füllstand ohne Gleichstrom.
+- Spielstände erhalten die gesamte noch vorgehaltene Trendhistorie und Marker
+  binär/Base64, ohne Ausdünnung oder weiteren Präzisionsverlust gegenüber den
+  15 Live-Float32-Kanälen und Float64-Zeitwerten. Nur die Darstellung verdichtet
+  nach Min/Max. Alte oder ungültige Trendblöcke starten ausdrücklich ohne
+  Historie, ohne einen gültigen Anlagenzustand abzulehnen. Erfassung läuft auch
+  ohne Rendering, der Schlusswert liegt vor dem Abschluss-Callback vor;
+  Fortsetzen bleibt exakt und ohne doppelte Samples. Replay und Wertung bleiben
+  unverändert. Helferprotokollierung ist renderunabhängig und ohne Doppeleinträge;
+  der tatsächliche UI-SCRAM-Auftrag mit `null` wird korrekt verarbeitet.
+- Speicherlimit nur für Spielstand-PUTs auf 4 MiB (4.194.304 Bytes) angehoben;
+  sonstige Flask-Anfragen bleiben bei 256 KiB, Einstellungen bei 8 KiB.
+  Waitress erlaubt 4 MiB Transportgröße. 60 Slots ergeben maximal 240 MiB
+  Spielstände je Konto, zuzüglich Backups und sonstiger Daten.
+- Screenshot-Wunsch umgesetzt: Der gesamte Laufzeit-Hinweisbereich
+  `#rs-guidance`, einschließlich Zielen und Bedienhinweisen, klappt nun über
+  die Überschrift als natives `details` ein, geschlossen auf 40 px.
+  Standardmäßig offen; die Wahl bleibt über Neuladen und Szenariowechsel in
+  `localStorage` erhalten, bei gesperrtem Speicher zumindest im Arbeitsspeicher.
+  Ziele laufen auch geschlossen weiter. Die Einweisung erhält keinen äußeren
+  Klappbereich. Leertaste/Enter bedienen native Elemente ohne Tempo-Umschaltung.
+- Bestätigte vollständige Prüfungen: Node 288/288, Python 161/161 und Browser
+  1786/1786 in DE/EN auf Desktop und emulierter Mobilansicht. Browser-Endstand
+  vor der reinen Versionsanhebung 0.1.21 auf 0.1.22; Prüfumfang, gemessene
+  Speichergrößen und Grenzen: [Trend-Audit](audit/TRENDS-2026-09-14.md).
+
 ## 0.1.21
 
 - Zustandsbasierte Sicherheitsziele und `incident_v1`-Wertung für die drei

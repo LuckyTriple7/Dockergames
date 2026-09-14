@@ -6,27 +6,46 @@ const locale = JSON.parse(readFileSync(new URL('../locales/de.json', import.meta
 const def = JSON.parse(readFileSync(new URL('../static/data/scenarios/pwr_feedwater_loss.json', import.meta.url)));
 globalThis.window = { RS_I18N: locale, RS_CFG: { lang: 'de' } };
 class Node {
-  constructor() { this.children = []; this.textContent = ''; this.dataset = {}; this.listeners = {}; }
+  constructor(tag = 'div') {
+    this.tagName = tag.toUpperCase();
+    this.children = []; this.textContent = ''; this.dataset = {}; this.listeners = {};
+    this.attributes = {}; this.open = false;
+  }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
-  setAttribute() {}
+  setAttribute(name, value) { this.attributes[name] = value; }
   addEventListener(name, fn) { this.listeners[name] = fn; }
+  dispatchEvent(event) { this.listeners[event.type]?.(event); }
+  toggle() { this.open = !this.open; this.dispatchEvent({ type: 'toggle' }); }
 }
-globalThis.document = { createElement: () => new Node() };
+globalThis.document = { createElement: tag => new Node(tag) };
 const { renderGuidance } = await import('../static/js/ui/guidance.js');
 const { renderObjectiveResult } = await import('../static/js/ui/objectives.js');
 const text = node => [node.textContent, ...node.children.map(text)].join(' ');
 
-test('goals show waiting, holds, achievement and revocation without rebuilding the card', () => {
+test('folded goals track holds, achievement and revocation without rebuilding or resetting scroll', () => {
   const host = new Node();
+  const writes = [];
+  let reads = 0;
+  window.localStorage = {
+    getItem() { reads++; return 'false'; },
+    setItem(...args) { writes.push(args); },
+  };
   let views = def.objectives.map(goal => ({ id: goal.id, type: goal.type, held: 0, required: goal.hold_s,
     active: false, met: false, achievedAt: null }));
   let update;
+  let registrations = 0;
   renderGuidance(host, def, () => {}, { objectives: { view: () => views },
-    render: { add(group, fn) { assert.equal(group, 'text'); update = fn; } } });
+    render: { add(group, fn) { assert.equal(group, 'text'); registrations++; update = fn; } } });
+  const fold = host.children[0];
+  assert.equal(fold.tagName, 'DETAILS');
+  assert.equal(fold.open, false);
   assert.ok(text(host).includes(locale.obj_waiting));
   assert.ok(text(host).includes(locale.obj_pwr_feedwater_help));
   const originalNodes = [...host.children];
+  const originalContent = [...fold.children];
+  const criteria = fold.children.find(n => n.tagName === 'SECTION').children.find(n => n.tagName === 'DETAILS');
+  criteria.toggle();
   host.scrollTop = 80;
   views = views.map(v => ({ ...v, held: 10, active: true }));
   update();
@@ -35,16 +54,33 @@ test('goals show waiting, holds, achievement and revocation without rebuilding t
   update();
   assert.ok(text(host).includes(locale.obj_met));
   assert.ok(text(host).includes('00:05:00'));
+  assert.equal(fold.open, false, 'achievement does not force the fold open');
+  fold.toggle();
+  assert.ok(text(host).includes(locale.obj_met), 'opening immediately shows current progress');
+  assert.ok(text(host).includes('00:05:00'));
+  fold.toggle();
   views = views.map(v => ({ ...v, held: 0, met: false }));
   update();
   assert.ok(text(host).includes(locale.obj_lost));
+  fold.toggle();
+  assert.ok(text(host).includes(locale.obj_lost), 'revocation remains visible after reopening');
+  assert.ok(text(host).includes('00:05:00'), 'first achievement is retained');
+  for (let i = 0; i < 20; i++) update();
   assert.deepEqual(host.children, originalNodes);
+  assert.deepEqual(fold.children, originalContent);
+  assert.equal(criteria.open, true, 'inner fold state is retained');
+  assert.equal(registrations, 1, 'toggles and ticks do not register another renderer');
+  assert.equal(reads, 1);
+  assert.deepEqual(writes, [
+    ['rs-guidance-open', 'true'], ['rs-guidance-open', 'false'], ['rs-guidance-open', 'true'],
+  ], 'only user toggles write storage');
   assert.equal(host.scrollTop, 80, 'progress ticks do not reset reading position');
 });
 
 test('briefing, saved-run notice, leak limitations and end results remain explicit', () => {
   const host = new Node();
   renderGuidance(host, def, null, { localOnly: true });
+  assert.equal(host.children[0].tagName, 'H2', 'briefing has no outer fold');
   assert.ok(text(host).includes(locale.incident_local_only));
   assert.ok(text(host).includes(locale.obj_rules));
   const leak = JSON.parse(readFileSync(new URL('../static/data/scenarios/pwr_sg_tube_leak.json', import.meta.url)));

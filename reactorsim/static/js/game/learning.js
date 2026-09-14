@@ -7,6 +7,7 @@ export function journal(engine) {
 function append(engine, entry) {
   const j = journal(engine);
   j.entries.push({ t: engine.state.t_sim, ...entry });
+  engine.ctx.trends?.mark({ t: engine.state.t_sim, ...entry });
   if (j.entries.length > CAP) { j.entries.shift(); j.truncated = true; }
 }
 
@@ -20,6 +21,8 @@ export function noteAction(engine, id, value) {
   if (continuous && last?.kind === 'action' && last.id === id && engine.state.t_sim - last.t < 2) {
     last.value = value;
     last.t = engine.state.t_sim;
+    // Trend history coalesces independently of the journal.
+    engine.ctx.trends?.mark({ t: engine.state.t_sim, kind: 'action', id, value });
   } else append(engine, { kind: 'action', id, value });
 }
 

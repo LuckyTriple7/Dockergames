@@ -33,6 +33,8 @@
 // in der Tabelle ihres Typs, gilt sie ebenfalls als nicht behebbar: eine neue
 // Meldung braucht keinen Eintrag hier, um sicher zu bleiben.
 
+import { noteAction } from './learning.js';
+
 function act(name, params) { return { key: 'helper_action_' + name, params }; }
 
 function fixed(actions) { return { status: actions.length ? 'fixed' : 'none', actions }; }
@@ -294,7 +296,11 @@ export function runHelper(engine, reactorId, tripId) {
   if (!isKnownHelper(reactorId, tripId)) return UNFIXABLE;
   if (engine.recorder) engine.recorder.record('helper', tripId);
   try {
-    return FIXES[reactorId][tripId](engine);
+    const result = FIXES[reactorId][tripId](engine);
+    if (result.status === 'fixed') {
+      for (const a of result.actions) noteAction(engine, 'helper:' + a.key, a.params);
+    }
+    return result;
   } catch {
     // Ein Fehler im Helfer darf die Runde nicht anhalten -- lieber "nicht
     // behebbar" melden als die Anzeige mit einer Ausnahme abreissen.

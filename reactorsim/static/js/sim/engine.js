@@ -251,6 +251,7 @@ export function createEngine(plant, opts = {}) {
     s.destroyed = true;
     s.destroyedKey = key;
     ctx.log.push({ t: s.t_sim, key, severity: 3 });
+    ctx.trends?.mark({ t: s.t_sim, kind: 'event', key, severity: 3 });
   }
 
   /**
@@ -316,6 +317,7 @@ export function createEngine(plant, opts = {}) {
     if (s.scram.active) return;
     s.scram = { active: true, t: s.t_sim, cause };
     ctx.log.push({ t: s.t_sim, key: 'event_scram', severity: 3, cause });
+    ctx.trends?.mark({ t: s.t_sim, kind: 'scram', key: 'event_scram', severity: 3 });
     if (hooks.onScram) hooks.onScram(s, spec, ctx);
   }
 
@@ -338,6 +340,7 @@ export function createEngine(plant, opts = {}) {
     }
     s.scram = { active: false, t: 0, cause: null };
     ctx.log.push({ t: s.t_sim, key: 'event_scram_reset', severity: 1 });
+    ctx.trends?.mark({ t: s.t_sim, kind: 'event', key: 'event_scram_reset', severity: 1 });
     return true;
   }
 
@@ -363,6 +366,7 @@ export function createEngine(plant, opts = {}) {
     s.breaker = true;
     if (ctx.govCtl) ctx.govCtl.resume(s.P_e);
     ctx.log.push({ t: s.t_sim, key: 'event_turbine_resume', severity: 1 });
+    ctx.trends?.mark({ t: s.t_sim, kind: 'event', key: 'event_turbine_resume', severity: 1 });
     return true;
   }
 

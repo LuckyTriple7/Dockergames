@@ -2,7 +2,7 @@
 
 Stand: 13.09.2026. Ergänzung zum [Spielaudit](AUDIT-2026-09-13.md) und zum [Physik-Audit](PHYSIK-AUDIT-2026-09-13.md).
 
-Neben den gefundenen Bugs und der Physik sollten vor allem Verständlichkeit, Bedienung und Langzeitmotivation verbessert werden. Die folgenden Punkte dokumentieren die ursprünglichen Vorschläge. Stand 14.09.2026: Die erste Etappe mit Diagnoseanzeigen (Punkt 2) und Schichtauswertung (Punkt 4) ist in Version 0.1.18 umgesetzt; Umfang und Grenzen stehen in [VERBESSERUNGEN-2026-09-14.md](VERBESSERUNGEN-2026-09-14.md). Das DWR-Anfahren-Tutorial (Punkt 1) ist in Version 0.1.19 umgesetzt; siehe [TUTORIAL-2026-09-14.md](TUTORIAL-2026-09-14.md). Version 0.1.20 setzt Punkt 6 teilweise und Punkt 7 für die beiden genannten Einzelstörungen mit Modellgrenzen um; siehe [SZENARIEN-2026-09-14.md](SZENARIEN-2026-09-14.md). Version 0.1.21 setzt Punkt 5 für die drei neuen DWR-Schichten um; siehe [SZENARIOZIELE-2026-09-14.md](SZENARIOZIELE-2026-09-14.md). Die übrigen Szenarien sowie Punkte 3 und 8 bleiben offen.
+Neben den gefundenen Bugs und der Physik sollten vor allem Verständlichkeit, Bedienung und Langzeitmotivation verbessert werden. Die folgenden Punkte dokumentieren die ursprünglichen Vorschläge. Stand 14.09.2026: Die erste Etappe mit Diagnoseanzeigen (Punkt 2) und Schichtauswertung (Punkt 4) ist in Version 0.1.18 umgesetzt; Umfang und Grenzen stehen in [VERBESSERUNGEN-2026-09-14.md](VERBESSERUNGEN-2026-09-14.md). Das DWR-Anfahren-Tutorial (Punkt 1) ist in Version 0.1.19 umgesetzt; siehe [TUTORIAL-2026-09-14.md](TUTORIAL-2026-09-14.md). Version 0.1.20 setzt Punkt 6 teilweise und Punkt 7 für die beiden genannten Einzelstörungen mit Modellgrenzen um; siehe [SZENARIEN-2026-09-14.md](SZENARIEN-2026-09-14.md). Version 0.1.21 setzt Punkt 5 für die drei neuen DWR-Schichten um; siehe [SZENARIOZIELE-2026-09-14.md](SZENARIOZIELE-2026-09-14.md). Version 0.1.22 setzt Punkt 3 global und den Trendhistorien-Teil von Punkt 8 um; siehe [TRENDS-2026-09-14.md](TRENDS-2026-09-14.md). Ziele für die übrigen Szenarien und die unten genannten Komfortreste bleiben offen.
 
 ## 1. Interaktives Anfahren-Tutorial — DWR-Einstieg umgesetzt in 0.1.19
 
@@ -16,9 +16,17 @@ Anzeigen unterscheiden zwischen Bedienwunsch und tatsächlichem Zustand:
 - Pumpe eingeschaltet / fördert tatsächlich.
 - Messwert verfügbar / Messung ausgefallen.
 
-## 3. Aussagekräftige Trends
+## 3. Aussagekräftige Trends - global umgesetzt in 0.1.22
 
 Ereignismarker für Stabfahrten, Abschaltungen und Störungen ergänzen. Leistung, Druck und Durchsatz sollen zeitlich gemeinsam vergleichbar sein.
+
+Umgesetzt für alle 14 Szenarien und freies Spiel aller drei Reaktortypen:
+gemeinsame 1-Hz-Historie der letzten acht Simulationsstunden, vier Haupt- und
+vier erweiterte Diagramme mit gemeinsamer Zeitachse, bis zu 600 Marker sowie
+Markerwahl mit weißem Cursor, festgehaltener Ansicht und Live-Rückkehr.
+Bedienaufträge sind von tatsächlichen Zustandswechseln getrennt; fehlende
+Messwerte bleiben Lücken. Zielmarker gelten nur für die drei DWR-Störungsschichten
+und das Anfahren-Tutorial, nicht als neue Ziele für alle Szenarien.
 
 ## 4. Lehrreiche Auswertung — umgesetzt in 0.1.18
 
@@ -71,11 +79,17 @@ Nichtstun nicht mehr zum Erfolg. Eine vollständige Diagnosewertung fehlt
 weiterhin, Scores beweisen keine richtige reale Behandlung. Die DE-/EN-Texte
 benennen diese Grenzen ausdrücklich.
 
-## 8. Komfort beim Spielen
+## 8. Komfort beim Spielen - Trendhistorie umgesetzt in 0.1.22
 
-- Letzten erfolgreichen Speicherzeitpunkt anzeigen.
-- Verlauf nach Fortsetzen erhalten.
-- Einen laufenden Zeitsprung abbrechen können.
+- Offen: letzten erfolgreichen (Auto-)Speicherzeitpunkt anzeigen.
+- Umgesetzt: vorgehaltene Trendhistorie und Marker nach Fortsetzen exakt
+  erhalten, ohne Ausdünnung der gespeicherten Daten; alte/ungültige Trendblöcke
+  werden als fehlende Historie benannt, ohne gültige Anlagenzustände abzulehnen.
+- Offen: einen laufenden Zeitsprung ausdrücklich abbrechen können.
+
+Zusätzlich umgesetzt: der gesamte Laufzeit-Hinweisbereich ist über seine
+Überschrift einklappbar, standardmäßig offen, mit gemerkter Wahl und weiterhin
+laufenden Zielen. Die Einweisung bleibt ohne äußeren Klappbereich.
 
 ## Empfohlene Reihenfolge
 
