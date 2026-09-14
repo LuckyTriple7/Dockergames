@@ -843,13 +843,7 @@ function initControls() {
   // Reiter das Panel ohnehin schon voll.
   document.addEventListener('keydown', (ev) => {
     if (ev.target instanceof HTMLInputElement) return;
-    const nativeControl = ev.target.closest?.('button, summary, select, textarea, a[href]');
-    // Toolbar-Klicks und gerade geschlossene Dialoge duerfen die globale Pause
-    // nicht blockieren. In sichtbaren Panel-Bedienelementen bleibt Leertaste
-    // dagegen deren native Aktivierung vorbehalten.
-    if (ev.code === 'Space' && nativeControl
-      && !ev.target.closest?.('.rs-status-controls')
-      && !nativeControl.closest?.('[hidden]')) return;
+    if (ev.code === 'Space' && ev.target.closest?.('button, summary, select, textarea, a[href]')) return;
     if (ev.code === 'Space') { ev.preventDefault(); setSpeed(app.xenonSkipping || app.loop.speed > 0 ? 0 : 1); }
     else if (ev.key === '1') setSpeed(1);
     else if (ev.key === '2') setSpeed(4);
@@ -1681,6 +1675,10 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
   const built = buildPanels(app.engine, app.render,
     app.prefs.helper !== false && scenarioDef?.guidance?.auto_helper !== false);
   buildTutorial(app.session, app.render);
+  renderGuidance($('#rs-guidance'), scenarioDef, () => showBriefing(scenarioDef), {
+    objectives: app.session.objectives, render: app.render,
+    localOnly: !!app.session.objectives && !app.engine.recorder,
+  });
   app.horn = built.horn;
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;

@@ -1,39 +1,5 @@
 # Changelog
 
-## 0.1.29
-
-- Die Szenario-Einweisung verwendet wieder den kompakten Clipboard-Button
-  links von „Speichern“. Die Toolbar entspricht damit wieder der Anordnung vor
-  dem Textbutton und den nachfolgenden Responsive-Anpassungen.
-
-## 0.1.28
-
-- Mute, Hilfe, Tastaturhilfe und Statuskonfiguration haben in der Leitstands-
-  Toolbar dieselbe feste Breite. Die drei zuletzt schmaleren Symbolbuttons
-  besitzen damit dieselbe Klickfläche wie Mute.
-
-## 0.1.27
-
-- Die komplette Leitstands-Toolbar bleibt auf schmalen Ansichten in einer
-  horizontal scrollbaren Zeile. Geschwindigkeitswahl und Funktionsknöpfe werden
-  weder umgebrochen noch am Rand abgeschnitten.
-
-## 0.1.26
-
-- Einweisung bleibt unterhalb der Desktop-Breite als kompakter Clipboard-Button
-  links von „Speichern“ in derselben Toolbar-Zeile; der zugängliche Name und
-  Tooltip bleiben „Einweisung“.
-- Leertaste pausiert wieder nach Toolbar-Klicks sowie nach dem Schließen eines
-  Dialogs. Sichtbare Bedienknöpfe in Panels behalten ihre native
-  Leertasten-Aktivierung.
-
-## 0.1.25
-
-- Die einklappbare Szenario-Unterstützung belegt im Leitstand keinen Platz mehr.
-  Ziele, Hinweise und Fortschritt stehen ausschließlich in der Einweisung, die
-  während eines Szenarios über den neuen beschrifteten Button direkt links von
-  „Speichern“ geöffnet wird. Im freien Spiel bleibt der Button verborgen.
-
 ## 0.1.24
 
 - 15. Szenario: **AZ-5 war erst der Anfang**, RBMK, Schwierigkeit 3,
