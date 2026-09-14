@@ -151,8 +151,8 @@ test('jedes Szenario läuft ohne Ausnahme bis zum Ende', async () => {
     // geben, und die Kennzahlen muessen brauchbar sein.
     if (ended.result) {
       const sum = ended.result.summary;
-      assert.ok(Number.isFinite(ended.result.score), `${def.id}: Punkte ${ended.result.score}`);
-      assert.ok(sum.energy_mwh_demanded > 0, `${def.id}: keine Anforderung`);
+      assert.ok(def.tutorial ? ended.result.score === null : Number.isFinite(ended.result.score), `${def.id}: Punkte ${ended.result.score}`);
+      assert.ok(def.tutorial ? sum.completed === false : sum.energy_mwh_demanded > 0, `${def.id}: keine Anforderung`);
       assert.ok(sum.duration_s > 0);
       for (const v of Object.values(sum.violation_seconds)) assert.ok(Number.isFinite(v));
     }

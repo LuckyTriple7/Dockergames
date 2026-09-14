@@ -20,6 +20,7 @@ import { enableDragReorder } from './ui/dragReorder.js';
 import { attachRecorder } from './game/recorder.js';
 import { record } from './game/coreActions.js';
 import { renderLearning } from './ui/debrief.js';
+import { buildTutorial, renderTutorialResult } from './ui/tutorial.js';
 
 // Panel-Buchstaben fuer die Fenster-Tastenkuerzel (siehe initControls():
 // Tastatur am Rechner). Ungewandeltes Zeichen statt Kachel-Position, damit
@@ -220,7 +221,7 @@ function initStart() {
 
   $('#rs-debrief-send').addEventListener('click', () => {
     const result = app.pendingResult;
-    if (!result) return;
+    if (!result || result.tutorial) return;
     const nameNode = $('#rs-debrief-name');
     const name = nameNode.value.trim();
     if (!name) { nameNode.focus(); return; }
@@ -1080,7 +1081,7 @@ function showDebrief(result, failed) {
   const ok = !failed;
   setAttr(verdict, 'data-ok', ok ? '1' : '0');
   setText(verdict, ok ? t('debrief_completed') : `${t('debrief_failed')} — ${t(failed)}`);
-  setText($('#rs-debrief-score'), result ? String(result.score) : '—');
+  setText($('#rs-debrief-score'), result?.tutorial ? t('tut_unranked_short') : result ? String(result.score) : '—');
 
   const parts = $('#rs-debrief-parts');
   parts.replaceChildren();
@@ -1096,7 +1097,10 @@ function showDebrief(result, failed) {
       el('li', { text: `${clock(e.t)} · ${t(e.key)}` }))));
   }
   if (result) {
+    renderTutorialResult(parts, result);
     renderLearning(parts, result.learning);
+  }
+  if (result && !result.tutorial) {
     const sum = result.summary;
     const p = result.parts || {};
     // Vorzeichen von Hand statt num(): dieselbe Schreibweise wie schon vorher
@@ -1177,8 +1181,9 @@ function showDebrief(result, failed) {
   const msg = $('#rs-debrief-msg');
   setText(msg, '');
   $('#rs-debrief-scores').replaceChildren();
-  submit.hidden = !result;
-  if (result) {
+  app.pendingResult = null;
+  submit.hidden = !result || !!result.tutorial;
+  if (result && !result.tutorial) {
     app.pendingResult = result;
     const name = $('#rs-debrief-name');
     try { name.value = window.localStorage.getItem('rs-name') || ''; } catch { /* privates Fenster */ }
@@ -1359,6 +1364,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // Startbildschirm nie angefasst hat -- Standard ist AN, siehe rs-helper-
   // toggle in initStart().
   const built = buildPanels(app.engine, app.render, app.prefs.helper !== false);
+  buildTutorial(app.session, app.render);
   app.horn = built.horn;
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;

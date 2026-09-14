@@ -256,3 +256,20 @@
 @media (min-width: 1700px) {
   .rs-panels { grid-template-columns: 300px minmax(0, 2fr) 300px; }
 }
+
+/* Training remains visible above both the desktop grid and mobile tabs. */
+.rs-tutorial {
+  flex: 0 0 auto;
+  max-height: 32vh;
+  overflow-y: auto;
+  padding: 10px 16px;
+  background: var(--rs-bg-2);
+  border-bottom: 2px solid var(--rs-accent, #59b7ef);
+  font-size: 13px;
+}
+.rs-tutorial h2 { font-size: 15px; margin: 0 0 6px; }
+.rs-tutorial p { margin: 5px 0; }
+.rs-tutorial-values { font-family: var(--rs-font-num); }
+.rs-tutorial-hint { color: var(--rs-fg-dim); }
+.rs-tutorial details { margin-top: 6px; }
+.rs-tutorial summary { cursor: pointer; }

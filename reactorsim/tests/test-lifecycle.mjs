@@ -49,7 +49,7 @@ function harness(readSave = async () => ({ ok: false })) {
       stop() {} start() { counters.starts++; } setSpeed(v) { this.speed = v; }
     },
     setSpeed(v) { app.loop.setSpeed(v); },
-    loadScores() {}, renderLearning() {},
+    loadScores() {}, renderLearning() {}, buildTutorial() {}, renderTutorialResult() {},
   });
   for (const name of ['clearEndDialogs', 'toMenu', 'showBriefing', 'showDebrief', 'showDestroyed', 'boot']) {
     const fn = source.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
@@ -164,4 +164,29 @@ test('trend sampling captures the same second-long pulse at 1x and 60x', () => {
     assert.equal(Math.max(...fast), 100);
     assert.deepEqual(fast, normal);
   } finally { globalThis.requestAnimationFrame = previousRAF; }
+});
+
+test('tutorial resumes its objective, stays unranked and restarts from preparation', async () => {
+  const def = JSON.parse(readFileSync(new URL('../static/data/scenarios/pwr_startup_tutorial.json', import.meta.url)));
+  const h = harness();
+  await h.ctx.boot('pwr', def);
+  for (let i = 0; i < 100; i++) {
+    h.app.engine.step(0.05);
+    h.app.session.step(0.05, h.app.engine.trips.tiles(), 0);
+  }
+  assert.equal(h.app.session.tutorial.index, 1);
+  const saved = JSON.parse(JSON.stringify(pack(h.app.engine, def.id, h.app.session.run, h.app.session)));
+  const resumed = harness(async () => ({ ok: true, data: saved }));
+  await resumed.ctx.boot('pwr', def, 'slot');
+  assert.equal(resumed.app.session.tutorial.index, 1);
+  resumed.app.engine.state.t_sim = 3600;
+  resumed.app.session.step(0.05, [], 0);
+  assert.equal(resumed.$('#rs-debrief').hidden, false);
+  assert.equal(resumed.$('#rs-debrief-submit').hidden, true);
+  assert.equal(resumed.$('#rs-debrief-score').textContent, 'tut_unranked_short');
+  assert.equal(resumed.app.pendingResult, null);
+  await resumed.ctx.boot(resumed.app.lastReactor, resumed.app.lastScenarioDef);
+  assert.equal(resumed.app.session.tutorial.index, 0);
+  assert.equal(resumed.app.engine.state.rod[0], 1);
+  assert.equal(resumed.$('#rs-debrief').hidden, true);
 });

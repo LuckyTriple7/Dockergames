@@ -394,3 +394,14 @@ def test_atomic_write_survives_partial_failure(tmp_path):
         assert json.load(f) == {'a': 1}
     leftovers = [n for n in os.listdir(tmp_path) if n.startswith('.tmp-')]
     assert leftovers == []
+
+
+def test_startup_tutorial_is_discoverable_and_unranked(client):
+    scenarios = client.get('/api/meta').get_json()['scenarios']
+    tutorial = next(s for s in scenarios if s['id'] == 'pwr_startup_tutorial')
+    assert tutorial['tutorial'] == 'pwr_startup'
+    response = client.post('/api/highscores', json={
+        'name': 'Learner', 'summary': _summary(scenario='pwr_startup_tutorial'),
+    })
+    assert response.status_code == 400
+    assert response.get_json()['error'] == 'tutorial_unranked'

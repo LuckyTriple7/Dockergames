@@ -252,6 +252,7 @@ def _load_scenarios() -> list:
             'title_key': data.get('title_key'),
             'brief_key': data.get('brief_key'),
             'duration_s': data.get('duration_s', 0),
+            'tutorial': data.get('tutorial'),
         })
     return out
 
@@ -506,6 +507,8 @@ def scores_add():
         return jsonify({'error': 'bad_scenario'}), 400
 
     scn = SCENARIO_BY_ID[scenario]
+    if scn.get('tutorial'):
+        return jsonify({'error': 'tutorial_unranked'}), 400
     if scn.get('reactor') != reactor:
         return jsonify({'error': 'reactor_mismatch'}), 400
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.19
+
+- Interaktives DWR-Anfahren-Tutorial als eigene Übung in der Szenarioauswahl.
+  Vorbereiteter heißer, unterkritischer Start; fünf Lernziele für
+  Zustandsprüfung, Pumpenhochlauf, Stabbedienung, Lastaufnahme und stabilen Betrieb.
+- Tutorialkarte mit aktuellen Werten, zustandsabhängigen Hinweisen,
+  Wirkungserklärungen, Lernzielliste und Sprung zum passenden Panel.
+- Fortschritt hängt vom Anlagenzustand ab. Die abschließende Haltezeit von
+  120 Sekunden beginnt bei einer Abweichung neu; bloßes Abwarten gewährt keinen
+  Erfolg. Schnellabschaltung, Schaden oder Zeitablauf beenden den Versuch.
+- Spielstände bewahren Schritt, Haltezeit und erreichte Ziele. Die Auswertung
+  zeigt Ziele und Schichtverlauf ohne Punkte; die API lehnt Tutorialwertungen ab.
+- Acht neue JavaScript-Tests einschließlich vollständigem Anfahren,
+  identischer Fortsetzung aus einer laufenden Haltezeit und UI-/Lifecycle-Fällen;
+  zusätzlicher API-Test und deutsche/englische Texte.
+- Umfang und Nachweise: `audit/TUTORIAL-2026-09-14.md`.
+
 ## 0.1.18
 
 - Diagnosebereich im Primärpanel für alle drei Reaktortypen: Pumpenantrieb,

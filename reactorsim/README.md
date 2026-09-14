@@ -40,6 +40,23 @@ Unter `./data` landen Spielstände, Bestenliste und die Zugangsdaten (nur als
 Hash). Personenbezogene Daten entstehen keine — der Spielstand gehört dem
 Konto, nicht dem Gerät.
 
+## Anfahren lernen
+
+Wähle **DWR → Tutorial: DWR selbst anfahren → Schicht beginnen**. Die Übung
+beginnt heiß und unterkritisch mit vorbereiteter Abschaltgruppe und
+Borkonzentration. Fünf Aufgaben führen von der Zustandsprüfung über Pumpen-
+und Stabbedienung bis zur stabilen Abgabe von 150 MWe. Die Tutorialkarte über
+dem Leitstand zeigt aktuelle Werte, passende Hinweise und die noch erforderliche
+Haltezeit. Über „Warum wirkt das?“ erhältst du die Erklärung, über
+„Passendes Panel anzeigen“ gelangst du zur jeweiligen Bedienung.
+
+Zum Lesen kannst du pausieren. Nutze zunächst 1× für Stabfahrten und warte
+die tatsächliche Bewegung ab. Der Abschluss verlangt 120 zusammenhängende
+stabile Simulationssekunden; nach spätestens 60 Simulationsminuten endet ein
+unvollständiger Versuch ohne Erfolg. Speichern und Fortsetzen erhalten auch
+das Lernziel und seine Haltezeit. Die Übung hat eine Auswertung mit erreichten
+Lernzielen und Schichtverlauf, aber keine Punkte oder Bestenlisteneinträge.
+
 ## Szenarien
 
 Neben dem freien Spiel gibt es Schichten mit Auftrag: eine Bedarfskurve, die du

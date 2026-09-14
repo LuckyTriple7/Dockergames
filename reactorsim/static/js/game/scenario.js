@@ -194,7 +194,7 @@ export class RunState {
    *  Groesse. */
   accumulate(s, d, worstSeverity, tiles, dt) {
     const h = dt / 3600;
-    const demand = this.scenario.demandAt(s.t_sim);
+    const demand = this.scenario.def.tutorial ? s.P_demand : this.scenario.demandAt(s.t_sim);
     this.energyDelivered += s.P_e * h;
     this.energyDemanded += demand * h;
     const dev = Math.abs(s.P_e - demand);

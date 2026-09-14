@@ -7,6 +7,7 @@ import { Scenario, RunState } from './scenario.js';
 import { getEvent, eventKey, eventSeverity, stepEvents } from './events.js';
 import { score } from './scoring.js';
 import { Rng } from '../rng.js';
+import { StartupTutorial, STARTUP_TUTORIAL } from './tutorial.js';
 import { noteEvent, observeAlarms, learningReport } from './learning.js';
 
 // Freies Spiel ohne Bedarfskurve hiesse: "folge der Netzanforderung" waere
@@ -40,6 +41,8 @@ export class Session {
     this.onEnd = null;
     this.onAlert = null;
     this.result = null;
+    this.tutorial = scenarioDef?.tutorial === STARTUP_TUTORIAL && engine.spec.id === 'pwr'
+      ? new StartupTutorial(engine) : null;
     this.demandRng = this.free ? new Rng(Date.now() >>> 0) : null;
     this.demandTarget = null;
     this.demandNextChangeT = 0;
@@ -47,6 +50,7 @@ export class Session {
 
   start() {
     this.phase = PHASE.RUNNING;
+    if (this.tutorial) this.tutorial.prepare();
     if (this.scenario) {
       const st = this.scenario.def.start_overrides || {};
       for (const [k, v] of Object.entries(st)) this.engine.state[k] = v;
@@ -61,11 +65,13 @@ export class Session {
   }
 
   snapshot() {
+    if (this.tutorial) return { tutorial: this.tutorial.snapshot() };
     return this.free ? { demandTarget: this.demandTarget,
       demandNextChangeT: this.demandNextChangeT, rng: this.demandRng.snapshot() } : {};
   }
 
   restore(data) {
+    if (this.tutorial) { this.tutorial.restore(data?.tutorial); return; }
     if (!this.free || !data) return;
     if (Number.isFinite(data.demandTarget)) this.demandTarget = data.demandTarget;
     if (Number.isFinite(data.demandNextChangeT)) this.demandNextChangeT = data.demandNextChangeT;
@@ -109,7 +115,7 @@ export class Session {
     }
 
     // Bedarfskurve führt die Lastanforderung.
-    s.P_demand = this.scenario.demandAt(s.t_sim);
+    s.P_demand = this.tutorial ? this.tutorial.demand : this.scenario.demandAt(s.t_sim);
 
     // Akustische Vorwarnung, 2-5 Minuten vor dem eigentlichen Ereignis --
     // main.js entscheidet, welcher Klang das ist.
@@ -132,7 +138,12 @@ export class Session {
 
     const failed = this.run.checkFail(s, d, dt, worstSeverity);
     if (failed) { this._finish(false, failed); return; }
-    if (s.t_sim >= this.scenario.duration) { this._finish(true, null); }
+    if (this.tutorial) {
+      this.tutorial.step(dt);
+      s.P_demand = this.tutorial.demand;
+      if (this.tutorial.done) this._finish(true, null);
+      else if (s.t_sim >= this.scenario.duration) this._finish(false, 'tut_timeout');
+    } else if (s.t_sim >= this.scenario.duration) { this._finish(true, null); }
   }
 
   _finish(completed, failed) {
@@ -147,6 +158,11 @@ export class Session {
       // ist unveraendert das, was api.submitScore() als Server-Payload
       // verschickt (siehe main.js), Diagnosedaten bleiben aussen vor.
       this.result = { summary: sum, causes: this.run.topCauses(), learning: learningReport(this.engine), ...score(sum) };
+      if (this.tutorial) {
+        this.result.tutorial = this.tutorial.snapshot();
+        this.result.score = null;
+        this.result.parts = {};
+      }
     }
     if (this.onEnd) this.onEnd(this.result, failed);
   }
