@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.25
+
+- Laufzeit-Hinweisbereich `#rs-guidance` (Ziele, Bedienhinweise, Ein-/Ausblenden)
+  vollständig entfernt statt nur eingeklappt -- kostete auch geschlossen noch
+  Platz in der Seitenleiste. Die Einweisung bleibt über den vorhandenen
+  `#rs-briefing-btn` erreichbar; nur dort und im Vorlauf (`#rs-brief-guidance`)
+  rendert `renderGuidance()` noch.
+- Trendpanel: statischer Erklärtext (`trend_help`) über den Diagrammen entfernt,
+  reiner Platzverbrauch ohne dynamischen Inhalt. Der Live-/Auswahl-Status
+  bleibt, der zeigt tatsächlich Zustand an.
+- "Zuletzt erfolgreich gespeichert"-Zeile aus der sichtbaren Statuszeile
+  entfernt; der Text steht jetzt als Tooltip (`title`) auf dem
+  Speichern-Knopf, bleibt aber unsichtbar (`.rs-sr-only`) im DOM fuer
+  Screenreader und Tests erhalten.
+
 ## 0.1.24
 
 - 15. Szenario: **AZ-5 war erst der Anfang**, RBMK, Schwierigkeit 3,

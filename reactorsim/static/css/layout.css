@@ -142,6 +142,20 @@
 #rs-save-status[data-error="true"] { color: var(--rs-warn); }
 #rs-save-state:not(:empty) { margin-inline-start: .5em; }
 
+/* Kept in the DOM (and announced via role=status) but not shown -- the text
+   doubles as the Speichern button's title tooltip, see renderSaveStatus(). */
+.rs-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 #rs-start-message,
 #rs-save-slots-message {
   margin: 8px 0 0;

@@ -213,7 +213,6 @@ test('scenario assistance survives resume and never changes the global helper pr
   for (const def of defs) {
     await h.ctx.boot('pwr', def);
     assert.equal(h.counters.helperEnabled, def.difficulty === 1);
-    assert.equal(h.$('#rs-guidance').hidden, false);
     h.$('#rs-brief .rs-modal-box').scrollTop = 350;
     h.ctx.showBriefing(def);
     assert.equal(h.$('#rs-brief .rs-modal-box').scrollTop, 0);
@@ -226,10 +225,8 @@ test('scenario assistance survives resume and never changes the global helper pr
   const resumed = harness(async () => ({ ok: true, data: saved }));
   await resumed.ctx.boot('pwr', def, 'slot');
   assert.equal(resumed.counters.helperEnabled, false);
-  assert.equal(resumed.$('#rs-guidance').hidden, false);
   await resumed.ctx.boot('pwr', null);
   assert.equal(resumed.counters.helperEnabled, true);
-  assert.equal(resumed.$('#rs-guidance').hidden, true);
   h.app.prefs.helper = false;
   await h.ctx.boot('pwr', defs[0]);
   assert.equal(h.counters.helperEnabled, false, 'guided play still respects user preference');

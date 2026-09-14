@@ -180,19 +180,18 @@
            boot() in main.js) -- im freien Spiel gibt es keine Einweisung. -->
       <button type="button" class="rs-btn rs-btn-ghost rs-btn-icon" id="rs-briefing-btn" hidden
               aria-label="{{ t.btn_briefing }}" title="{{ t.btn_briefing }}">📋</button>
-      <button type="button" class="rs-btn rs-btn-ghost" id="rs-save">{{ t.btn_save }}</button>
+      <button type="button" class="rs-btn rs-btn-ghost" id="rs-save" title="{{ t.save_none }}">{{ t.btn_save }}</button>
       <button type="button" class="rs-btn rs-btn-ghost" id="rs-menu">{{ t.btn_menu }}</button>
       <button type="button" class="rs-scram" id="rs-scram">{{ t.btn_scram }}</button>
     </div>
     <div class="rs-status-feedback">
-      <p id="rs-save-status" role="status"><span id="rs-save-last">{{ t.save_none }}</span> <span id="rs-save-state"></span></p>
+      <p id="rs-save-status" role="status"><span id="rs-save-last" class="rs-sr-only">{{ t.save_none }}</span> <span id="rs-save-state"></span></p>
       <p id="rs-xenon-skip-message" role="status"></p>
     </div>
   </header>
 
   <div class="rs-workspace">
     <section id="rs-tutorial" class="rs-tutorial" aria-label="{{ t.tut_label }}" hidden></section>
-    <section id="rs-guidance" class="rs-tutorial rs-guidance" aria-label="{{ t.scn_guidance_title }}" hidden></section>
     <input type="radio" name="rs-tab" id="rs-tab-core" class="rs-tabinput" checked>
     <input type="radio" name="rs-tab" id="rs-tab-prim" class="rs-tabinput">
     <input type="radio" name="rs-tab" id="rs-tab-sec" class="rs-tabinput">

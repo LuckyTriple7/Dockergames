@@ -229,13 +229,9 @@ bleibt für den Server undurchsichtig und wird beim Laden im Browser geprüft.
   dem Fließbild in der Mitte. Die Meldetafel-/Loggruppe behält mobil 180 px
   Mindesthöhe, damit Log-Scrollen per Touch und Alarmhilfe erreichbar bleiben.
 - **Sprache** DE/EN über den Startbildschirm.
-- **Hinweise einklappen:** Die Überschrift des Laufzeit-Hinweisbereichs
-  klappt den gesamten Inhalt samt Zielübersicht auf 40 px ein. Standardmäßig
-  ist er offen; die Wahl bleibt unter `rs-guidance-open` als `true`/`false`
-  in `localStorage` über Neuladen und Szenariowechsel erhalten. Bei gesperrtem
-  Speicher gilt sie nur im Arbeitsspeicher bis zum Neuladen. Zielprüfung und
-  Haltezeiten laufen geschlossen weiter. Die erneut geöffnete Einweisung
-  hat keinen zusätzlichen äußeren Klappbereich.
+- **Einweisung erneut ansehen:** Kein eigener Laufzeit-Hinweisbereich mehr --
+  Ziele, Bedienhinweise und Kriterien der Übung ruft der Knopf mit dem
+  Klemmbrett-Symbol (`#rs-briefing-btn`) jederzeit wieder als Einweisung auf.
 - **Tastatur:** Leertaste und Enter aktivieren fokussierte native
   Schaltflächen und Klappüberschriften, ohne dabei das Tempo umzuschalten.
 

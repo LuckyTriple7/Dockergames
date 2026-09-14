@@ -84,7 +84,6 @@ def test_progression_scenarios_and_guidance_are_discoverable(client):
         assert scenario['guidance']['event_alerts'] == (difficulty == 1)
         assert scenario['guidance']['hint_key'] == f'scn_{scenario_id}_hint'
     page = client.get('/').get_data(as_text=True)
-    assert 'id="rs-guidance"' in page
     assert 'id="rs-brief-guidance"' in page
 
 

@@ -1065,9 +1065,13 @@ function resetSaveStatus(savedMeta = null) {
 
 function renderSaveStatus() {
   const last = saveStatus?.last;
-  setText($('#rs-save-last'), last ? t('save_last_success', {
+  const lastText = last ? t('save_last_success', {
     when: new Date(last.when).toLocaleString(), kind: t('save_kind_' + last.kind),
-  }) : t('save_none'));
+  }) : t('save_none');
+  // Visually hidden (rs-sr-only): the text lives in the Speichern button's
+  // tooltip instead, so the status row does not cost sidebar space.
+  setText($('#rs-save-last'), lastText);
+  setAttr($('#rs-save'), 'title', lastText);
   setText($('#rs-save-state'), [saveStatus?.failed ? t('save_failed') : '',
     saveStatus?.pending ? t('save_pending') : ''].filter(Boolean).join(' '));
   setAttr($('#rs-save-status'), 'data-error', saveStatus?.failed ? 'true' : 'false');
@@ -1675,10 +1679,6 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
   const built = buildPanels(app.engine, app.render,
     app.prefs.helper !== false && scenarioDef?.guidance?.auto_helper !== false);
   buildTutorial(app.session, app.render);
-  renderGuidance($('#rs-guidance'), scenarioDef, () => showBriefing(scenarioDef), {
-    objectives: app.session.objectives, render: app.render,
-    localOnly: !!app.session.objectives && !app.engine.recorder,
-  });
   app.horn = built.horn;
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;

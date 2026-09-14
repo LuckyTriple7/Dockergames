@@ -170,7 +170,7 @@ export function buildTrends(engine, render) {
   $('#rs-trend-range').replaceChildren(...buttons, live);
   $('#rs-trend-range').setAttribute('aria-label', t('trend_range'));
   $('#rs-trends').replaceChildren(
-    el('p.rs-trend-note', { text: t('trend_help') }), caption, info,
+    caption, info,
     ...charts.slice(0, 4).map(c => c.node), extra, events,
     el('p.rs-trend-note', { text: t('trend_retention') }),
   );
