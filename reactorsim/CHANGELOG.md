@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.26
+
+- Einweisung bleibt unterhalb der Desktop-Breite als kompakter Clipboard-Button
+  links von „Speichern“ in derselben Toolbar-Zeile; der zugängliche Name und
+  Tooltip bleiben „Einweisung“.
+- Leertaste pausiert wieder nach Toolbar-Klicks sowie nach dem Schließen eines
+  Dialogs. Sichtbare Bedienknöpfe in Panels behalten ihre native
+  Leertasten-Aktivierung.
+
 ## 0.1.25
 
 - Die einklappbare Szenario-Unterstützung belegt im Leitstand keinen Platz mehr.

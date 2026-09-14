@@ -211,3 +211,9 @@ test('disabled automatic fixes cannot be triggered through the hidden button', (
   vm.runInNewContext(`(() => {${handler[1]}\n})()`, context);
   assert.equal(calls, 0);
 });
+
+test('space continues to pause after toolbar clicks and closed dialogs', () => {
+  const main = readFileSync(new URL('../static/js/main.js', import.meta.url), 'utf8');
+  assert.match(main, /!ev\.target\.closest\?\.\('\.rs-status-controls'\)/);
+  assert.match(main, /!nativeControl\.closest\?\.\('\[hidden\]'\)/);
+});

@@ -124,6 +124,19 @@
   overflow-wrap: anywhere;
 }
 
+/* Auf schmalen Bildschirmen darf der Einweisungsbutton die Bedienelemente
+   nicht in eine unlesbare Restzeile druecken. Die Beschriftung bleibt auf
+   breiten Leitstaenden sichtbar; mobil ist sie ueber aria-label und title
+   erreichbar. */
+@media (max-width: 1023.98px) {
+  #rs-briefing-btn {
+    min-width: 38px;
+    padding: 8px;
+    font-size: 0;
+  }
+  #rs-briefing-btn::before { content: "📋"; font-size: 16px; }
+}
+
 .rs-status-feedback {
   display: flex;
   flex-wrap: wrap;
