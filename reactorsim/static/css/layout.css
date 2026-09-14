@@ -274,3 +274,10 @@
 .rs-tutorial details { margin-top: 6px; }
 .rs-tutorial summary { cursor: pointer; }
 .rs-guidance p { white-space: pre-line; }
+.rs-objectives h3 { margin: 8px 0 4px; font-size: 14px; }
+.rs-objectives ol { margin: 4px 0; padding-left: 22px; }
+.rs-objectives li { margin: 6px 0; }
+.rs-objectives li > * { display: block; }
+.rs-objectives li[data-met="true"] > strong { color: var(--rs-ok); }
+.rs-objectives small { color: var(--rs-fg-dim); }
+.rs-objectives details { margin-bottom: 8px; }

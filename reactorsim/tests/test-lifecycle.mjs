@@ -50,7 +50,7 @@ function harness(readSave = async () => ({ ok: false })) {
       stop() {} start() { counters.starts++; } setSpeed(v) { this.speed = v; }
     },
     setSpeed(v) { app.loop.setSpeed(v); },
-    loadScores() {}, renderLearning() {}, buildTutorial() {}, renderTutorialResult() {},
+    loadScores() {}, renderLearning() {}, buildTutorial() {}, renderTutorialResult() {}, renderObjectiveResult() {},
     renderGuidance(host, def) { host.hidden = !def?.guidance; },
   });
   for (const name of ['clearEndDialogs', 'toMenu', 'showBriefing', 'showDebrief', 'showDestroyed', 'boot']) {
@@ -221,4 +221,57 @@ test('scenario assistance survives resume and never changes the global helper pr
   h.app.prefs.helper = false;
   await h.ctx.boot('pwr', defs[0]);
   assert.equal(h.counters.helperEnabled, false, 'guided play still respects user preference');
+});
+
+test('incident saves keep local evaluation but cannot submit without a complete recorder', async () => {
+  const def = JSON.parse(readFileSync(new URL('../static/data/scenarios/pwr_feedwater_loss.json', import.meta.url)));
+  const live = harness();
+  await live.ctx.boot('pwr', def);
+  const saved = JSON.parse(JSON.stringify(pack(live.app.engine, def.id, live.app.session.run, live.app.session)));
+  live.$('#rs-debrief .rs-modal-box').scrollTop = 500;
+  live.app.session._finish(false, 'fail_objectives_unmet');
+  assert.equal(live.$('#rs-debrief .rs-modal-box').scrollTop, 0);
+  assert.equal(live.$('#rs-debrief-submit').hidden, false, 'new runs can submit replay-verified results');
+  const resumed = harness(async () => ({ ok: true, data: saved }));
+  await resumed.ctx.boot('pwr', def, 'slot');
+  resumed.app.session._finish(false, 'fail_objectives_unmet');
+  assert.equal(resumed.$('#rs-debrief-submit').hidden, true);
+  assert.equal(resumed.$('#rs-debrief-msg').textContent, 'incident_local_only');
+  assert.ok(resumed.app.pendingResult, 'local score and goals remain available');
+});
+
+test('score response updates the displayed result, but cannot replace a later session', async () => {
+  const match = source.match(/\$\('#rs-debrief-send'\).addEventListener\('click', \(\) => \{([^]*?)\n  \}\);/);
+  assert.ok(match);
+  const h = harness();
+  const def = JSON.parse(readFileSync(new URL('../static/data/scenarios/pwr_feedwater_loss.json', import.meta.url)));
+  await h.ctx.boot('pwr', def);
+  h.app.session._finish(false, 'fail_objectives_unmet');
+  const result = h.app.pendingResult;
+  h.$('#rs-debrief-name').value = 'Test';
+  let request = deferred();
+  let calls = 0;
+  h.ctx.api.submitScore = () => { calls++; return request.promise; };
+  vm.runInContext(`function submitTest() {${match[1]}\n}`, h.ctx);
+  h.ctx.submitTest();
+  const authoritative = { ...result.summary, objectives: result.summary.objectives.map(v => ({ ...v, met: true })),
+    completed: true, failed: null };
+  request.resolve({ ok: true, data: { summary: authoritative, score: 3250, parts: { ...result.parts, objectives: 2000 } } });
+  await Promise.resolve();
+  assert.equal(result.score, 3250);
+  assert.equal(h.$('#rs-debrief-score').textContent, '3250');
+  assert.equal(h.$('#rs-debrief-msg').textContent, 'debrief_sent');
+  assert.ok(result.objectives.every(v => v.met && v.achievedAt === null));
+  assert.equal(h.$('#rs-debrief-submit').hidden, true);
+  request = deferred();
+  h.ctx.submitTest();
+  await h.ctx.boot('pwr', null);
+  request.resolve({ ok: true, data: { summary: authoritative, score: 9999, parts: result.parts } });
+  await Promise.resolve();
+  assert.equal(result.score, 3250, 'late response cannot overwrite a new run');
+  assert.equal(calls, 2);
+  h.app.pendingResult = result;
+  h.app.engine.recorder = null;
+  h.ctx.submitTest();
+  assert.equal(calls, 2, 'hidden submission cannot bypass the recorder requirement');
 });

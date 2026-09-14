@@ -10,6 +10,11 @@
     "auto_helper": false
   },
   "duration_s": 1080,
+  "score_mode": "incident_v1",
+  "objectives": [
+    { "id": "supply", "type": "pwr_feedwater", "after_events": ["turbine_trip", "feedwater_loss"], "hold_s": 15 },
+    { "id": "stable", "type": "pwr_heat_removal", "after_events": ["turbine_trip", "feedwater_loss"], "hold_s": 120 }
+  ],
   "seed": 20260916,
   "demand": [{ "t": 0, "mw": 1400 }, { "t": 1080, "mw": 1400 }],
   "grid": { "tolerance_mw": 60 },

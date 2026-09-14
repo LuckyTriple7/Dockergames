@@ -1,5 +1,10 @@
 # Szenarien und gestufte Unterstuetzung
 
+> Historischer Stand **0.1.20**. Seit **0.1.21** gelten fuer die drei neuen
+> DWR-Schichten Zustandsziele und neue Wertungsregeln; aktueller Umfang und
+> Nachweise: [SZENARIOZIELE-2026-09-14.md](SZENARIOZIELE-2026-09-14.md).
+> Die folgenden Aussagen und Testergebnisse bleiben als damaliger Stand erhalten.
+
 Version **0.1.20**, 14.09.2026. Dritte Etappe der
 [Audit-Vorschlaege](VERBESSERUNGSVORSCHLAEGE-2026-09-13.md): Punkt 6 teilweise,
 Punkt 7 fuer die beiden genannten Einzelstoerungen mit Modellgrenzen umgesetzt.

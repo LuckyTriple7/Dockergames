@@ -63,6 +63,7 @@ function drive(def, plan = [], saveAt = null) {
     if (restored) {
       assert.deepEqual(restored.engine.state, s, `restored physics at step ${n}`);
       assert.equal(restored.session.phase, live.session.phase);
+      assert.deepEqual(restored.session.objectives.view(), live.session.objectives.view());
     }
     if (saveAt !== null && n === Math.round(saveAt / DT)) {
       const blob = json(pack(live.engine, def.id, live.session.run, live.session));
@@ -95,6 +96,13 @@ test('progression definitions have separate identities and translated guidance c
   for (const [i, def] of definitions.entries()) {
     assert.equal(def.id, ids[i]);
     assert.equal(def.reactor, 'pwr');
+    assert.equal(def.score_mode, 'incident_v1');
+    assert.deepEqual(def.objectives, [
+      { id: i === 1 ? 'power' : 'supply', type: i === 1 ? 'pwr_power_limited' : 'pwr_feedwater',
+        after_events: def.events.map((ev) => ev.id), hold_s: 15, ...(i === 1 ? { max_power_fraction: 0.1 } : {}) },
+      { id: 'stable', type: 'pwr_heat_removal', after_events: def.events.map((ev) => ev.id),
+        hold_s: 120, ...(i === 1 ? { max_power_fraction: 0.1 } : {}) },
+    ]);
     assert.equal(def.difficulty, i + 1);
     assert.deepEqual(def.guidance, { hint_key: `scn_${def.id}_hint`,
       event_alerts: i === 0, auto_helper: i === 0 });
@@ -146,11 +154,17 @@ for (const def of definitions) {
     const operated = drive(def, actions[def.id], 185);
     const savedAfterActions = drive(def, actions[def.id], 300);
     assert.deepEqual(savedAfterActions.session.result, operated.session.result);
+    const savedAfterAchievement = drive(def, actions[def.id], 600);
+    assert.deepEqual(savedAfterAchievement.session.result, operated.session.result);
     assert.equal(operated.session.result.summary.completed, true);
     assert.equal(operated.session.result.summary.failed, null);
     assert.equal(operated.engine.state.destroyed, false);
     assert.equal(operated.session.result.summary.scenario, def.id);
     assert.equal(operated.session.result.summary.difficulty, def.difficulty);
+    assert.equal(operated.session.result.summary.score_mode, 'incident_v1');
+    assert.deepEqual(operated.session.result.summary.objectives,
+      def.objectives.map(({ id }) => ({ id, met: true })));
+    assert.deepEqual(operated.session.result.objectives, operated.session.objectives.view());
     assert.ok(Math.abs(operated.engine.state.t_sim - def.duration_s) <= DT + 1e-6);
     assert.ok(operated.metrics.maxPrimary < plant.spec.pressurizer.safety);
     assert.ok(operated.metrics.minMass > 0);
@@ -158,8 +172,8 @@ for (const def of definitions) {
     assert.deepEqual(replayRun(plant, def, idle.log), idle.session.result.summary);
     assert.deepEqual(replayRun(plant, def, operated.log), operated.session.result.summary);
     if (def.id === 'pwr_sg_tube_leak') {
-      // Completion is elapsed time without a fail, NOT validated diagnosis.
-      assert.equal(idle.session.result.summary.completed, true);
+      assert.equal(idle.session.result.summary.completed, false);
+      assert.equal(idle.session.result.summary.failed, 'fail_objectives_unmet');
       assert.equal(idle.session.result.summary.scram_count, 0);
       assert.equal(operated.engine.ctx.sgLeak, 8);
       assert.ok(operated.engine.state.P_th < idle.engine.state.P_th * 0.03);
@@ -181,7 +195,7 @@ for (const def of definitions) {
     }
     t.diagnostic(JSON.stringify({ id: def.id, idle: idle.session.result.summary,
       operated: operated.session.result.summary, limits: operated.metrics,
-      finalPzr: operated.engine.state.pzr_L }));
+      finalPzr: operated.engine.state.pzr_L, objectives: operated.session.result.objectives }));
   });
 }
 
@@ -201,3 +215,14 @@ test('guided three-second response already crosses low level but can still recov
   assert.ok(run.session.result.summary.violation_seconds[3] > 0);
   assert.ok(Math.abs(run.engine.state.L_sg - 0.5) < 0.01);
 });
+
+for (const def of [definitions[0], definitions[2]]) {
+  test(`${def.id}: SCRAM without restoring feedwater cannot complete the goals`, () => {
+    const plan = actions[def.id].filter((action) => action[1] !== 'fw_auto');
+    const run = drive(def, plan);
+    assert.equal(run.session.result.summary.completed, false);
+    assert.equal(run.session.result.summary.scram_count, 1);
+    assert.ok(run.session.result.summary.objectives.every((entry) => !entry.met));
+    assert.ok(['fail_objectives_unmet', 'fail_fuel_damage'].includes(run.session.result.summary.failed));
+  });
+}

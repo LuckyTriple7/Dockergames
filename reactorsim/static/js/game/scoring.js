@@ -82,6 +82,21 @@ export function score(sum) {
     bonus: completed ? WEIGHTS.difficultyBonus * (Number(sum.difficulty) || 1) : 0,
   };
 
+  const incident = sum.score_mode === 'incident_v1';
+  const catastrophic = fuelDamage || contFailed || h2Exploded;
+  if (incident) {
+    const objectives = Array.isArray(sum.objectives) ? sum.objectives : [];
+    const met = objectives.filter(o => o && o.met === true).length;
+    const success = completed && objectives.length === 2 && met === 2 && !catastrophic;
+    parts.objectives = Math.min(met, 2) * 1000;
+    parts.mission = success ? WEIGHTS.mission : 0;
+    const difficulty = sum.difficulty == null ? NaN : Number(sum.difficulty);
+    parts.bonus = success ? WEIGHTS.difficultyBonus * (Number.isFinite(difficulty) ? difficulty : 1) : 0;
+    for (const key of ['energy', 'deviation', 'scram', 'violations_info', 'violations_warn', 'violations_trip']) {
+      parts[key] = 0;
+    }
+  }
+
   // Runden passiert genau einmal, hier -- nicht als Teil eines Einzelpostens.
   let subtotal = 0;
   for (const v of Object.values(parts)) subtotal += v;
@@ -94,8 +109,7 @@ export function score(sum) {
   // (Kernschaden ODER Sicherheitsbehaelterversagen ODER Wasserstoffexplosion)
   // ist aber NIE "erfolgreich abgeschlossen", ganz gleich ob der
   // Schicht-Timer danach noch weiterlief.
-  const catastrophic = fuelDamage || contFailed || h2Exploded;
-  if (completed && !catastrophic) {
+  if (!incident && completed && !catastrophic) {
     finalScore = Math.max(finalScore, 0);
     if (scramCount === 0) finalScore = Math.max(finalScore, WEIGHTS.floorNoScram);
   }

@@ -43,7 +43,7 @@ test('advance warnings follow assistance, without changing seeded faults or plan
 });
 
 class Node {
-  constructor() { this.children = []; this.textContent = ''; this.listeners = {}; }
+  constructor() { this.children = []; this.textContent = ''; this.listeners = {}; this.dataset = {}; }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
   setAttribute() {}

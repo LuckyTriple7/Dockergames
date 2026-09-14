@@ -240,23 +240,33 @@ class Store:
         except (OSError, ValueError):
             return {}
 
-    def list_scores(self, reactor=None, scenario=None, limit=20) -> list:
+    def list_scores(self, reactor=None, scenario=None, limit=20, score_mode=None,
+                    *, canonical_modes=None) -> list:
         data = self._read_scores()
         out = []
         for key, entries in data.items():
             if not isinstance(entries, list):
                 continue
-            r, _, sc = key.partition('/')
+            r, _, tail = key.partition('/')
+            sc, _, version = tail.partition('/')
+            mode = version or 'legacy'
             if reactor and r != reactor:
                 continue
             if scenario and sc != scenario:
+                continue
+            if score_mode is not None and mode != score_mode:
+                continue
+            if canonical_modes is not None and mode != canonical_modes.get(sc, 'legacy'):
                 continue
             for e in entries:
                 out.append(e)
         out.sort(key=lambda e: e.get('score', 0), reverse=True)
         return out[:max(1, min(int(limit or 20), MAX_SCORES_PER_LIST))]
 
-    def add_score(self, reactor: str, scenario: str, name: str, points: int, summary: dict) -> dict:
+    def add_score(self, reactor: str, scenario: str, name: str, points: int, summary: dict,
+                  score_mode=None) -> dict:
+        if score_mode not in (None, 'legacy', 'incident_v1'):
+            raise ValueError('score_mode')
         entry = {
             'name': name,
             'reactor': reactor,
@@ -268,9 +278,13 @@ class Store:
             # waere frei waehlbar und damit wertlos.
             'at': int(time.time()),
         }
+        if score_mode == 'incident_v1':
+            entry['score_mode'] = score_mode
         with _lock:
             data = self._read_scores()
             key = f'{reactor}/{scenario}'
+            if score_mode == 'incident_v1':
+                key += '/incident_v1'
             entries = data.get(key) if isinstance(data.get(key), list) else []
             entries.append(entry)
             entries.sort(key=lambda e: e.get('score', 0), reverse=True)

@@ -21,6 +21,7 @@ import { Session, PHASE } from './session.js';
 import { gridDeviationTrips } from './scenario.js';
 import { CORE_ACTIONS } from './coreActions.js';
 import { captureKit } from './replayKit.js';
+import { isKnownHelper, runHelper } from './helper.js';
 
 const DT = 0.05;
 // Notbremse gegen ein Protokoll, das den Lauf nie enden lässt (z.B. wenn
@@ -59,6 +60,14 @@ export function replayRun(plant, scenarioDef, log) {
   const byStep = new Map();
   for (const a of log || []) {
     const n = a && Number.isInteger(a.n) ? a.n : null;
+    // Check the whole log, including actions after the run would have ended.
+    if (a && a.id === 'helper'
+        && (!Object.hasOwn(a, 'id') || !Object.hasOwn(a, 'n') || !Object.hasOwn(a, 'value')
+          || !Number.isSafeInteger(n) || n < 0 || n > MAX_STEPS
+          || scenarioDef.guidance?.auto_helper === false || !isKnownHelper(plant.spec.id, a.value))) {
+      if (scenarioDef.score_mode === 'incident_v1') return null;
+      continue;
+    }
     if (n === null || typeof a.id !== 'string') continue;
     if (!byStep.has(n)) byStep.set(n, []);
     byStep.get(n).push(a);
@@ -66,9 +75,10 @@ export function replayRun(plant, scenarioDef, log) {
 
   const applyDue = (n) => {
     for (const a of byStep.get(n) || []) {
-      const fn = kitMap[a.id];
+      if (a.id === 'helper') { runHelper(engine, plant.spec.id, a.value); continue; }
+      const fn = Object.hasOwn(kitMap, a.id) ? kitMap[a.id] : null;
       if (fn) { fn(a.value); continue; }
-      const core = CORE_ACTIONS[a.id];
+      const core = Object.hasOwn(CORE_ACTIONS, a.id) ? CORE_ACTIONS[a.id] : null;
       if (core) core(engine, a.value);
       // Unbekannte id: stillschweigend ignorieren, nicht abbrechen -- ein
       // Protokoll aus einer neueren Client-Version darf eine ältere

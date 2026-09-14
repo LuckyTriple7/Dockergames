@@ -112,6 +112,21 @@ def score(summary: dict) -> dict:
                  if completed else 0.0,
     }
 
+    incident = summary.get('score_mode') == 'incident_v1'
+    catastrophic = fuel_damage or cont_failed or h2_exploded
+    if incident:
+        objectives = summary.get('objectives')
+        objectives = objectives if isinstance(objectives, list) else []
+        met = sum(isinstance(o, dict) and o.get('met') is True for o in objectives)
+        success = completed and len(objectives) == 2 and met == 2 and not catastrophic
+        parts['objectives'] = min(met, 2) * 1000.0
+        parts['mission'] = WEIGHTS['mission'] if success else 0.0
+        parts['bonus'] = (WEIGHTS['difficulty_bonus'] * _num(summary.get('difficulty'), 1.0)
+                          if success else 0.0)
+        for key in ('energy', 'deviation', 'scram', 'violations_info',
+                    'violations_warn', 'violations_trip'):
+            parts[key] = 0.0
+
     # round() passiert genau einmal, hier -- nicht als Teil eines Einzelpostens.
     subtotal = sum(parts.values())
     raw_score = _round_score(subtotal)
@@ -123,8 +138,7 @@ def score(summary: dict) -> dict:
     # Katastrophe (Kernschaden ODER Sicherheitsbehaelterversagen ODER
     # Wasserstoffexplosion) ist aber NIE "erfolgreich abgeschlossen", ganz
     # gleich ob der Schicht-Timer danach noch weiterlief.
-    catastrophic = fuel_damage or cont_failed or h2_exploded
-    if completed and not catastrophic:
+    if not incident and completed and not catastrophic:
         final_score = max(final_score, 0)
         if scram_count == 0:
             final_score = max(final_score, int(WEIGHTS['floor_no_scram']))
@@ -143,6 +157,37 @@ def validate_summary(summary, scenario: dict, reactor_p0_e: float) -> str | None
     """
     if not isinstance(summary, dict):
         return 'summary_not_object'
+
+    if scenario.get('score_mode') == 'incident_v1':
+        configured = scenario.get('objectives')
+        if (not isinstance(configured, list) or len(configured) != 2
+                or any(not isinstance(o, dict) or not isinstance(o.get('id'), str)
+                       or not o['id'] for o in configured)
+                or len({o['id'] for o in configured}) != 2):
+            return 'objective_config_invalid'
+        if summary.get('score_mode') != 'incident_v1':
+            return 'score_mode_invalid'
+        if (summary.get('reactor') != scenario.get('reactor')
+                or summary.get('scenario') != scenario.get('id')):
+            return 'identity_mismatch'
+        objectives = summary.get('objectives')
+        if (not isinstance(objectives, list) or len(objectives) != 2
+                or any(not isinstance(o, dict) or set(o) != {'id', 'met'}
+                       or not isinstance(o['id'], str) or not isinstance(o['met'], bool)
+                       for o in objectives)
+                or sorted(o['id'] for o in objectives) != sorted(o['id'] for o in configured)):
+            return 'objectives_invalid'
+        for key in ('completed', 'fuel_damage'):
+            if not isinstance(summary.get(key), bool):
+                return f'{key}_invalid'
+        if summary.get('failed') is not None and not isinstance(summary['failed'], str):
+            return 'failed_invalid'
+        if summary['completed']:
+            if (not all(o['met'] for o in objectives) or summary.get('failed')
+                    or any(summary.get(k) for k in ('fuel_damage', 'cont_failed', 'h2_exploded'))):
+                return 'completion_invalid'
+            if _num(summary.get('duration_s'), -1) < _num(scenario.get('duration_s')) - 1e-6:
+                return 'completion_early'
 
     duration = _num(summary.get('duration_s'), -1.0)
     if duration <= 0:

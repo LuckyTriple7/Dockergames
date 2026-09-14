@@ -420,3 +420,225 @@ def test_startup_tutorial_is_discoverable_and_unranked(client):
     })
     assert response.status_code == 400
     assert response.get_json()['error'] == 'tutorial_unranked'
+
+
+INCIDENT_IDS = ['pwr_feedwater_loss', 'pwr_sg_tube_leak', 'pwr_combined_faults']
+
+
+def _incident_summary(scn, **over):
+    return _summary(
+        **dict({'scenario': scn['id'], 'score_mode': 'incident_v1',
+                'difficulty': scn['difficulty'], 'duration_s': scn['duration_s'],
+                'energy_mwh_delivered': 0, 'energy_mwh_demanded': 0,
+                'deviation_mwh': 0, 'alarm_seconds_unacked': 0,
+                'violation_seconds': {'1': 0, '2': 0, '3': 0}, 'failed': None,
+                'objectives': [{'id': o['id'], 'met': True} for o in scn['objectives']]}, **over))
+
+
+@pytest.mark.parametrize('scenario_id', INCIDENT_IDS)
+def test_incident_catalog_contract(client, scenario_id):
+    import app as appmod
+    scn = appmod.SCENARIO_BY_ID[scenario_id]
+    assert scn['score_mode'] == 'incident_v1'
+    expected = ['power', 'stable'] if scenario_id == 'pwr_sg_tube_leak' else ['supply', 'stable']
+    assert [o['id'] for o in scn['objectives']] == expected
+    for objective in scn['objectives']:
+        assert {'id', 'type', 'after_events', 'hold_s'} <= set(objective)
+        assert set(objective) <= {'id', 'type', 'after_events', 'hold_s', 'max_power_fraction'}
+    meta = client.get('/api/meta').get_json()['scenarios']
+    assert next(s for s in meta if s['id'] == scenario_id)['objectives'] == scn['objectives']
+
+
+@pytest.mark.parametrize('log_body', [{}, {'log': None}, {'log': {}}, {'log': ''}, {'log': False}, {'log': 1}])
+def test_incident_requires_list_log(client, monkeypatch, log_body):
+    import app as appmod
+    def unexpected(*args):
+        pytest.fail('invalid log must not invoke replay')
+    monkeypatch.setattr(appmod, '_verify_run', unexpected)
+    r = client.post('/api/highscores', json={
+        'name': 'X', 'summary': _summary(scenario=INCIDENT_IDS[0]), **log_body})
+    assert r.status_code == 400
+    assert r.get_json()['error'] == 'replay_required'
+    assert appmod.STORE.list_scores() == []
+
+
+@pytest.mark.parametrize('scenario_id', INCIDENT_IDS)
+def test_incident_empty_log_replayed_and_client_targets_ignored(client, monkeypatch, scenario_id):
+    import app as appmod
+    scn = appmod.SCENARIO_BY_ID[scenario_id]
+    verified = _incident_summary(scn, difficulty=999999)
+    calls = []
+    def verify(reactor, file, action_log):
+        calls.append((reactor, file, action_log))
+        return verified
+    monkeypatch.setattr(appmod, '_verify_run', verify)
+    r = client.post('/api/highscores', json={
+        'name': 'X', 'log': [], 'score_mode': 'legacy',
+        'objectives': [{'id': 'invented', 'met': True}],
+        'summary': _summary(scenario=scenario_id, score_mode='invented', difficulty=1e9,
+                            objectives=[{'id': 'free_points', 'met': True}])})
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    assert calls == [('pwr', scn['file'], [])]
+    assert data['score'] == 3000 + 250 * scn['difficulty']
+    assert data['summary'] == dict(verified, difficulty=scn['difficulty'])
+    assert data['entry']['score_mode'] == 'incident_v1'
+    assert data['parts']['objectives'] == 2000
+
+
+@pytest.mark.parametrize('over,detail', [
+    ({'score_mode': None}, 'score_mode_invalid'),
+    ({'score_mode': 'legacy'}, 'score_mode_invalid'),
+    ({'reactor': 'bwr'}, 'identity_mismatch'),
+    ({'scenario': 'pwr_load_follow'}, 'identity_mismatch'),
+    ({'objectives': None}, 'objectives_invalid'),
+    ({'objectives': []}, 'objectives_invalid'),
+    ({'objectives': [{'id': 'supply', 'met': True}] * 2}, 'objectives_invalid'),
+    ({'objectives': [{'id': 'invented', 'met': True}, {'id': 'stable', 'met': True}]}, 'objectives_invalid'),
+    ({'objectives': [{'id': [], 'met': True}, {'id': 'stable', 'met': True}]}, 'objectives_invalid'),
+    ({'objectives': [{'id': 'supply', 'met': 1}, {'id': 'stable', 'met': True}]}, 'objectives_invalid'),
+    ({'objectives': [{'id': 'supply', 'met': True, 'hold_s': 0}, {'id': 'stable', 'met': True}]}, 'objectives_invalid'),
+    ({'objectives': [{'id': 'supply', 'met': False}, {'id': 'stable', 'met': True}]}, 'completion_invalid'),
+    ({'duration_s': 899.9}, 'completion_early'),
+    ({'completed': 1}, 'completed_invalid'),
+    ({'fuel_damage': 'false'}, 'fuel_damage_invalid'),
+    ({'fuel_damage': True}, 'completion_invalid'),
+    ({'failed': 'fail_objectives_unmet'}, 'completion_invalid'),
+])
+def test_incident_replay_summary_contract_rejected(client, monkeypatch, over, detail):
+    import app as appmod
+    scn = appmod.SCENARIO_BY_ID[INCIDENT_IDS[0]]
+    verified = _incident_summary(scn, **over)
+    monkeypatch.setattr(appmod, '_verify_run', lambda *args: verified)
+    r = client.post('/api/highscores', json={'name': 'X', 'log': [], 'summary': _incident_summary(scn)})
+    assert r.status_code == 400
+    assert r.get_json() == {'error': 'implausible', 'detail': detail}
+    assert appmod.STORE.list_scores() == []
+
+
+@pytest.mark.parametrize('objectives', [None, [], [{'id': 'supply'}] * 2,
+                                      [{'id': []}, {'id': 'stable'}], [{'id': ''}, {'id': 'stable'}]])
+def test_incident_invalid_config_ids_rejected(client, monkeypatch, objectives):
+    import app as appmod
+    scn = appmod.SCENARIO_BY_ID[INCIDENT_IDS[0]]
+    verified = _incident_summary(scn)
+    monkeypatch.setattr(appmod, '_verify_run', lambda *args: verified)
+    monkeypatch.setitem(scn, 'objectives', objectives)
+    r = client.post('/api/highscores', json={'name': 'X', 'log': [], 'summary': verified})
+    assert r.status_code == 400
+    assert r.get_json()['detail'] == 'objective_config_invalid'
+
+
+def test_incident_verify_error_never_falls_back(client, monkeypatch):
+    import app as appmod
+    monkeypatch.setattr(appmod, '_verify_run', lambda *args: None)
+    r = client.post('/api/highscores', json={
+        'name': 'X', 'log': [], 'summary': _incident_summary(appmod.SCENARIO_BY_ID[INCIDENT_IDS[0]])})
+    assert r.status_code == 400
+    assert r.get_json()['error'] == 'verification_failed'
+
+
+@pytest.mark.parametrize('scenario_id', INCIDENT_IDS)
+def test_incident_real_idle_replay(client, scenario_id):
+    import app as appmod
+    import scoring
+    scn = appmod.SCENARIO_BY_ID[scenario_id]
+    r = client.post('/api/highscores', json={'name': 'Idle', 'log': [], 'summary': _incident_summary(scn)})
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    assert data['summary']['score_mode'] == 'incident_v1'
+    assert data['summary']['completed'] is False
+    assert scoring.validate_summary(data['summary'], scn, 1400) is None
+    assert scoring.score(data['summary']) == {'score': data['score'], 'parts': data['parts']}
+
+
+def test_incident_guided_helper_log_is_verified_and_ranked(client):
+    import app as appmod
+    import scoring
+    scn = appmod.SCENARIO_BY_ID['pwr_feedwater_loss']
+    action_log = [{'n': 3820, 'id': 'scram'},
+                  {'n': 3900, 'id': 'helper', 'value': 'sg_level_low'}]
+    r = client.post('/api/highscores', json={
+        'name': 'Guided', 'log': action_log,
+        'summary': _incident_summary(scn, completed=False, objectives=[])})
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    verified = data['summary']
+    assert verified['completed'] is True
+    assert verified['failed'] is None
+    assert verified['duration_s'] == scn['duration_s']
+    assert verified['scram_count'] == 1
+    assert verified['objectives'] == [{'id': 'supply', 'met': True}, {'id': 'stable', 'met': True}]
+    assert data['parts']['objectives'] == 2000
+    assert data['parts']['mission'] == 1000
+    assert data['parts']['bonus'] == 250
+    assert scoring.score(verified) == {'score': data['score'], 'parts': data['parts']}
+    assert 3150 <= data['score'] <= 3250
+    assert client.get('/api/highscores?scenario=pwr_feedwater_loss').get_json()['scores'] == [data['entry']]
+
+
+@pytest.mark.parametrize('scenario_id,trip_id', [
+    ('pwr_sg_tube_leak', 'sg_level_low'),
+    ('pwr_combined_faults', 'sg_level_low'),
+    *[('pwr_feedwater_loss', value) for value in
+      ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'unknown', None, [], {}]],
+])
+def test_incident_denied_or_invalid_helper_log_rejected(client, scenario_id, trip_id):
+    import app as appmod
+    r = client.post('/api/highscores', json={
+        'name': 'X', 'summary': _incident_summary(appmod.SCENARIO_BY_ID[scenario_id]),
+        'log': [{'n': 3900, 'id': 'helper', 'value': trip_id}]})
+    assert r.status_code == 400
+    assert r.get_json()['error'] == 'verification_failed'
+    assert appmod.STORE.list_scores() == []
+
+
+@pytest.mark.parametrize('with_log', [False, True])
+def test_legacy_injected_incident_fields_do_not_change_score(client, monkeypatch, with_log):
+    import app as appmod
+    import scoring
+    fake = _summary(score_mode='incident_v1', objectives=[{'id': 'free', 'met': True}] * 2)
+    monkeypatch.setattr(appmod, '_verify_run', lambda *args: fake)
+    r = client.post('/api/highscores', json={
+        'name': 'Legacy', 'summary': fake, **({'log': []} if with_log else {})})
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['score'] == scoring.score(_summary())['score']
+    assert data['summary'] == _summary()
+    assert 'objectives' not in data['parts']
+    assert 'score_mode' not in data['entry']
+
+
+@pytest.mark.parametrize('field', ['reactor', 'scenario'])
+@pytest.mark.parametrize('value', [[], {}, ['pwr'], {'id': 'pwr'}])
+def test_json_unhashable_score_identity_returns_400(client, field, value):
+    r = client.post('/api/highscores', json={'name': 'X', 'summary': _summary(**{field: value})})
+    assert r.status_code == 400
+    assert r.get_json()['error'] == f'bad_{field}'
+
+
+def test_score_versions_have_independent_caps_and_filter_before_limit(client):
+    import app as appmod
+    import persist
+    store = appmod.STORE
+    scenario = INCIDENT_IDS[0]
+    for i in range(60):
+        store.add_score('pwr', scenario, f'old{i}', 10000 + i, {})
+    old = store._read_scores()[f'pwr/{scenario}']
+    for i in range(60):
+        store.add_score('pwr', scenario, f'new{i}', i, {}, score_mode='incident_v1')
+    data = store._read_scores()
+    assert data[f'pwr/{scenario}'] == old
+    assert len(data[f'pwr/{scenario}/incident_v1']) == persist.MAX_SCORES_PER_LIST
+    assert len(old) == persist.MAX_SCORES_PER_LIST
+    assert all('score_mode' not in e for e in old)
+    assert store.list_scores('pwr', scenario, 1, score_mode='legacy')[0]['score'] == 10059
+    assert store.list_scores('pwr', scenario, 1, score_mode='incident_v1')[0]['score'] == 59
+    store.add_score('pwr', 'pwr_load_follow', 'legacy-current', 100, {'score_mode': 'incident_v1'}, score_mode='legacy')
+    assert 'score_mode' not in store.list_scores('pwr', 'pwr_load_follow')[0]
+    selected = client.get(f'/api/highscores?scenario={scenario}&limit=1').get_json()['scores']
+    assert [e['score'] for e in selected] == [59]
+    global_scores = client.get('/api/highscores?limit=2').get_json()['scores']
+    assert [e['score'] for e in global_scores] == [100, 59]
+    reactor_scores = client.get('/api/highscores?reactor=pwr&limit=2').get_json()['scores']
+    assert reactor_scores == global_scores

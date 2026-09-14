@@ -254,6 +254,8 @@ def _load_scenarios() -> list:
             'duration_s': data.get('duration_s', 0),
             'tutorial': data.get('tutorial'),
             'guidance': data.get('guidance'),
+            'score_mode': data.get('score_mode'),
+            'objectives': data.get('objectives'),
         })
     return out
 
@@ -442,7 +444,10 @@ def scores_list():
         limit = int(request.args.get('limit', 20))
     except ValueError:
         limit = 20
-    return jsonify({'scores': STORE.list_scores(reactor, scenario, limit)})
+    # Historical versions stay on disk, but never crowd out current scores.
+    modes = {s['id']: s.get('score_mode') or 'legacy' for s in SCENARIOS}
+    return jsonify({'scores': STORE.list_scores(
+        reactor, scenario, limit, score_mode=modes.get(scenario), canonical_modes=modes)})
 
 
 def _verify_run(reactor: str, scenario_file: str, action_log: list) -> dict | None:
@@ -502,9 +507,9 @@ def scores_add():
 
     reactor = summary.get('reactor') or body.get('reactor')
     scenario = summary.get('scenario') or body.get('scenario')
-    if reactor not in REACTOR_P0:
+    if not isinstance(reactor, str) or reactor not in REACTOR_P0:
         return jsonify({'error': 'bad_reactor'}), 400
-    if scenario not in SCENARIO_IDS:
+    if not isinstance(scenario, str) or scenario not in SCENARIO_IDS:
         return jsonify({'error': 'bad_scenario'}), 400
 
     scn = SCENARIO_BY_ID[scenario]
@@ -516,17 +521,26 @@ def scores_add():
     # Protokoll mitgeschickt (siehe game/recorder.js) -- dann selbst
     # nachrechnen statt der Zusammenfassung zu vertrauen, und die vom Client
     # gemeldeten Kennzahlen komplett durch das Ergebnis ersetzen. Ein
-    # geladener Spielstand hat kein Protokoll (main.js boot()), dann bleibt
-    # es bei der reinen Plausibilitätsprüfung wie bisher -- validate_summary
+    # geladener Spielstand hat kein Protokoll (main.js boot()); nur Legacy
+    # erlaubt dann die reine Plausibilitätsprüfung -- validate_summary
     # läuft in JEDEM Fall noch einmal darüber, auch über eine nachgerechnete
     # Zusammenfassung: billige zweite Absicherung, falls verify_run.mjs
     # selbst einen Fehler hätte.
     action_log = body.get('log')
+    incident = scn.get('score_mode') == 'incident_v1'
+    if incident and not isinstance(action_log, list):
+        return jsonify({'error': 'replay_required'}), 400
     if isinstance(action_log, list):
         verified = _verify_run(reactor, scn['file'], action_log)
         if verified is None:
             return jsonify({'error': 'verification_failed'}), 400
         summary = verified
+
+    summary = dict(summary)
+    if not incident:
+        # The catalog, never client-injected fields, selects the formula.
+        summary.pop('score_mode', None)
+        summary.pop('objectives', None)
 
     why = scoring.validate_summary(summary, scn, REACTOR_P0[reactor])
     if why:
@@ -539,7 +553,6 @@ def scores_add():
     # validate_summary sah nichts Unplausibles -- es prueft jede andere
     # Kennzahl, nur diese nicht). Ueberschreiben statt pruefen: so kann das
     # Feld gar nicht erst falsch sein.
-    summary = dict(summary)
     summary['difficulty'] = scn.get('difficulty', 1)
 
     name = STORE.clean_name(body.get('name'))
@@ -551,9 +564,10 @@ def scores_add():
         return jsonify({'error': 'rate_limited'}), 429
 
     result = scoring.score(summary)
-    entry = STORE.add_score(reactor, scenario, name, result['score'], summary)
+    entry = STORE.add_score(reactor, scenario, name, result['score'], summary,
+                            score_mode='incident_v1' if incident else 'legacy')
     return jsonify({'ok': True, 'entry': entry, 'score': result['score'],
-                    'parts': result['parts']})
+                    'parts': result['parts'], 'summary': summary})
 
 
 # ── Seiten ────────────────────────────────────────────────────────────────────

@@ -22,6 +22,7 @@ import { record } from './game/coreActions.js';
 import { renderLearning } from './ui/debrief.js';
 import { buildTutorial, renderTutorialResult } from './ui/tutorial.js';
 import { renderGuidance } from './ui/guidance.js';
+import { renderObjectiveResult } from './ui/objectives.js';
 
 // Panel-Buchstaben fuer die Fenster-Tastenkuerzel (siehe initControls():
 // Tastatur am Rechner). Ungewandeltes Zeichen statt Kachel-Position, damit
@@ -223,6 +224,8 @@ function initStart() {
   $('#rs-debrief-send').addEventListener('click', () => {
     const result = app.pendingResult;
     if (!result || result.tutorial) return;
+    if (result.summary.score_mode === 'incident_v1' && !app.engine.recorder) return;
+    const session = app.session;
     const nameNode = $('#rs-debrief-name');
     const name = nameNode.value.trim();
     if (!name) { nameNode.focus(); return; }
@@ -235,7 +238,18 @@ function initStart() {
     // prüfen (game/replay.js, verify_run.mjs).
     const log = app.engine.recorder ? app.engine.recorder.serialize() : null;
     api.submitScore(name, result.summary, log).then((r) => {
+      if (app.session !== session || app.pendingResult !== result) return;
       if (r.ok) {
+        if (r.data?.summary) {
+          result.summary = r.data.summary;
+          result.score = r.data.score;
+          result.parts = r.data.parts;
+          if (result.objectives) result.objectives = result.objectives.map(goal => {
+            const met = result.summary.objectives.find(v => v.id === goal.id)?.met === true;
+            return met === goal.met ? goal : { ...goal, met, held: met ? goal.required : 0, achievedAt: null };
+          });
+          showDebrief(result, result.summary.failed);
+        }
         setText(msg, t('debrief_sent'));
         $('#rs-debrief-submit').hidden = true;
         loadScores(result.summary.reactor, result.summary.scenario);
@@ -504,7 +518,9 @@ function showBriefing(def) {
   // daneben waere sinnlos.
   $('#rs-brief-back').hidden = running;
   $('#rs-brief').hidden = false;
-  renderGuidance($('#rs-brief-guidance'), def);
+  renderGuidance($('#rs-brief-guidance'), def, null, {
+    objectives: running && app.session.scenario?.id === def.id ? app.session.objectives : null,
+  });
   $('#rs-brief .rs-modal-box').scrollTop = 0;
 }
 
@@ -1102,12 +1118,18 @@ function showDebrief(result, failed) {
       el('li', { text: `${clock(e.t)} · ${t(e.key)}` }))));
   }
   if (result) {
+    renderObjectiveResult(parts, result);
     renderTutorialResult(parts, result);
     renderLearning(parts, result.learning);
   }
   if (result && !result.tutorial) {
     const sum = result.summary;
     const p = result.parts || {};
+    if (sum.score_mode === 'incident_v1') {
+      parts.append(el('h3', { text: t('incident_scoring') }),
+        el('p', { text: t('incident_scoring_help') }),
+        el('p', { text: t('incident_leaderboard') }));
+    }
     // Vorzeichen von Hand statt num(): dieselbe Schreibweise wie schon vorher
     // hier (Math.round() statt lokalisierter Zahl) -- eine Punktezeile ist
     // kein Messwert, der eine Einheit braucht.
@@ -1124,6 +1146,7 @@ function showDebrief(result, failed) {
     // Vollstaendige Zerlegung, direkt aus result.parts -- keine zweite
     // Rechnung, die vom tatsaechlichen Score abweichen koennte.
     parts.append(el('div.rs-debrief-breakdown', null, [
+      ...(sum.score_mode === 'incident_v1' ? [row(t('debrief_objectives'), pts(p.objectives))] : []),
       row(t('debrief_mission'), pts(p.mission)),
       rowWithPts(t('debrief_energy'),
         `${Math.round(sum.energy_mwh_delivered)} / ${Math.round(sum.energy_mwh_demanded)} ${t('unit_mwh')}`,
@@ -1187,7 +1210,9 @@ function showDebrief(result, failed) {
   setText(msg, '');
   $('#rs-debrief-scores').replaceChildren();
   app.pendingResult = null;
-  submit.hidden = !result || !!result.tutorial;
+  const localOnly = result?.summary?.score_mode === 'incident_v1' && !app.engine.recorder;
+  submit.hidden = !result || !!result.tutorial || localOnly;
+  if (localOnly) setText(msg, t('incident_local_only'));
   if (result && !result.tutorial) {
     app.pendingResult = result;
     const name = $('#rs-debrief-name');
@@ -1195,11 +1220,14 @@ function showDebrief(result, failed) {
     loadScores(result.summary.reactor, result.summary.scenario);
   }
   $('#rs-debrief').hidden = false;
+  $('#rs-debrief .rs-modal-box').scrollTop = 0;
 }
 
 /** Bestenliste zum gerade gespielten Szenario nachladen. */
 function loadScores(reactor, scenario) {
+  const session = app.session;
   api.listScores(reactor, scenario, 10).then((r) => {
+    if (app.session !== session) return;
     const list = $('#rs-debrief-scores');
     list.replaceChildren();
     if (!r.ok || !r.data || !r.data.scores) return;
@@ -1371,7 +1399,10 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   const built = buildPanels(app.engine, app.render,
     app.prefs.helper !== false && scenarioDef?.guidance?.auto_helper !== false);
   buildTutorial(app.session, app.render);
-  renderGuidance($('#rs-guidance'), scenarioDef, () => showBriefing(scenarioDef));
+  renderGuidance($('#rs-guidance'), scenarioDef, () => showBriefing(scenarioDef), {
+    objectives: app.session.objectives, render: app.render,
+    localOnly: !!app.session.objectives && !app.engine.recorder,
+  });
   app.horn = built.horn;
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;

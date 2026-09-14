@@ -56,10 +56,23 @@ Bestenliste mit Namen Sinn.
 
 ## Weitere Störszenarien
 
-Stand 0.1.20: 14 Szenariodateien einschließlich Anfahren-Tutorial. Zwei
+Stand 0.1.21: 14 Szenariodateien einschließlich Anfahren-Tutorial. Zwei
 Einzelstörungen aus der Ideensammlung sind jetzt als eigene DWR-Schichten
 umgesetzt, ergänzt um eine kombinierte Stufe. Details und Nachweise:
-[Szenario-Audit](audit/SZENARIEN-2026-09-14.md).
+[historischer Szenario-Audit 0.1.20](audit/SZENARIEN-2026-09-14.md) und
+[Ziel-Audit 0.1.21](audit/SZENARIOZIELE-2026-09-14.md).
+
+**Sicherheitsziele umgesetzt in 0.1.21, weiterer Ausbau offen:**
+Die drei neuen DWR-Schichten haben je zwei widerrufbare Zustandsziele mit
+15/120 Sekunden Haltezeit und `incident_v1`-Wertung statt Produktionswertung.
+Beide Ziele müssen am ursprünglichen Ende aktuell erfüllt sein. Speicherung
+erhält Zielzeiten und Haltefenster; geladene Läufe bleiben ohne vollständiges
+Replay lokal, die neuen Bestenlisten verlangen Server-Nachrechnung und sind
+von alten Scores getrennt. Vollständige Übertragung auf die übrigen Szenarien,
+weitergehende Diagnoseziele, Ereignismarker/gemeinsame Trends, unvollständige
+Messinformationen und generische Messausfälle sowie Komfortpunkte aus dem
+Verbesserungsaudit bleiben offen. Die kalibrierten Spielziele ersetzen keine
+reale Störfallprozedur.
 
 **Umgesetzt in 0.1.20, mit Modellgrenzen:**
 - **DWR: Dampferzeuger-Rohrleck.** `pwr_sg_tube_leak`, Schwierigkeit 2,
@@ -69,8 +82,10 @@ umgesetzt, ergänzt um eine kombinierte Stufe. Details und Nachweise:
   keine druckabhängige Leckrate, keine einzelnen Dampferzeuger zur Diagnose
   „welcher DE?“, keine Einzelisolation oder Aktivitätsmessung. Die
   Speisewasserregelung kann den DE-Pegel stabil halten; RESA stoppt das Leck
-  nicht. Auch Nichtstun kann den Zeitabschluss erreichen. Punkte sind kein
-  Nachweis korrekter Leckbehandlung; eine Diagnoseprüfung fehlt weiterhin.
+  nicht. Seit 0.1.21 scheitert Nichtstun am Zielabschluss: erforderlich sind
+  begrenzte Wärmeleistung und stabile Wärmeabfuhr. Punkte bestätigen nur diese
+  Spielziele, keine korrekte reale Leckbehandlung; eine vollständige
+  Diagnoseprüfung fehlt weiterhin.
 - **DWR: Verlust der Speisewasserregelung.** `pwr_feedwater_loss`,
   Schwierigkeit 1, 15 Minuten, geführte Einzelstörung mit Vorwarnung und
   automatischer Hilfe gemäß Einstellungen. `feedwater_loss` setzt den Regler

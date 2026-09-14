@@ -278,6 +278,11 @@ const RBMK_FIXES = {
 
 const FIXES = { pwr: PWR_FIXES, bwr: BWR_FIXES, rbmk: RBMK_FIXES };
 
+export function isKnownHelper(reactorId, tripId) {
+  return typeof reactorId === 'string' && typeof tripId === 'string'
+    && Object.hasOwn(FIXES, reactorId) && Object.hasOwn(FIXES[reactorId], tripId);
+}
+
 /**
  * @param {object} engine    wie von sim/engine.js createEngine() geliefert
  * @param {string} reactorId engine.spec.id
@@ -286,10 +291,10 @@ const FIXES = { pwr: PWR_FIXES, bwr: BWR_FIXES, rbmk: RBMK_FIXES };
  * @returns {{status: 'fixed'|'none'|'unfixable', actions: object[]}}
  */
 export function runHelper(engine, reactorId, tripId) {
-  const fn = FIXES[reactorId] && FIXES[reactorId][tripId];
-  if (!fn) return UNFIXABLE;
+  if (!isKnownHelper(reactorId, tripId)) return UNFIXABLE;
+  if (engine.recorder) engine.recorder.record('helper', tripId);
   try {
-    return fn(engine);
+    return FIXES[reactorId][tripId](engine);
   } catch {
     // Ein Fehler im Helfer darf die Runde nicht anhalten -- lieber "nicht
     // behebbar" melden als die Anzeige mit einer Ausnahme abreissen.

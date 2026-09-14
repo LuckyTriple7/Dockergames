@@ -9,6 +9,7 @@ Spieler sich ueber einen anderen Punktestand wundert.
 
 import json
 import os
+import subprocess
 import sys
 
 import pytest
@@ -42,8 +43,24 @@ def _base(**over):
 
 def test_fixtures_match():
     for f in _fixtures():
-        got = scoring.score(f['summary'])['score']
+        result = scoring.score(f['summary'])
+        got = result['score']
         assert got == f['score'], f"{f['name']}: {got} statt {f['score']}"
+        for key, value in f.get('parts', {}).items():
+            assert result['parts'][key] == value, (f['name'], key)
+
+
+@pytest.mark.parametrize('fixture', _fixtures(), ids=lambda f: f['name'])
+def test_incident_parts_and_legacy_shape(fixture):
+    parts = scoring.score(fixture['summary'])['parts']
+    legacy_keys = set(scoring.score(_base())['parts'])
+    if fixture['summary'].get('score_mode') == 'incident_v1':
+        assert set(parts) == legacy_keys | {'objectives'}
+        for key in ('energy', 'deviation', 'scram', 'violations_info',
+                    'violations_warn', 'violations_trip', 'floor_adjustment'):
+            assert parts[key] == 0
+    else:
+        assert set(parts) == legacy_keys
 
 
 def test_parts_sum_to_score_exactly():
@@ -53,6 +70,24 @@ def test_parts_sum_to_score_exactly():
     for f in _fixtures():
         result = scoring.score(f['summary'])
         assert sum(result['parts'].values()) == pytest.approx(result['score']), f['name']
+
+
+def test_javascript_python_parity_for_all_fixture_parts():
+    fixtures = _fixtures()
+    script = """
+        import { score } from './static/js/game/scoring.js';
+        let input = '';
+        for await (const chunk of process.stdin) input += chunk;
+        console.log(JSON.stringify(JSON.parse(input).map(score)));
+    """
+    proc = subprocess.run(['node', '--input-type=module', '-e', script],
+                          input=json.dumps([f['summary'] for f in fixtures]),
+                          text=True, capture_output=True, check=True,
+                          cwd=os.path.dirname(_HERE), timeout=20)
+    for fixture, js in zip(fixtures, json.loads(proc.stdout), strict=True):
+        py = scoring.score(fixture['summary'])
+        assert js['score'] == py['score'], fixture['name']
+        assert js['parts'] == pytest.approx(py['parts']), fixture['name']
 
 
 def test_more_energy_than_demanded_gives_no_extra():

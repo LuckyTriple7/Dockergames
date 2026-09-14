@@ -2,7 +2,7 @@
 
 Stand: 13.09.2026. Ergänzung zum [Spielaudit](AUDIT-2026-09-13.md) und zum [Physik-Audit](PHYSIK-AUDIT-2026-09-13.md).
 
-Neben den gefundenen Bugs und der Physik sollten vor allem Verständlichkeit, Bedienung und Langzeitmotivation verbessert werden. Die folgenden Punkte dokumentieren die ursprünglichen Vorschläge. Stand 14.09.2026: Die erste Etappe mit Diagnoseanzeigen (Punkt 2) und Schichtauswertung (Punkt 4) ist in Version 0.1.18 umgesetzt; Umfang und Grenzen stehen in [VERBESSERUNGEN-2026-09-14.md](VERBESSERUNGEN-2026-09-14.md). Das DWR-Anfahren-Tutorial (Punkt 1) ist in Version 0.1.19 umgesetzt; siehe [TUTORIAL-2026-09-14.md](TUTORIAL-2026-09-14.md). Version 0.1.20 setzt Punkt 6 teilweise und Punkt 7 für die beiden genannten Einzelstörungen mit Modellgrenzen um; siehe [SZENARIEN-2026-09-14.md](SZENARIEN-2026-09-14.md). Die Punkte 3, 5 und 8 bleiben offen.
+Neben den gefundenen Bugs und der Physik sollten vor allem Verständlichkeit, Bedienung und Langzeitmotivation verbessert werden. Die folgenden Punkte dokumentieren die ursprünglichen Vorschläge. Stand 14.09.2026: Die erste Etappe mit Diagnoseanzeigen (Punkt 2) und Schichtauswertung (Punkt 4) ist in Version 0.1.18 umgesetzt; Umfang und Grenzen stehen in [VERBESSERUNGEN-2026-09-14.md](VERBESSERUNGEN-2026-09-14.md). Das DWR-Anfahren-Tutorial (Punkt 1) ist in Version 0.1.19 umgesetzt; siehe [TUTORIAL-2026-09-14.md](TUTORIAL-2026-09-14.md). Version 0.1.20 setzt Punkt 6 teilweise und Punkt 7 für die beiden genannten Einzelstörungen mit Modellgrenzen um; siehe [SZENARIEN-2026-09-14.md](SZENARIEN-2026-09-14.md). Version 0.1.21 setzt Punkt 5 für die drei neuen DWR-Schichten um; siehe [SZENARIOZIELE-2026-09-14.md](SZENARIOZIELE-2026-09-14.md). Die übrigen Szenarien sowie Punkte 3 und 8 bleiben offen.
 
 ## 1. Interaktives Anfahren-Tutorial — DWR-Einstieg umgesetzt in 0.1.19
 
@@ -29,9 +29,23 @@ Nach der Schicht erklären:
 - Welche Reaktion hat geholfen?
 - Wo begann die Verschlechterung?
 
-## 5. Nachvollziehbare Szenarioziele
+## 5. Nachvollziehbare Szenarioziele - für drei neue DWR-Schichten umgesetzt in 0.1.21
 
 Neben „bestanden“ auch Zwischenziele zeigen: Anlage stabilisiert, Wärmeabfuhr hergestellt, Versorgung wiederhergestellt. Punkte sollten gute Störfallbeherrschung erkennbar belohnen.
+
+Umgesetzt für `pwr_feedwater_loss`, `pwr_sg_tube_leak` und
+`pwr_combined_faults`: je zwei Zustandsziele nach den erforderlichen Störungen,
+15 Sekunden Versorgung beziehungsweise begrenzte Wärmeleistung und 120 Sekunden
+stabile Wärmeabfuhr. Grenzverletzungen setzen Haltezeiten zurück; beide Ziele
+müssen am festen Schichtende aktuell erfüllt sein. Übersicht, laufende Zeiten,
+erster Erfolg als Verlauf und Detailkriterien sind in DE/EN sichtbar.
+`incident_v1` belohnt aktuelle Ziele statt Stromproduktion, ohne RESA-Abzug.
+Speicherung erhält Fortschritt; Bestenlisten verlangen ein vollständiges
+Server-Replay und bleiben von alten Betriebswertungen getrennt.
+
+Offen bleiben die vollständige Übertragung auf die übrigen Szenarien und
+weitergehende Diagnoseprüfungen. Die Ziele sind kalibrierte Spielkriterien,
+kein Nachweis vollständiger realer Störfallbehandlung oder Leckreparatur.
 
 ## 6. Gestufte Schwierigkeit - teilweise umgesetzt in 0.1.20
 
@@ -51,10 +65,11 @@ Dampferzeugerrohrbruch oder Speisewasserausfall als eigenständige Diagnoseaufga
 `pwr_combined_faults` ergänzt die Kombination. Das Rohrleck verwendet nur einen
 zusammengefassten DE und eine vereinfachte Leckwirkung, ohne Einzelisolation oder
 Aktivitätsmessung. Speisewasserverlust setzt nur den Regler auf Hand/null,
-jederzeit wiederherstellbar und ohne Hilfsspeisung. Eine Diagnosewertung oder
-neue Szenarioziele sind nicht umgesetzt (Punkt 5 bleibt offen): Beim Rohrleck
-kann auch Nichtstun den Zeitabschluss erreichen; Scores beweisen keine richtige
-Behandlung. Die DE-/EN-Texte benennen diese Grenzen ausdrücklich.
+jederzeit wiederherstellbar und ohne Hilfsspeisung. Seit 0.1.21 prüfen die
+neuen Zustandsziele begrenzte Stabilisierung (Punkt 5); beim Rohrleck genügt
+Nichtstun nicht mehr zum Erfolg. Eine vollständige Diagnosewertung fehlt
+weiterhin, Scores beweisen keine richtige reale Behandlung. Die DE-/EN-Texte
+benennen diese Grenzen ausdrücklich.
 
 ## 8. Komfort beim Spielen
 

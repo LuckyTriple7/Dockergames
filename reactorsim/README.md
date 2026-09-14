@@ -60,10 +60,11 @@ Lernzielen und Schichtverlauf, aber keine Punkte oder Bestenlisteneinträge.
 ## Szenarien
 
 Neben dem freien Spiel gibt es Schichten mit Auftrag: eine Bedarfskurve, die du
-einhalten sollst, geplante Störungen und eine Wertung am Ende. Gewertet werden
-gelieferte Energie, Abweichung vom Bedarf, unquittierte Alarmsekunden,
+einhalten sollst, geplante Störungen und eine Wertung am Ende. In den bisherigen
+Betriebsszenarien zählen gelieferte Energie, Abweichung vom Bedarf, unquittierte Alarmsekunden,
 Grenzwertüberschreitungen nach Schwere, Schnellabschaltungen und
-Brennstoffschaden.
+Brennstoffschaden. Die drei neuen DWR-Störungsschichten verwenden seit 0.1.21
+stattdessen die unten beschriebene Sicherheitswertung; das Tutorial bleibt ungewertet.
 
 Alle 14 Szenariodateien, einschließlich Tutorial (Dauer in Simulationszeit):
 
@@ -100,10 +101,37 @@ Hand/null: Automatik und Handstellwert bleiben bedienbar, ohne permanenten
 Pumpendefekt oder Hilfsspeisung. Das Rohrleck ist ein vereinfachter Masseneintrag
 in einen zusammengefassten Dampferzeuger mit sinkendem Druckhalterfüllstand,
 keine vollständige Primärleckbilanz; Einzelisolation und Aktivitätsmessung fehlen.
-Auch Nichtstun kann beim Rohrleck den Zeitabschluss erreichen. Zeitabschluss und
-Punkte beweisen keine richtige Behandlung; neue Diagnoseziele oder eine
-Diagnosewertung sind nicht enthalten. Umfang, Balancing und Nachweise:
-[Szenario-Audit](audit/SZENARIEN-2026-09-14.md).
+RESA stoppt das Leck nicht. Die neuen Ziele bestätigen nur begrenzte,
+für das Spiel kalibrierte Stabilisierung, keine vollständige Störfallbehandlung,
+Leckreparatur oder sicheren Dauerbetrieb.
+
+Seit 0.1.21 haben diese drei Schichten genau zwei Zustandsziele (`incident_v1`):
+Speisewasserversorgung für 15 Sekunden, beim Rohrleck stattdessen tatsächliche
+Wärmeleistung höchstens 10 % der Nennwärmeleistung; dazu stabile Wärmeabfuhr
+für 120 Sekunden, beim Rohrleck ebenfalls unter dieser Leistungsgrenze.
+Die Prüfung beginnt erst nach der Störung, in der Kombination nach beiden.
+Reale Durchflüsse, Inventare und Sicherheitsgrenzen zählen, nicht allein
+Reglerstellung oder RESA. Jede Unterbrechung setzt die betreffende Haltezeit
+zurück, auch nach erstmaligem Erreichen. Beide Ziele müssen am festen Ende
+bei 900 beziehungsweise 1080 Simulationssekunden aktuell erfüllt sein.
+Abwarten genügt nicht; Zwischenziele beenden die Schicht nicht vorzeitig.
+
+Je aktuell erfülltem Ziel gibt es 1000 Punkte; erfolgreicher Abschluss bringt
+zusätzlich 1000 plus 250 je Schwierigkeitsstufe. Energie, Netzabweichung,
+RESA und Grenzwertdauer tragen jeweils null Punkte bei. Unquittierte Alarme
+kosten weiterhin bis zu 100 Punkte; Katastrophenabzüge und Abbruchregeln
+bleiben unverändert. Zielübersicht, Haltezeiten, erster Erfolg als Verlauf
+und aufklappbare Kriterien stehen in Einweisung, Spiel und Auswertung.
+Erneut geöffnete Einweisungen zeigen den aktuellen Zielstand.
+
+Speichern erhält den Zielfortschritt; alte Spielstände ohne gültigen Zielblock
+beginnen die Haltezeiten neu. Geladene Läufe werden nur lokal ausgewertet:
+Ohne vollständiges Replay ab Schichtbeginn ist für diese drei Szenarien kein
+Bestenlisteneintrag möglich. Alte Betriebswertungen bleiben gespeichert und
+werden nicht mit den neuen Sicherheitswertungen vermischt. Grenzwerte,
+Balancing und Nachweise: [Ziel-Audit](audit/SZENARIOZIELE-2026-09-14.md).
+Der [Szenario-Audit](audit/SZENARIEN-2026-09-14.md) hält den historischen
+Stand 0.1.20 fest.
 
 Ein Szenario ist eine Datendatei unter `static/data/scenarios/`. Störungs-
 zeitpunkte dürfen `"rand(6000,8400)"` sein und werden über den Startwert des
@@ -119,18 +147,21 @@ Szenarios aufgelöst — derselbe Startwert ergibt dieselbe Schicht.
 | GET/PUT/DELETE | `/api/saves[/<slot>]` | Spielstände |
 | GET/POST | `/api/highscores` | Bestenliste |
 
-Der Server rechnet den Punktestand aus den gemeldeten Kennzahlen **selbst** —
-ein mitgeschicktes `score`-Feld wird nicht gelesen. Die Kennzahlen werden auf
-Plausibilität geprüft (mehr Energie, als die Anlage in der Zeit liefern kann,
-längere Schicht als das Szenario dauert, negative Abweichungen). Der Spielstand
-selbst ist für den Server undurchsichtig: er speichert ihn und gibt ihn zurück,
-ohne hineinzusehen — geprüft wird er beim Laden im Browser.
+Der Server rechnet den Punktestand **selbst**; ein mitgeschicktes `score`-Feld
+wird nicht gelesen. Mitgelieferte Bedienprotokolle werden in Node durch
+dieselbe Engine und Session nachgerechnet. Das Replay-Ergebnis ersetzt die
+Client-Kennzahlen; scheitert die Nachrechnung, wird die Einreichung abgelehnt.
+Für die drei `incident_v1`-Szenarien ist dieses Replay Pflicht. Aufgezeichnete
+Helfereingriffe werden auf bekannte Aktionen und die Erlaubnis laut `guidance`
+geprüft. Die Auswertung übernimmt die autoritative Server-Summary samt
+Ergebnis und Punkten, ohne verspätete Antworten in eine andere Sitzung zu übernehmen.
 
-Ehrliche Einordnung: solange die Simulation im Browser läuft, sind Bestenlisten
-nicht fälschungssicher. Die Prüfung verschiebt die Angriffsfläche von „eine
-beliebige Zahl" auf „ein Satz physikalisch begrenzter Größen". Der saubere Weg
-wäre Replay-Verifikation; der gesäte Zufall und die DOM-freien `sim/`-Module
-halten diese Tür offen.
+Zusätzlich werden Kennzahlen auf Plausibilität geprüft. Nur die bisherigen
+Betriebsszenarien erlauben weiterhin Einreichungen ohne Replay, etwa nach dem
+Laden; diese reine Plausibilitätsprüfung ist nicht fälschungssicher. Auch ein
+Replay beweist einen reproduzierbaren Spielverlauf, nicht menschliche Bedienung
+oder eine fachlich richtige reale Störfallbehandlung. Der Spielstand selbst
+bleibt für den Server undurchsichtig und wird beim Laden im Browser geprüft.
 
 ## Bedienung
 

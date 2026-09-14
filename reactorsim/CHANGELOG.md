@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.21
+
+- Zustandsbasierte Sicherheitsziele und `incident_v1`-Wertung für die drei
+  neuen DWR-Schichten: Versorgung beziehungsweise begrenzte Wärmeleistung
+  15 Sekunden, stabile Wärmeabfuhr 120 Sekunden. Erst nach den erforderlichen
+  Störungen aktiv; in der Kombination erst nach beiden. Grenzverletzungen
+  setzen Haltezeiten zurück und widerrufen auch bereits erfüllte Ziele.
+  Beide Ziele müssen am unveränderten Ende bei 900 beziehungsweise 1080
+  Simulationssekunden aktuell erfüllt sein; kein vorzeitiger Erfolg.
+- Je aktuell erfülltem Ziel 1000 Punkte, bei erfolgreichem Abschluss zusätzlich
+  1000 plus 250 je Schwierigkeitsstufe. Energie, Netzabweichung, RESA und
+  Grenzwertdauer tragen null Punkte bei; unquittierte Alarme kosten höchstens
+  100 Punkte. Katastrophenabzüge und frühere Abbruchregeln bleiben erhalten.
+  Übrige Szenarien und Physik bleiben unverändert; Ziele prüfen kalibrierte
+  Spielzustände, keine vollständige Störfallbehandlung oder Leckreparatur.
+- Zielübersicht, laufende Haltezeiten, erster Erreichungszeitpunkt und
+  aufklappbare Kriterien in DE/EN; erneut geöffnete Einweisung mit aktuellem
+  Zielstand. Auswertung übernimmt Ergebnis, Punkte und Summary vom Server,
+  gegen verspätete Antworten nach Sitzungswechsel abgesichert.
+- Speicherformat bleibt Version 1 und erhält Haltezeiten, Fenstergrenzen und
+  ersten Erfolg. Alte/ungültige Zielblöcke starten ohne Zielfortschritt.
+  Geladene Läufe haben kein vollständiges Replay und bleiben lokal gewertet.
+  Für die drei neuen Bestenlisten ist Server-Replay Pflicht; Helfereingriffe
+  werden aufgezeichnet und gegen `guidance` geprüft. Alte Betriebswertungen
+  bleiben gespeichert, getrennt nach Wertungsversion.
+- Vollständige Tests: Node 210/210, Python 158/158 bestanden. Echter
+  Chromium-Test in DE/EN auf Desktop und emulierter Mobilansicht: 1541
+  Prüfungen bestanden. Dabei den Auswertungsdialog höhenbegrenzt und scrollbar
+  gemacht, damit Eintragen, Neustart und Menü auch bei langen Ergebnissen
+  erreichbar bleiben. Details und Nachweise:
+  `audit/SZENARIOZIELE-2026-09-14.md`.
+
 ## 0.1.20
 
 - Drei kurze DWR-Schichten mit gestufter Unterstützung: Speisewasserregelung

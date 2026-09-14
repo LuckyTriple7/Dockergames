@@ -9,6 +9,7 @@ import { score } from './scoring.js';
 import { Rng } from '../rng.js';
 import { StartupTutorial, STARTUP_TUTORIAL } from './tutorial.js';
 import { noteEvent, observeAlarms, learningReport } from './learning.js';
+import { ScenarioObjectives } from './objectives.js';
 
 // Freies Spiel ohne Bedarfskurve hiesse: "folge der Netzanforderung" waere
 // nichts als "lass die Anforderung, wie sie ist" -- kein Unterschied zum
@@ -37,6 +38,8 @@ export class Session {
     this.free = !scenarioDef;
     this.scenario = scenarioDef ? new Scenario(scenarioDef) : null;
     this.run = this.scenario ? new RunState(this.scenario, engine.spec) : null;
+    this.objectives = scenarioDef?.score_mode === 'incident_v1'
+      ? new ScenarioObjectives(engine, this.scenario) : null;
     this.phase = this.scenario ? PHASE.BRIEFING : PHASE.RUNNING;
     this.onEnd = null;
     this.onAlert = null;
@@ -66,12 +69,14 @@ export class Session {
 
   snapshot() {
     if (this.tutorial) return { tutorial: this.tutorial.snapshot() };
+    if (this.objectives) return { objectives: this.objectives.snapshot() };
     return this.free ? { demandTarget: this.demandTarget,
       demandNextChangeT: this.demandNextChangeT, rng: this.demandRng.snapshot() } : {};
   }
 
   restore(data) {
     if (this.tutorial) { this.tutorial.restore(data?.tutorial); return; }
+    if (this.objectives) { this.objectives.restore(data?.objectives); return; }
     if (!this.free || !data) return;
     if (Number.isFinite(data.demandTarget)) this.demandTarget = data.demandTarget;
     if (Number.isFinite(data.demandNextChangeT)) this.demandNextChangeT = data.demandNextChangeT;
@@ -132,6 +137,7 @@ export class Session {
       }
     }
 
+    if (this.objectives) this.objectives.step(dt);
     const d = this.engine.derive();
     this.run.accumulate(s, d, worstSeverity, tiles, dt);
     this.unacked = unackedSeconds;
@@ -143,7 +149,10 @@ export class Session {
       s.P_demand = this.tutorial.demand;
       if (this.tutorial.done) this._finish(true, null);
       else if (s.t_sim >= this.scenario.duration) this._finish(false, 'tut_timeout');
-    } else if (s.t_sim >= this.scenario.duration) { this._finish(true, null); }
+    } else if (s.t_sim >= this.scenario.duration) {
+      const completed = !this.objectives || this.objectives.done;
+      this._finish(completed, completed ? null : 'fail_objectives_unmet');
+    }
   }
 
   _finish(completed, failed) {
@@ -154,10 +163,15 @@ export class Session {
       this.run.failed = failed;
       const sum = this.run.summary(this.engine.state);
       sum.alarm_seconds_unacked = Math.round(this.unacked || 0);
+      if (this.objectives) {
+        sum.score_mode = 'incident_v1';
+        sum.objectives = this.objectives.view().map(({ id, met }) => ({ id, met }));
+      }
       // causes liegt als Geschwister von summary, NICHT darin -- summary()
       // ist unveraendert das, was api.submitScore() als Server-Payload
       // verschickt (siehe main.js), Diagnosedaten bleiben aussen vor.
       this.result = { summary: sum, causes: this.run.topCauses(), learning: learningReport(this.engine), ...score(sum) };
+      if (this.objectives) this.result.objectives = this.objectives.view();
       if (this.tutorial) {
         this.result.tutorial = this.tutorial.snapshot();
         this.result.score = null;

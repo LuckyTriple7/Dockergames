@@ -15,6 +15,8 @@ import { attachRecorder } from '../static/js/game/recorder.js';
 import { record } from '../static/js/game/coreActions.js';
 import { recordingKit, captureKit } from '../static/js/game/replayKit.js';
 import { replayRun } from '../static/js/game/replay.js';
+import { runHelper } from '../static/js/game/helper.js';
+import { score } from '../static/js/game/scoring.js';
 
 const DT = 0.05;
 const SCN_DIR = new URL('../static/data/scenarios/', import.meta.url);
@@ -49,6 +51,95 @@ test('replayRun reproduziert einen Live-Lauf ohne jede Bedienhandlung', async ()
 
   const replayed = replayRun(plant, scenarioDef, []);
   assert.deepEqual(replayed, session.result.summary);
+});
+
+test('guided feedwater: recorded RESA at 191s and helper at 195s replay exactly', async () => {
+  const plant = getPlant('pwr');
+  const def = await loadScenario('pwr_feedwater_loss.json');
+  const engine = createEngine(plant, { seed: def.seed, extraTrips: gridDeviationTrips(def) });
+  attachRecorder(engine);
+  const session = driveToEnd(engine, def, (n) => {
+    if (n === Math.round(191 / DT)) record(engine, 'scram');
+    if (n === Math.round(195 / DT)) {
+      assert.equal(engine.ctx.fwCtl.auto, false);
+      assert.equal(runHelper(engine, plant.spec.id, 'sg_level_low').status, 'fixed');
+      assert.equal(engine.ctx.fwCtl.auto, true);
+    }
+  });
+  const log = engine.recorder.serialize();
+  assert.deepEqual(log, [
+    { n: 3820, id: 'scram', value: undefined },
+    { n: 3900, id: 'helper', value: 'sg_level_low' },
+  ]);
+  const replayed = replayRun(plant, def, JSON.parse(JSON.stringify(log)));
+  assert.deepEqual(replayed, session.result.summary);
+  assert.equal(replayed.completed, true);
+  assert.equal(replayed.failed, null);
+  assert.equal(replayed.duration_s, def.duration_s);
+  assert.deepEqual(replayed.objectives, [{ id: 'supply', met: true }, { id: 'stable', met: true }]);
+  assert.deepEqual(score(replayed), { score: session.result.score, parts: session.result.parts });
+  assert.equal(score(replayed).parts.objectives, 2000);
+  assert.equal(score(replayed).parts.mission, 1000);
+  assert.equal(score(replayed).parts.bonus, 250);
+  assert.equal(replayRun(plant, def, log.filter(a => a.id !== 'helper')).completed, false);
+});
+
+test('helper records only own known reactor and trip IDs, including valid no-ops', () => {
+  const engine = createEngine(getPlant('pwr'));
+  attachRecorder(engine);
+  engine.ctx.fwCtl.auto = false;
+  for (const id of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'unknown', null, {}, ['pwr']]) {
+    assert.equal(runHelper(engine, id, 'sg_level_low').status, 'unfixable');
+  }
+  for (const id of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'unknown', null, {}, ['sg_level_low']]) {
+    assert.equal(runHelper(engine, 'pwr', id).status, 'unfixable');
+  }
+  assert.deepEqual(engine.recorder.serialize(), []);
+  assert.equal(engine.ctx.fwCtl.auto, false);
+  assert.equal(runHelper(engine, 'pwr', 'sg_level_low').status, 'fixed');
+  assert.equal(runHelper(engine, 'pwr', 'sg_level_low').status, 'none');
+  assert.equal(runHelper(engine, 'pwr', 'power_high').status, 'unfixable');
+  assert.deepEqual(engine.recorder.serialize(), ['sg_level_low', 'sg_level_low', 'power_high']
+    .map(value => ({ n: 0, id: 'helper', value })));
+});
+
+for (const scenario of ['pwr_sg_tube_leak', 'pwr_combined_faults']) {
+  test(`${scenario}: forbidden helper rejects the incident log, even beyond run end`, async () => {
+    const def = await loadScenario(`${scenario}.json`);
+    for (const n of [0, 3900, 100000]) {
+      assert.equal(replayRun(getPlant('pwr'), def, [{ n, id: 'helper', value: 'sg_level_low' }]), null);
+    }
+  });
+}
+
+test('incident replay rejects invalid helper IDs, shapes and inherited event properties', async () => {
+  const def = await loadScenario('pwr_feedwater_loss.json');
+  const event = { n: 3900, id: 'helper', value: 'sg_level_low' };
+  const invalid = [
+    ...['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'unknown', null, {}, ['sg_level_low']]
+      .map(value => ({ ...event, value })),
+    ...[-1, 1.5, '3900', null, Number.MAX_SAFE_INTEGER].map(n => ({ ...event, n })),
+    { id: 'helper', value: 'sg_level_low' }, { n: 0, id: 'helper' },
+    Object.assign(Object.create({ id: 'helper' }), { n: 0, value: 'sg_level_low' }),
+    Object.assign(Object.create({ n: 0 }), { id: 'helper', value: 'sg_level_low' }),
+    Object.assign(Object.create({ value: 'sg_level_low' }), { n: 0, id: 'helper' }),
+    { n: 100000, id: 'helper', value: 'unknown' },
+  ];
+  for (const action of invalid) assert.equal(replayRun(getPlant('pwr'), def, [action]), null);
+});
+
+test('legacy scenarios without guidance replay valid helpers and ignore invalid ones', async () => {
+  const plant = getPlant('pwr');
+  const def = await loadScenario('pwr_porv_stuck.json');
+  const engine = createEngine(plant, { seed: def.seed, extraTrips: gridDeviationTrips(def) });
+  attachRecorder(engine);
+  const session = driveToEnd(engine, def, (n) => {
+    if (n === 5000) runHelper(engine, 'pwr', 'porv_stuck');
+  });
+  const log = engine.recorder.serialize();
+  assert.equal(log.length, 1);
+  assert.deepEqual(replayRun(plant, def, [...log, { n: 0, id: 'helper', value: '__proto__' }]),
+    session.result.summary);
 });
 
 test('BWR emergency power, depressurization and injection replay exactly', async () => {
