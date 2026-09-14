@@ -718,12 +718,7 @@ export const hooks = {
       { key: 'state_closed', value: '0' },
     ], '1', (v) => { s.msiv = Number(v); });
 
-    // Notkondensator: der Bediener stellt nur die ABSICHT (icDemand), die
-    // tatsächliche Ventilstellung braucht zusätzlich Gleichstrom. Genau
-    // deshalb wird die Anzeige unten bewusst NICHT mehr nachgeführt, sobald
-    // der Gleichstrom fehlt -- sie zeigt dann die letzte Stellung, die noch
-    // gemeldet wurde, nicht die echte. Das ist die Meldung, die es 2011 nie
-    // gab, absichtlich als Leerstelle nachgebildet statt als Alarmkachel.
+    // Buttons show the request; diagnostics separately show feedback loss.
     const ic = kit.buttonGroup('ctl_ic', [
       { key: 'state_open', value: '1' },
       { key: 'state_closed', value: '0' },
@@ -757,10 +752,7 @@ export const hooks = {
       {
         mount: 'safety',
         node: ic.node,
-        // Kein Update, solange kein Gleichstrom da ist -- die Anzeige friert
-        // auf dem letzten bekannten Stand ein, statt die wahre (geschlossene)
-        // Stellung zu verraten.
-        set: (st) => { if (st.dcPower) ic.set(String(st.icDemand)); },
+        set: (st) => ic.set(String(st.icDemand)),
       },
       { mount: 'safety', node: fireInj.node, set: (st) => fireInj.set(st.fireInjOn ? '1' : '0') },
       { mount: 'safety', node: depressurize.node, set: (st) => depressurize.set(st.depressurize ? '1' : '0') },

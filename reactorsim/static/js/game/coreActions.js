@@ -14,6 +14,8 @@
 // EINZIGE Stelle, die diese Handlung ausführt -- panels.js/main.js rufen sie
 // über record(), nicht mehr die Mutation selbst.
 
+import { noteAction } from './learning.js';
+
 export const CORE_ACTIONS = {
   rod_jog(engine, dir) {
     const { state: s, spec: sp, ctx } = engine;
@@ -62,6 +64,7 @@ export const CORE_ACTIONS = {
  * damit keine Handlung im Spiel wirkt, ohne im Protokoll zu stehen.
  */
 export function record(engine, id, value) {
+  noteAction(engine, id, value);
   if (engine.recorder) engine.recorder.record(id, value);
   const fn = CORE_ACTIONS[id];
   if (fn) fn(engine, value);

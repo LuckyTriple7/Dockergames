@@ -6,6 +6,7 @@
 // statt Zahlen, ohne zu wissen warum.
 
 import { api } from './api.js';
+import { learningReport, restoreJournal } from '../game/learning.js';
 import { numbers } from '../sim/state.js';
 import { decaySum, equilibriumDecay } from '../sim/decayheat.js';
 
@@ -72,6 +73,7 @@ export function pack(engine, scenarioId, runState, session) {
     // Rollendes Protokoll-Gedaechtnis (siehe ctx.history in sim/engine.js) --
     // ohne das startete das Log-Panel nach jedem Laden leer.
     history: engine.ctx.history,
+    learning: learningReport(engine),
     // Laufende Stoerungs-Merker aus game/events.js (stepEvents()) -- leben
     // NUR auf ctx, nicht in engine.state, und waren deshalb komplett aus dem
     // Spielstand ausgeschlossen. Ohne sie kam nach dem Laden zwar die
@@ -218,6 +220,7 @@ export function apply(blob, engine, runState, session) {
     if (Number.isFinite(blob.context?.[key])) ctx[key] = blob.context[key];
   }
   if (blob.rng) ctx.rng.restore(blob.rng);
+  restoreJournal(engine, blob.learning);
   engine.reactivity.compute(s, engine.spec);
   if (session && blob.session) session.restore(blob.session);
   return null;

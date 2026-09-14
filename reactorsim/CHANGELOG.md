@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.18
+
+- Diagnosebereich im Primärpanel für alle drei Reaktortypen: Pumpenantrieb,
+  Drehzahl und Pumpenbeitrag; Ventilauftrag und tatsächliche Öffnung;
+  Kern- und Speisewasserstrom. Naturumlauf und Pumpenauslauf werden erklärt.
+- SWR: Notkondensator-Bedienwunsch und Rückmeldung getrennt; Messausfall bei
+  fehlendem Gleichstrom ausdrücklich sichtbar. Die Füllstandszahl zeigt dann
+  keinen scheinbar aktuellen Wert. Diesel-Einspeisung wird getrennt vom
+  Einschaltwunsch ausgewiesen.
+- Szenarioauswertung mit Störungen, Bedienaufträgen, Helfereingriffen und
+  Meldungswechseln. Erstes Warn-/Auslösesignal und der zeitliche Bezug zwischen
+  letzter Bedienung und erloschener Meldung helfen bei der Nachbesprechung.
+  Ein zeitlicher Zusammenhang wird nicht als bewiesene Ursache ausgegeben.
+- Eigenes, mitgespeichertes Auswertungsprotokoll mit bis zu 600 Einträgen,
+  unabhängig von Renderfrequenz und Replay-Recorder. Kontinuierliche
+  Stellbewegungen werden zusammengefasst; fehlende Historie wird benannt.
+- Deutsche und englische Texte; gezielte Diagnose-, Auswertungs- und
+  Fortsetzungstests. Details: `audit/VERBESSERUNGEN-2026-09-14.md`.
+
 ## 0.1.17
 
 - Dampfentnahme durch Inventar und Energie begrenzt; kein dauerhaftes Restwasser.

@@ -19,6 +19,7 @@ import { STATUS_STATS, sanitizeStatusKeys } from './ui/statusStats.js';
 import { enableDragReorder } from './ui/dragReorder.js';
 import { attachRecorder } from './game/recorder.js';
 import { record } from './game/coreActions.js';
+import { renderLearning } from './ui/debrief.js';
 
 // Panel-Buchstaben fuer die Fenster-Tastenkuerzel (siehe initControls():
 // Tastatur am Rechner). Ungewandeltes Zeichen statt Kachel-Position, damit
@@ -1095,6 +1096,7 @@ function showDebrief(result, failed) {
       el('li', { text: `${clock(e.t)} · ${t(e.key)}` }))));
   }
   if (result) {
+    renderLearning(parts, result.learning);
     const sum = result.summary;
     const p = result.parts || {};
     // Vorzeichen von Hand statt num(): dieselbe Schreibweise wie schon vorher

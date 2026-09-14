@@ -49,7 +49,7 @@ function harness(readSave = async () => ({ ok: false })) {
       stop() {} start() { counters.starts++; } setSpeed(v) { this.speed = v; }
     },
     setSpeed(v) { app.loop.setSpeed(v); },
-    loadScores() {},
+    loadScores() {}, renderLearning() {},
   });
   for (const name of ['clearEndDialogs', 'toMenu', 'showBriefing', 'showDebrief', 'showDestroyed', 'boot']) {
     const fn = source.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));

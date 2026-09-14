@@ -7,6 +7,7 @@ import { Scenario, RunState } from './scenario.js';
 import { getEvent, eventKey, eventSeverity, stepEvents } from './events.js';
 import { score } from './scoring.js';
 import { Rng } from '../rng.js';
+import { noteEvent, observeAlarms, learningReport } from './learning.js';
 
 // Freies Spiel ohne Bedarfskurve hiesse: "folge der Netzanforderung" waere
 // nichts als "lass die Anforderung, wie sie ist" -- kein Unterschied zum
@@ -98,6 +99,7 @@ export class Session {
       }
     }
     const s = this.engine.state;
+    observeAlarms(this.engine, tiles);
     stepEvents(this.engine, dt);
 
     if (!this.scenario) {
@@ -117,6 +119,7 @@ export class Session {
       const def = getEvent(ev.id);
       if (def) {
         def.apply(this.engine, ev.args || {});
+        noteEvent(this.engine, eventKey(ev.id));
         this.engine.ctx.log.push({
           t: s.t_sim, key: eventKey(ev.id), severity: eventSeverity(ev.id), kind: 'on',
         });
@@ -143,7 +146,7 @@ export class Session {
       // causes liegt als Geschwister von summary, NICHT darin -- summary()
       // ist unveraendert das, was api.submitScore() als Server-Payload
       // verschickt (siehe main.js), Diagnosedaten bleiben aussen vor.
-      this.result = { summary: sum, causes: this.run.topCauses(), ...score(sum) };
+      this.result = { summary: sum, causes: this.run.topCauses(), learning: learningReport(this.engine), ...score(sum) };
     }
     if (this.onEnd) this.onEnd(this.result, failed);
   }

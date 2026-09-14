@@ -17,6 +17,8 @@ import { MIMICS } from './mimic.js';
 import { runHelper } from '../game/helper.js';
 import { record } from '../game/coreActions.js';
 import { recordingKit } from '../game/replayKit.js';
+import { noteAction } from '../game/learning.js';
+import { buildDiagnostics } from './diagnostics.js';
 
 const U = (key) => ' ' + t(key);
 
@@ -284,7 +286,7 @@ export function buildPanels(engine, render, helperEnabled) {
   // steht deshalb nur hier in der Typdatei, kein zweites Mal.
   const uiKit = recordingKit(
     { autoSwitch, station, slider, buttonGroup, indicator },
-    (id, v) => { if (engine.recorder) engine.recorder.record(id, v); },
+    (id, v) => { noteAction(engine, id, v); if (engine.recorder) engine.recorder.record(id, v); },
   );
   const extras = (hooks.uiControls ? hooks.uiControls(s, sp, ctx, uiKit) : []) || [];
   const mounts = {
@@ -299,6 +301,9 @@ export function buildPanels(engine, render, helperEnabled) {
     const target = mounts[x.mount] || mounts.secondary;
     target.append(x.node);
   }
+
+  const diagnostics = buildDiagnostics(engine);
+  $('#rs-pumps').append(diagnostics.node);
 
   // ── Trendschreiber ─────────────────────────────────────────────────────────
   const trends = [
@@ -457,6 +462,7 @@ export function buildPanels(engine, render, helperEnabled) {
     const { status, actions } = runHelper(engine, sp.id, helpDef.id);
     fixResult.hidden = false;
     if (status === 'fixed') {
+      for (const a of actions) noteAction(engine, 'helper:' + a.key, a.params);
       setText(fixMsg, t('alarm_fix_heading'));
       fixList.replaceChildren(...actions.map((a) => el('li', null, [t(a.key, a.params)])));
       annun.log(actions.map((a) => ({ t: s.t_sim, key: a.key, params: a.params, severity: 1 })));
@@ -576,8 +582,9 @@ export function buildPanels(engine, render, helperEnabled) {
     put('w_steam', num(s.W_steam, 0) + U('unit_kgs'));
     put('gov', num(ctxPos(ctx.govValve) * 100, 0) + U('unit_percent'));
     put('p_cond', num(s.p_cond, 3) + U('unit_bar'));
-    put('l_sg', num(d.L_sg * 100, 0) + U('unit_percent'),
-        d.L_sg < 0.25 ? 3 : (d.L_sg < 0.32 || d.L_sg > 0.78 ? 1 : 0));
+    const levelLost = sp.id === 'bwr' && !s.dcPower;
+    put('l_sg', levelLost ? t('diag_unavailable') : num(d.L_sg * 100, 0) + U('unit_percent'),
+        levelLost ? 2 : (d.L_sg < 0.25 ? 3 : (d.L_sg < 0.32 || d.L_sg > 0.78 ? 1 : 0)));
     put('w_fw', num(s.W_fw, 0) + U('unit_kgs'));
     put('breaker', t(s.breaker ? 'state_on' : 'state_off'));
     put('xenon', num(s.X * 100, 1) + U('unit_percent'));
@@ -618,6 +625,7 @@ export function buildPanels(engine, render, helperEnabled) {
 
     rho.set(d.breakdown, d.rho, rhoScale);
     pumps.set(d.pumpStates || [], d.pumpStuckList);
+    diagnostics.set();
     demand.set(Math.round(s.P_demand));
     turbineResume.disabled = !s.turbineTripped || s.scram.active;
     if (rodAuto && rodCtl) rodAuto.set(rodCtl.auto);

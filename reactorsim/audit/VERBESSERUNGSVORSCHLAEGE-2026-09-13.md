@@ -2,13 +2,13 @@
 
 Stand: 13.09.2026. Ergänzung zum [Spielaudit](AUDIT-2026-09-13.md) und zum [Physik-Audit](PHYSIK-AUDIT-2026-09-13.md).
 
-Neben den gefundenen Bugs und der Physik sollten vor allem Verständlichkeit, Bedienung und Langzeitmotivation verbessert werden. Die folgenden Punkte sind Vorschläge, keine bereits umgesetzten Funktionen.
+Neben den gefundenen Bugs und der Physik sollten vor allem Verständlichkeit, Bedienung und Langzeitmotivation verbessert werden. Die folgenden Punkte dokumentieren die ursprünglichen Vorschläge. Stand 14.09.2026: Die erste Etappe mit Diagnoseanzeigen (Punkt 2) und Schichtauswertung (Punkt 4) ist in Version 0.1.18 umgesetzt; Umfang und Grenzen stehen in [VERBESSERUNGEN-2026-09-14.md](VERBESSERUNGEN-2026-09-14.md). Die übrigen Punkte bleiben offen.
 
 ## 1. Interaktives Anfahren-Tutorial
 
 Kurze Aufgaben wie „Leistung stabilisieren“ oder „Druckanstieg abfangen“. Jede Handlung bekommt eine Erklärung ihrer Wirkung.
 
-## 2. Bessere Diagnosehilfen
+## 2. Bessere Diagnosehilfen — umgesetzt in 0.1.18
 
 Anzeigen unterscheiden zwischen Bedienwunsch und tatsächlichem Zustand:
 
@@ -20,7 +20,7 @@ Anzeigen unterscheiden zwischen Bedienwunsch und tatsächlichem Zustand:
 
 Ereignismarker für Stabfahrten, Abschaltungen und Störungen ergänzen. Leistung, Druck und Durchsatz sollen zeitlich gemeinsam vergleichbar sein.
 
-## 4. Lehrreiche Auswertung
+## 4. Lehrreiche Auswertung — umgesetzt in 0.1.18
 
 Nach der Schicht erklären:
 

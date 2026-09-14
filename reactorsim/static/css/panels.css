@@ -292,3 +292,8 @@ body.rs-ctl-paused #rs-safety-ctl {
 }
 .rs-ctl-block .rs-ctl-row .rs-slider { flex: 1 1 auto; }
 .rs-ctl-block .rs-ctl-row .rs-ctl-v { flex: 0 0 auto; min-width: 5.5em; text-align: right; }
+
+/* The shift history stays scrollable even after a long run. */
+.rs-learning-log { max-height: 320px; }
+.rs-diagnostics { margin-top: 12px; overflow-wrap: anywhere; }
+.rs-diagnostics summary { cursor: pointer; font-weight: 600; }
