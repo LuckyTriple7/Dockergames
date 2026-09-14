@@ -1675,10 +1675,6 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
   const built = buildPanels(app.engine, app.render,
     app.prefs.helper !== false && scenarioDef?.guidance?.auto_helper !== false);
   buildTutorial(app.session, app.render);
-  renderGuidance($('#rs-guidance'), scenarioDef, () => showBriefing(scenarioDef), {
-    objectives: app.session.objectives, render: app.render,
-    localOnly: !!app.session.objectives && !app.engine.recorder,
-  });
   app.horn = built.horn;
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;

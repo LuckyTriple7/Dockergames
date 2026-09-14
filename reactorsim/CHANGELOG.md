@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.25
+
+- Die einklappbare Szenario-Unterstützung belegt im Leitstand keinen Platz mehr.
+  Ziele, Hinweise und Fortschritt stehen ausschließlich in der Einweisung, die
+  während eines Szenarios über den neuen beschrifteten Button direkt links von
+  „Speichern“ geöffnet wird. Im freien Spiel bleibt der Button verborgen.
+
 ## 0.1.24
 
 - 15. Szenario: **AZ-5 war erst der Anfang**, RBMK, Schwierigkeit 3,
