@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.26
+
+- Trendpanel: Live-/Auswahl-Statuszeile (`trend_following`/`trend_selected`,
+  z.B. "Live: gemeinsame Simulationszeitachse...") komplett entfernt --
+  0.1.25 hatte nur den statischen Erklärtext (`trend_help`) darüber
+  gestrichen, diese Zeile blieb stehen. Zeitpunkt bei Auswahl steht bereits
+  im Ereignis-Button selbst (`HH:MM:SS / n,nnn.n s`), keine Dopplung noetig.
+
 ## 0.1.25
 
 - Laufzeit-Hinweisbereich `#rs-guidance` (Ziele, Bedienhinweise, Ein-/Ausblenden)

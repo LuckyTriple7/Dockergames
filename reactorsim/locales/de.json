@@ -362,8 +362,6 @@
   "trend_coreflow": "Kernstrom",
   "trend_extra": "Weitere Messgrößen",
   "trend_live": "Live / Auswahl zurücksetzen",
-  "trend_following": "Live: gemeinsame Simulationszeitachse (hh:mm:ss).",
-  "trend_selected": "Auswahl: {time} ({seconds} s Simulationszeit). Zeitfenster festgehalten; die Simulation läuft unverändert weiter.",
   "trend_retention": "Die letzten 8 Simulationsstunden werden mit 1 Messung pro Sekunde im Spielstand gespeichert, auch bei geschlossenem Trendpanel. Spitzen bleiben in der Darstellung erhalten.",
   "trend_no_data": "Keine Messwerte in diesem Zeitfenster.",
   "trend_missing": "Frühere Trenddaten fehlen, etwa bei alten oder ungültigen Spielständen. Der fehlende Verlauf wird nicht rekonstruiert.",

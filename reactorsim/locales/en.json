@@ -362,8 +362,6 @@
   "trend_coreflow": "Core flow",
   "trend_extra": "Additional measurements",
   "trend_live": "Live / clear selection",
-  "trend_following": "Live: shared simulation time axis (hh:mm:ss).",
-  "trend_selected": "Selected: {time} ({seconds} s simulation time). Time window held; simulation continues unchanged.",
   "trend_retention": "The last 8 simulation hours are saved at 1 sample per second, even with the trend panel closed. Plotting preserves peaks.",
   "trend_no_data": "No measurements in this time window.",
   "trend_missing": "Earlier trend data is missing, for example in old or invalid saves. Missing history is not reconstructed.",

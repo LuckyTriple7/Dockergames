@@ -143,7 +143,6 @@ export function buildTrends(engine, render) {
   ];
   let rangeS = 600, heldEnd = null, selectedKey = null, selectedTime = null;
   let fingerprint = '', markerButtons = new Map();
-  const caption = el('p.rs-trend-note', { role: 'status', 'aria-live': 'polite' });
   const info = el('p.rs-trend-note');
   const list = el('ol.rs-trend-events');
   const summary = el('summary');
@@ -170,7 +169,7 @@ export function buildTrends(engine, render) {
   $('#rs-trend-range').replaceChildren(...buttons, live);
   $('#rs-trend-range').setAttribute('aria-label', t('trend_range'));
   $('#rs-trends').replaceChildren(
-    caption, info,
+    info,
     ...charts.slice(0, 4).map(c => c.node), extra, events,
     el('p.rs-trend-note', { text: t('trend_retention') }),
   );
@@ -212,8 +211,6 @@ export function buildTrends(engine, render) {
     }
     for (const item of markerButtons.values()) setAttr(item.button, 'aria-pressed', item.key === selectedKey);
     setText(summary, t('trend_events', { n: markers.length }));
-    setText(caption, selectedTime === null ? t('trend_following')
-      : t('trend_selected', { time: clock(selectedTime), seconds: num(selectedTime, 1) }));
     const indices = history.indices(end - start, end);
     setText(info, [!indices.length ? t('trend_no_data') : '',
       history.missingBefore ? t('trend_missing') : '',
