@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.1.23
+
+- Globaler Speicherstatus unter den Bedienelementen: letzter erfolgreicher
+  Auto-/Handspeicherzeitpunkt, laufender Auftrag und bleibende Fehlermeldung
+  auch während eines Wiederholungsversuchs. Neue Schreibvorgänge verwenden die
+  Browser-Bestätigungszeit; geladene Stände ihr echtes serverseitiges `saved_at`,
+  ohne das Laden als neue Speicherung auszugeben. Anzeige je Runde zurückgesetzt.
+- Beim Auslösen abgetrennte Snapshots und rundenübergreifende FIFO je Slot
+  verhindern umgekehrtes Überschreiben. Maximal 16 Aufträge je Slot, doppelte
+  ausstehende Autosicherungen desselben Kontexts zusammengefasst. Fehlgeschlagene
+  oder geworfene Schreibvorgänge blockieren Folgeaufträge nicht; nur Antworten
+  des aktuellen Kontexts verändern dessen Anzeige. Der Handspeicherdialog zeigt
+  Listenfehler statt scheinbar leerer Plätze und erlaubt echte Wiederholung;
+  Schreibfehler lassen ihn offen, alte Antworten/Schaltflächen bleiben wirkungslos.
+- Szenariostart aus der Auswahl und Fortsetzen verwenden denselben festgehaltenen Ladekontext
+  mit Lade-, Fehler- und Wiederholungsanzeige. Fehlende Metadaten werden erneut
+  abgerufen, Definitionen einschließlich einfacher Störungsziele geprüft;
+  kein stiller Wechsel ins freie Spiel. Auswahlwechsel, Zurück, Boot und Menü
+  entwerten alte Antworten, auch einen in `boot()` wartenden Spielstandabruf.
+- Xenon-Zeitsprung nur im laufenden freien Spiel nach SCRAM bei `X > 1`.
+  Abbrechen, Pause, globale Leertaste oder SCRAM stoppen ihn mit aktuellem
+  Zustand in Pause; positive Tempowechsel sind währenddessen gesperrt.
+  Echte 0,05-s-Schritte in 2000er-Blöcken, Freigabe des Browsers vor dem ersten
+  Block und tickgenaues Limit von 48 Simulationsstunden. Nur `X <= 1` gilt als
+  Erfolg mit Log, Trendmarker und 1×; Limit, Fehler oder Zerstörung starten nicht
+  automatisch weiter. Normales SCRAM außerhalb des Sprungs bleibt bei 1×.
+- Punkt 8 der Verbesserungsvorschläge damit vollständig erfüllt: Trendhistorie
+  seit 0.1.22, Speicherstatus und Abbruch seit 0.1.23. Speicherformat, Physik,
+  Szenarioziele und Wertungen bleiben unverändert.
+- Bestätigter vollständiger Node-Lauf: 322/322; Python unverändert erneut 161/161
+  nach einem anfänglichen Windows-Zugriffsfehler im bestehenden Highscore-Stress-
+  test, ohne Produktionsfix. Browser final 724/724 in vier DE/EN-Desktop-/Mobil-
+  Kombinationen, zusätzlich vier uninstrumentierte Smokes. Funktionsprüfung vor
+  der reinen Versionsanhebung 0.1.22 auf 0.1.23; Details, Fehlerinduktion und
+  Grenzen: [Komfort-Audit](audit/KOMFORT-2026-09-14.md).
+
 ## 0.1.22
 
 - Gemeinsame Trends für alle 14 Szenarien und das freie Spiel aller drei

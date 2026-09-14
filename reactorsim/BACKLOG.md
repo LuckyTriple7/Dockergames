@@ -51,13 +51,17 @@ seit 0.1.22 maximal 28.800 Samples der letzten acht Simulationsstunden und
 vorhandenen Werte bleibt offen; fehlende Messwerte und gekürzte Historie
 müssten dabei ausdrücklich erkennbar bleiben.
 
-### Verbleibender Spielkomfort
+### Spielkomfort - erledigt in 0.1.23
 
 Trendhistorie nach Fortsetzen und gemeinsame Ereignismarker sind in 0.1.22
 global umgesetzt; der gesamte Laufzeit-Hinweisbereich ist mit gemerkter Wahl
-einklappbar. Offen bleiben die Anzeige des letzten erfolgreichen
-(Auto-)Speicherzeitpunkts und ein ausdrücklicher Abbruch eines laufenden
-Zeitsprungs. Details: [Trend-Audit 0.1.22](audit/TRENDS-2026-09-14.md).
+einklappbar. Seit 0.1.23 sind auch der letzte erfolgreiche Auto-/Handspeicher-
+zeitpunkt mit bleibender Fehleranzeige und der ausdrückliche Zeitsprung-Abbruch
+umgesetzt. Sichere Speicherwarteschlangen und wiederholbare Speicher-/Szenario-
+ladeabläufe ergänzen das Paket. Punkt 8 ist vollständig erfüllt; CSV-Export
+und die übrigen Erweiterungen bleiben offen. Details:
+[Trend-Audit 0.1.22](audit/TRENDS-2026-09-14.md) und
+[Komfort-Audit 0.1.23](audit/KOMFORT-2026-09-14.md).
 
 ### Mehrbenutzerbetrieb
 
@@ -67,7 +71,7 @@ Bestenliste mit Namen Sinn.
 
 ## Weitere Störszenarien
 
-Stand 0.1.22: 14 Szenariodateien einschließlich Anfahren-Tutorial. Zwei
+Stand 0.1.23: 14 Szenariodateien einschließlich Anfahren-Tutorial. Zwei
 Einzelstörungen aus der Ideensammlung sind jetzt als eigene DWR-Schichten
 umgesetzt, ergänzt um eine kombinierte Stufe. Details und Nachweise:
 [historischer Szenario-Audit 0.1.20](audit/SZENARIEN-2026-09-14.md) und
@@ -84,7 +88,7 @@ von alten Scores getrennt. Gemeinsame Trends und Ereignismarker sind seit
 Zielmarker betreffen nur diese drei Schichten und das Anfahren-Tutorial.
 Vollständige Übertragung der Ziele auf die übrigen Szenarien, weitergehende
 Diagnoseziele, unvollständige Messinformationen und generische Messausfälle
-sowie die verbleibenden Komfortpunkte bleiben offen. Die bestehende
+bleiben offen; die genannten Komfortpunkte sind in 0.1.23 erledigt. Die bestehende
 SWR-Füllstandslücke bei Gleichstromverlust ist kein generisches Sensormodell.
 Die kalibrierten Spielziele ersetzen keine reale Störfallprozedur.
 

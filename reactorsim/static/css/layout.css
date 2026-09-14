@@ -118,6 +118,46 @@
 
 .rs-status-controls #rs-menu { margin-left: auto; }
 
+.rs-status-controls > button {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.rs-status-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  padding: 0 8px 6px;
+  color: var(--rs-fg-dim);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.rs-status-feedback > p {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+#rs-save-status[data-error="true"] { color: var(--rs-warn); }
+#rs-save-state:not(:empty) { margin-inline-start: .5em; }
+
+#rs-start-message,
+#rs-save-slots-message {
+  margin: 8px 0 0;
+  color: var(--rs-fg-dim);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+#rs-save-slots-message { margin: 0; }
+#rs-start-message[data-error="true"],
+#rs-save-slots-message[data-error="true"] { color: var(--rs-warn); }
+
+#rs-start-message:empty,
+#rs-save-slots-message:empty,
+#rs-xenon-skip-message:empty,
+#rs-save-state:empty { display: none; }
+
 /* ── Reiter und Panels ────────────────────────────────────────────────────── */
 
 .rs-workspace {
@@ -244,6 +284,7 @@
 
   .rs-status-scroll { padding: 8px 12px 0; }
   .rs-status-controls { padding: 8px 12px; }
+  .rs-status-feedback { padding-inline: 12px; }
 
   /* Kopfzeile hebt die Kachel als Fenster an -- auf dem Handy zeigt der
      Reiter das Panel ohnehin schon voll, dort bleibt der Klick wirkungslos

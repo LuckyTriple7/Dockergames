@@ -11,7 +11,7 @@ import { getPlant, isAvailable, PLANT_IDS } from './plants/index.js';
 import { Session, PHASE } from './game/session.js';
 import { gridDeviationTrips } from './game/scenario.js';
 import { api } from './net/api.js';
-import { save as saveGame, apply as applySave } from './net/persist.js';
+import { pack as packSave, apply as applySave } from './net/persist.js';
 import { GLOSSARY } from './ui/glossary.js';
 import { SHORTCUTS } from './ui/shortcuts.js';
 import { MusicLoop, playClip, setMuted } from './ui/music.js';
@@ -205,7 +205,7 @@ function initStart() {
     // Waehrend eines laufenden Szenarios ist dieser Knopf ein Schliessen-
     // Knopf (siehe showBriefing()), kein zweiter Start.
     if (app.session && app.session.phase === PHASE.RUNNING) return;
-    boot(app.reactor, app.briefDef, null, app.briefDef && app.briefDef.cold);
+    if (app.briefDef) boot(app.briefDef.reactor, app.briefDef, null, app.briefDef.cold);
   });
 
   // Ton-Hauptschalter. Der Klick ist zugleich die Nutzergeste, die der
@@ -219,7 +219,11 @@ function initStart() {
   // Zurueck aus der Einweisung, ohne die Schicht anzutreten. Schliesst nur
   // den Dialog -- der Startbildschirm steht ohnehin noch dahinter, samt der
   // getroffenen Szenarienwahl.
-  $('#rs-brief-back').addEventListener('click', () => { $('#rs-brief').hidden = true; });
+  $('#rs-brief-back').addEventListener('click', cancelScenarioLoad);
+  $('#rs-start-retry').addEventListener('click', () => {
+    const intent = app.scenarioLoad;
+    if (intent?.failed) loadScenario(intent.scn, intent.savedMeta);
+  });
 
   $('#rs-debrief-send').addEventListener('click', () => {
     const result = app.pendingResult;
@@ -413,21 +417,10 @@ function refreshResumeList() {
       // kam. Derselbe Fetch wie in loadScenario() oben, nur ohne Einweisung
       // dazwischen: wer fortsetzt, hat sie schon gesehen.
       btn.addEventListener('click', () => {
-        if (!sv.scenario) { boot(sv.reactor, null, sv.slot); return; }
-        const scn2 = app.scenarios.find((x) => x.id === sv.scenario);
-        if (!scn2) { boot(sv.reactor, null, sv.slot); return; }
-        const base = window.RS_CFG ? `/s/${window.RS_CFG.version}` : '';
-        fetch(`${base}/data/scenarios/${scn2.file}`)
-          .then((r) => (r.ok ? r.json() : Promise.reject(new Error('scenario'))))
-          .then((def) => {
-            // app.briefDef nachziehen -- sonst bleibt es beim Fortsetzen leer
-            // (oder auf einem alten Stand von vorher) und der
-            // Einweisung-Knopf waehrend der Runde (#rs-briefing-btn) tut
-            // dann still gar nichts, obwohl eine Einweisung existiert.
-            app.briefDef = def;
-            boot(sv.reactor, def, sv.slot);
-          })
-          .catch(() => boot(sv.reactor, null, sv.slot));
+        if (!sv.scenario) { boot(sv.reactor, null, sv.slot, false, sv); return; }
+        const scn2 = app.scenarios.find((x) => x.id === sv.scenario)
+          || { id: sv.scenario, reactor: sv.reactor };
+        loadScenario(scn2, sv);
       });
       body.append(el('div.rs-resume-row', null, [btn, makeDeleteSaveButton(sv.slot)]));
     }
@@ -465,6 +458,7 @@ function makeDeleteSaveButton(slot, onDone = refreshResumeList) {
 
 /** Szenarienkarten fuer den gewaehlten Reaktortyp. */
 function renderScenarios(reactorId) {
+  cancelScenarioLoad();
   const list = $('#rs-scn-list');
   const headline = $('#rs-scn-headline');
   const go = $('#rs-start-go');
@@ -490,6 +484,7 @@ function renderScenarios(reactorId) {
       el('span.rs-scn-meta', { text: meta }),
     ]);
     btn.addEventListener('click', () => {
+      cancelScenarioLoad();
       app.chosen = scn.id ? scn : null;
       for (const b of buttons) b.setAttribute('aria-pressed', String(b === btn));
       setText(go, scn.id ? t('brief_title') : t('start_free_play'));
@@ -524,16 +519,75 @@ function showBriefing(def) {
   $('#rs-brief .rs-modal-box').scrollTop = 0;
 }
 
-/** Szenariodatei nachladen und die Einweisung zeigen. */
-function loadScenario(scn) {
-  const base = window.RS_CFG ? `/s/${window.RS_CFG.version}` : '';
-  fetch(`${base}/data/scenarios/${scn.file}`)
-    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('scenario'))))
-    .then((def) => {
+function cancelScenarioLoad() {
+  // Selection changes also invalidate a save fetch already waiting inside boot().
+  app.bootId = (app.bootId || 0) + 1;
+  app.scenarioLoad = null;
+  app.briefDef = null;
+  $('#rs-start-retry').hidden = true;
+  $('#rs-brief').hidden = true;
+  setText($('#rs-start-message'), '');
+  setAttr($('#rs-start-message'), 'data-error', 'false');
+}
+
+/** The same immutable load intent drives a new briefing and a saved scenario. */
+async function loadScenario(scn, savedMeta = null) {
+  cancelScenarioLoad();
+  const intent = { scn: { ...scn }, savedMeta: savedMeta ? { ...savedMeta } : null,
+    bootId: app.bootId, failed: false };
+  app.scenarioLoad = intent;
+  const current = () => app.scenarioLoad === intent && app.bootId === intent.bootId;
+  const retry = $('#rs-start-retry');
+  retry.disabled = true;
+  setText($('#rs-start-message'), t('scenario_loading'));
+  let errorKey = 'scenario_load_failed';
+  try {
+    let meta = intent.scn;
+    if (!meta.file) {
+      const response = await api.meta();
+      if (!current()) return;
+      if (!response.ok || !Array.isArray(response.data?.scenarios)) throw new Error('metadata');
+      app.scenarios = response.data.scenarios;
+      meta = app.scenarios.find(x => x.id === intent.scn.id && x.reactor === intent.scn.reactor);
+      if (!meta?.file) { errorKey = 'scenario_unavailable'; throw new Error('missing'); }
+    }
+    const base = window.RS_CFG ? `/s/${window.RS_CFG.version}` : '';
+    const response = await fetch(`${base}/data/scenarios/${encodeURIComponent(meta.file)}`);
+    if (!current()) return;
+    if (!response.ok) throw new Error('http');
+    const def = await response.json();
+    if (!current()) return;
+    if (!def || def.id !== intent.scn.id || def.reactor !== intent.scn.reactor
+      || (intent.savedMeta && (def.id !== intent.savedMeta.scenario || def.reactor !== intent.savedMeta.reactor))
+      || typeof def.title_key !== 'string' || typeof def.brief_key !== 'string'
+      || !Number.isFinite(def.duration_s) || def.duration_s <= 0
+      || !Array.isArray(def.demand) || !def.demand.every(p => p && Number.isFinite(p.t) && Number.isFinite(p.mw))
+      || !Array.isArray(def.events || []) || !(def.events || []).every(e => e && typeof e.id === 'string')
+      || !Array.isArray(def.fail || []) || !(def.fail || []).every(f => f && typeof f.type === 'string')
+      || (def.score_mode && (def.score_mode !== 'incident_v1' || !Array.isArray(def.objectives)
+        || def.objectives.length !== 2 || !def.objectives.every(goal => goal && typeof goal.id === 'string'
+          && ['pwr_feedwater', 'pwr_heat_removal', 'pwr_power_limited'].includes(goal.type)
+          && Number.isFinite(goal.hold_s) && goal.hold_s > 0 && Array.isArray(goal.after_events)
+          && goal.after_events.length > 0
+          && goal.after_events.every(id => (def.events || []).some(e => e.id === id)))))) {
+      throw new Error('definition');
+    }
+    setText($('#rs-start-message'), '');
+    if (intent.savedMeta) {
+      await boot(def.reactor, def, intent.savedMeta.slot, false, intent.savedMeta);
+    } else {
       app.briefDef = def;
       showBriefing(def);
-    })
-    .catch(() => { boot(app.reactor, null); });
+    }
+  } catch {
+    if (!current()) return;
+    intent.failed = true;
+    app.briefDef = null;
+    setText($('#rs-start-message'), t(errorKey));
+    setAttr($('#rs-start-message'), 'data-error', 'true');
+    retry.disabled = false;
+    retry.hidden = false;
+  }
 }
 
 // ── Leitstand ────────────────────────────────────────────────────────────────
@@ -761,10 +815,12 @@ function initControls() {
 
   $('#rs-save').addEventListener('click', openSaveSlots);
   const saveSlotsModal = $('#rs-save-slots');
-  $('#rs-save-slots-close').addEventListener('click', () => { saveSlotsModal.hidden = true; });
-  saveSlotsModal.addEventListener('click', (ev) => { if (ev.target === saveSlotsModal) saveSlotsModal.hidden = true; });
+  $('#rs-save-slots-close').addEventListener('click', closeSaveSlots);
+  $('#rs-save-slots-retry').addEventListener('click', openSaveSlots);
+  saveSlotsModal.addEventListener('click', (ev) => { if (ev.target === saveSlotsModal) closeSaveSlots(); });
 
   $('#rs-xenon-skip').addEventListener('click', fastForwardXenon);
+  $('#rs-xenon-skip-cancel').addEventListener('click', cancelXenonSkip);
 
   $('#rs-destroyed-close').addEventListener('click', () => {
     $('#rs-destroyed').hidden = true;
@@ -780,7 +836,7 @@ function initControls() {
   document.addEventListener('keydown', (ev) => {
     if (ev.target instanceof HTMLInputElement) return;
     if (ev.code === 'Space' && ev.target.closest?.('button, summary, select, textarea, a[href]')) return;
-    if (ev.code === 'Space') { ev.preventDefault(); setSpeed(app.loop.speed > 0 ? 0 : 1); }
+    if (ev.code === 'Space') { ev.preventDefault(); setSpeed(app.xenonSkipping || app.loop.speed > 0 ? 0 : 1); }
     else if (ev.key === '1') setSpeed(1);
     else if (ev.key === '2') setSpeed(4);
     else if (ev.key === '3') setSpeed(16);
@@ -827,6 +883,12 @@ function scramLabel() {
 }
 
 function setSpeed(v) {
+  const skip = app.xenonSkip;
+  if (skip && skip.engine === app.engine && skip.session === app.session && skip.bootId === app.bootId) {
+    if (v > 0) return;
+    if (v === 0 && !skip.cancelled) { cancelXenonSkip(); return; }
+  }
+  if (!app.loop) return;
   app.loop.setSpeed(v);
   for (const b of $$('.rs-speed-b')) b.classList.toggle('rs-on', Number(b.dataset.speed) === v);
   // v === 0 heisst angehalten: kein engine.step() laeuft mehr, also darf auch
@@ -841,7 +903,7 @@ function setSpeed(v) {
 // Betrieb. In Bloecken statt einem einzigen Riesenschleifendurchlauf, damit
 // der Tab zwischendurch atmen kann (Fortschrittstext, kein "eingefroren").
 const XENON_SKIP_DT = 0.05;
-const XENON_SKIP_CHUNK = 20000;       // ~1000 Sim-s je Block
+const XENON_SKIP_CHUNK = 2000;        // 100 Sim-s je Block
 const XENON_SKIP_CAP_S = 48 * 3600;   // Notbremse, falls X aus welchem Grund auch immer nicht sinkt
 // Ziel ist NICHT "X gegen null", sondern zurueck auf den Vollastwert (X* = 1,
 // per Definition der Normierung in poisons.js): X steigt nach dem Abschalten
@@ -851,6 +913,15 @@ const XENON_SKIP_CAP_S = 48 * 3600;   // Notbremse, falls X aus welchem Grund au
 // 26h -- nahe an der oft genannten "24 Stunden" fuer den RBMK. Ein Ziel von
 // nahe null braeuchte dagegen ueber 80h.
 const XENON_SKIP_TARGET = 1.0;
+
+/** Stoppt nur den Zeitsprung, nicht die Sitzung oder ihren aktuellen Zustand. */
+function cancelXenonSkip() {
+  const skip = app.xenonSkip;
+  if (!skip || skip.engine !== app.engine || skip.session !== app.session || skip.bootId !== app.bootId) return false;
+  skip.cancelled = true;
+  setSpeed(0);
+  return true;
+}
 
 /** Zeit im Zeitraffer aller Zeitraffer: fuer die Jodgrube muesste ein Spieler
  *  sonst 24 echte Minuten bei 60x abwarten. Nur im freien Spiel (siehe
@@ -864,48 +935,85 @@ async function fastForwardXenon() {
   const engine = app.engine;
   const session = app.session;
   const bootId = app.bootId;
-  const sampleTrends = app.sampleTrends;
+  if (app.xenonSkip || app.xenonSkipping || !engine || !app.loop || !session?.free
+    || session.phase !== PHASE.RUNNING) return;
   const s = engine.state;
+  if (!s.scram.active || !(s.X > XENON_SKIP_TARGET) || s.destroyed || s.fault) return;
+  const sampleTrends = app.sampleTrends;
   const btn = $('#rs-xenon-skip');
+  const cancelBtn = $('#rs-xenon-skip-cancel');
+  const message = $('#rs-xenon-skip-message');
   const before = btn.textContent;
-  app.xenonSkipping = true;
-  setSpeed(0);
-  btn.disabled = true;
-  let elapsed = 0;
-  while (elapsed < XENON_SKIP_CAP_S && s.X > XENON_SKIP_TARGET && !s.destroyed && !s.fault) {
-    for (let i = 0; i < XENON_SKIP_CHUNK; i++) {
-      engine.step(XENON_SKIP_DT);
-      session.step(XENON_SKIP_DT, engine.trips.tiles(), engine.trips.unacknowledgedSeconds());
-      sampleTrends();
-      elapsed += XENON_SKIP_DT;
-      if (s.destroyed || s.fault) break;
+  const skip = { engine, session, bootId, cancelled: false, before };
+  const sameRound = () => app.engine === engine && app.session === session && app.bootId === bootId;
+  const owns = () => app.xenonSkip === skip && sameRound();
+  // Integer ticks avoid a floating-point extra step at the 48-hour limit.
+  const maxTicks = Math.floor(XENON_SKIP_CAP_S / XENON_SKIP_DT);
+  let ticks = 0;
+  const canStep = () => owns() && !skip.cancelled && session.phase === PHASE.RUNNING
+    && !s.destroyed && !s.fault && s.X > XENON_SKIP_TARGET && ticks < maxTicks;
+  let completed = false;
+  let failure = null;
+  let cleaned = false;
+  try {
+    setSpeed(0); // Before assigning the token: pausing must not cancel this skip.
+    app.xenonSkip = skip;
+    app.xenonSkipping = true;
+    btn.disabled = true;
+    if (cancelBtn) { cancelBtn.hidden = false; cancelBtn.disabled = false; }
+    setText(cancelBtn, t('btn_xenon_skip_cancel'));
+    if (message) message.hidden = false;
+    setAttr(message, 'role', 'status');
+    setText(message, t('xenon_skip_running'));
+    setText(btn, t('btn_xenon_skip_progress', { h: '0.0' }));
+    while (canStep()) {
+      // Yield BEFORE each block, including the first, so Cancel can paint/run.
+      await new Promise((resolve) => { window.setTimeout(resolve, 0); });
+      for (let i = 0; i < XENON_SKIP_CHUNK && canStep(); i++) {
+        engine.step(XENON_SKIP_DT);
+        session.step(XENON_SKIP_DT, engine.trips.tiles(), engine.trips.unacknowledgedSeconds());
+        sampleTrends();
+        ticks++;
+      }
+      if (!owns()) return;
+      setText(btn, t('btn_xenon_skip_progress', { h: (ticks * XENON_SKIP_DT / 3600).toFixed(1) }));
     }
-    setText(btn, t('btn_xenon_skip_progress', { h: (elapsed / 3600).toFixed(1) }));
-    // Dem Tab eine Gelegenheit geben, das Bild und Eingaben zu bedienen --
-    // sonst haengt der Browser bei 72h Notbremse mehrere Sekunden am Stueck.
-    await new Promise((resolve) => { window.setTimeout(resolve, 0); });
-    if (bootId !== app.bootId) return;
+    if (!owns()) return;
+    app.render.tick(s, performance.now());
+    if (!owns()) return;
+    completed = !skip.cancelled && session.phase === PHASE.RUNNING
+      && !s.destroyed && !s.fault && s.X <= XENON_SKIP_TARGET;
+    if (completed) {
+      const event = { t: s.t_sim, key: 'event_time_skip', severity: 1 };
+      engine.ctx.trends?.mark({ ...event, kind: 'event' });
+      engine.ctx.log.push(event);
+    }
+  } catch (err) {
+    completed = false;
+    failure = t('fault_crash_detail', { msg: String(err && err.message ? err.message : err) });
+  } finally {
+    // An old continuation must never restore controls belonging to a new run.
+    if (owns()) {
+      cleaned = true;
+      app.xenonSkip = null;
+      app.xenonSkipping = false;
+      btn.disabled = false;
+      setText(btn, before);
+      if (cancelBtn) { cancelBtn.hidden = true; cancelBtn.disabled = false; }
+      const status = failure || s.fault || s.destroyed ? null
+        : completed ? 'xenon_skip_complete'
+        : !skip.cancelled && session.phase === PHASE.RUNNING && ticks >= maxTicks
+          ? 'xenon_skip_limit' : 'xenon_skip_cancelled';
+      setText(message, status ? t(status) : '');
+      if (message) message.hidden = !status;
+    }
   }
-  btn.disabled = false;
-  setText(btn, before);
-  app.xenonSkipping = false;
-  app.render.tick(s, performance.now());
-  // Genau einer der drei Ausgaenge -- ein Stoerfall waehrend des Vorspulens
-  // darf nie zugleich als "Xenon abgeklungen, weiter geht's" im Protokoll
-  // landen.
-  //
-  // Der zweite Zweig fragt NUR nach s.destroyed, nicht zusaetzlich nach
-  // !app.endShown: die rAF-Schleife laeuft waehrend der await-Pausen dieser
-  // Funktion weiter und kann showDestroyed() selbst ausloesen. Dann stand
-  // endShown schon, der Zweig fiel durch, und der else-Zweig setzte nach der
-  // Kernzerstoerung "Zeitsprung" ins Protokoll und die Anlage wieder auf 1x --
-  // mit offenem Kernzerstoerungs-Dialog davor.
-  if (s.fault) {
-    showFault(s.fault);
+  if (!cleaned || !sameRound() || app.xenonSkip) return;
+  if (failure || s.fault) {
+    showFault(failure || s.fault);
   } else if (s.destroyed) {
     if (!app.endShown) showDestroyed();
-  } else {
-    app.engine.ctx.log.push({ t: s.t_sim, key: 'event_time_skip', severity: 1 });
+  } else if (completed) {
     setSpeed(1);
   }
 }
@@ -924,15 +1032,116 @@ const AUTOSAVE_INTERVAL_MS = 60000;
  *  stillschweigend. Der Speichern-Knopf hat seit CHANGELOG 0.1.1 keinen
  *  eigenen szenariobezogenen Slot mehr, siehe manualSlotName() -- diese
  *  Funktion bedient nur noch die Autospeicherung. */
-function saveSlotName(prefix) {
-  const scnId = app.session && app.session.scenario ? app.session.scenario.id : null;
-  return prefix + '-' + app.lastReactor + '-' + (scnId || 'free');
+function saveSlotName(prefix, context = captureSaveContext()) {
+  return prefix + '-' + context.reactorId + '-' + (context.scenarioId || 'free');
+}
+
+// Write queues outlive rounds. A stalled server must not grow them indefinitely.
+const SAVE_SLOT_QUEUE_LIMIT = 16;
+const saveWriteQueues = new Map();
+let saveStatus = null;
+let saveSlotsToken = 0;
+
+function resetSaveStatus(savedMeta = null) {
+  const kind = typeof savedMeta?.slot === 'string'
+    ? (/^manual-.+/.test(savedMeta.slot) ? 'manual'
+      : (/^auto(?:-.+)?$/.test(savedMeta.slot) ? 'auto' : null)) : null;
+  const seconds = savedMeta?.saved_at;
+  const valid = kind && Number.isInteger(seconds) && seconds >= 0
+    && Number.isFinite(new Date(seconds * 1000).getTime());
+  saveStatus = { sequence: 0, lastSequence: 0, pending: false, failed: false,
+    last: valid ? { when: seconds * 1000, kind } : null };
+  closeSaveSlots();
+  renderSaveStatus();
+}
+
+function renderSaveStatus() {
+  const last = saveStatus?.last;
+  setText($('#rs-save-last'), last ? t('save_last_success', {
+    when: new Date(last.when).toLocaleString(), kind: t('save_kind_' + last.kind),
+  }) : t('save_none'));
+  setText($('#rs-save-state'), [saveStatus?.failed ? t('save_failed') : '',
+    saveStatus?.pending ? t('save_pending') : ''].filter(Boolean).join(' '));
+  setAttr($('#rs-save-status'), 'data-error', saveStatus?.failed ? 'true' : 'false');
+}
+
+function captureSaveContext() {
+  if (!saveStatus) resetSaveStatus();
+  return { status: saveStatus, engine: app.engine, session: app.session,
+    bootId: app.bootId, reactorId: app.engine?.state.reactor, selectedReactor: app.lastReactor,
+    scenarioId: app.session?.scenario?.id || null };
+}
+
+function isSaveContextCurrent(context) {
+  return context.status === saveStatus && context.engine === app.engine
+    && context.session === app.session && context.bootId === app.bootId
+    && context.selectedReactor === app.lastReactor
+    && context.reactorId === app.engine?.state.reactor
+    && context.scenarioId === (app.session?.scenario?.id || null);
+}
+
+function requestGameSave(slot, kind) {
+  const context = captureSaveContext();
+  const state = context.status;
+  const queue = saveWriteQueues.get(slot) || [];
+  const duplicate = kind === 'auto' && queue.find((job) => job.kind === kind
+    && job.context.status === state && job.context.engine === context.engine
+    && job.context.session === context.session && job.context.bootId === context.bootId
+    && job.context.scenarioId === context.scenarioId);
+  if (duplicate) return duplicate.promise;
+  const sequence = ++state.sequence;
+  state.pending = true;
+  renderSaveStatus();
+  const finish = (ok) => {
+    // An older success may update the last backup, but cannot clear a newer error.
+    if (isSaveContextCurrent(context)) {
+      if (ok && sequence > state.lastSequence) {
+        state.lastSequence = sequence;
+        state.last = { when: Date.now(), kind };
+      }
+      if (sequence === state.sequence) {
+        state.pending = false;
+        state.failed = !ok;
+      }
+      renderSaveStatus();
+    }
+    return ok;
+  };
+  let snapshot;
+  try {
+    if (!context.engine || context.reactorId !== context.selectedReactor || !isSaveContextCurrent(context)
+      || typeof slot !== 'string' || !slot || queue.length >= SAVE_SLOT_QUEUE_LIMIT) {
+      return Promise.resolve(finish(false));
+    }
+    // pack includes live references (e.g. history); detach before any await/queue.
+    snapshot = JSON.parse(JSON.stringify(packSave(context.engine, context.scenarioId,
+      context.session && context.session.run, context.session)));
+  } catch {
+    return Promise.resolve(finish(false));
+  }
+  const previous = queue.length ? queue[queue.length - 1].promise : Promise.resolve();
+  const job = { context, kind, promise: null };
+  job.promise = previous.then(async () => {
+    let ok = false;
+    try {
+      const result = await api.writeSave(slot, snapshot);
+      ok = result?.ok === true;
+    } catch {
+      // Refused and thrown writes have the same persistent feedback.
+    } finally {
+      queue.shift();
+      if (!queue.length) saveWriteQueues.delete(slot);
+    }
+    return finish(ok);
+  });
+  queue.push(job);
+  saveWriteQueues.set(slot, queue);
+  return job.promise;
 }
 
 /** Automatische Sicherung -- eigener Slot, siehe AUTOSAVE_INTERVAL_MS oben. */
 function saveCurrentGame() {
-  const scnId = app.session && app.session.scenario ? app.session.scenario.id : null;
-  return saveGame(app.engine, scnId, saveSlotName('auto'), app.session && app.session.run, app.session);
+  return requestGameSave(saveSlotName('auto'), 'auto');
 }
 
 // Zehn feste Handplaetze je Reaktortyp -- ANDERS als die Autospeicherung
@@ -949,8 +1158,13 @@ function manualSlotName(reactorId, n) {
 /** Schreibt in EINEN der zehn Handplaetze -- welchen, hat der Spieler im
  *  Auswahldialog (openSaveSlots()) angeklickt. */
 function saveManualGame(slot) {
-  const scnId = app.session && app.session.scenario ? app.session.scenario.id : null;
-  return saveGame(app.engine, scnId, slot, app.session && app.session.run, app.session);
+  return requestGameSave(slot, 'manual');
+}
+
+function closeSaveSlots() {
+  saveSlotsToken++;
+  const modal = $('#rs-save-slots');
+  if (modal) modal.hidden = true;
 }
 
 /** Speichern-Dialog: zeigt alle zehn Handplaetze DES AKTUELLEN Reaktortyps,
@@ -958,19 +1172,34 @@ function saveManualGame(slot) {
  *  in den gewaehlten Slot -- die angezeigten Metadaten SIND die
  *  Bestaetigung, kein zusaetzliches "Wirklich ueberschreiben?" noetig (das
  *  gibt es nur beim Loeschen, siehe makeDeleteSaveButton()). */
-function openSaveSlots() {
+async function openSaveSlots() {
   const modal = $('#rs-save-slots');
   const list = $('#rs-slot-list');
-  const reactorId = app.lastReactor;
+  const message = $('#rs-save-slots-message');
+  const retry = $('#rs-save-slots-retry');
+  const context = captureSaveContext();
+  const token = ++saveSlotsToken;
+  const current = () => token === saveSlotsToken && !modal.hidden && isSaveContextCurrent(context);
+  const reactorId = context.reactorId;
   const slotRe = new RegExp(`^manual-${reactorId}-slot(\\d+)$`);
   list.replaceChildren();
-  Promise.all([app.scenariosPromise, api.listSaves()]).then(([, r]) => {
-    const saves = (r.ok && r.data && r.data.saves) || [];
+  modal.hidden = false;
+  setText(message, t('save_list_loading'));
+  setAttr(message, 'data-error', 'false');
+  setText(retry, t('btn_retry'));
+  if (retry) retry.hidden = true;
+  try {
+    const [, r] = await Promise.all([app.scenariosPromise, api.listSaves()]);
+    if (!current()) return false;
+    if (!r?.ok || !Array.isArray(r.data?.saves)) throw new Error('save_list_failed');
+    const saves = r.data.saves;
     const bySlot = new Map();
     for (const sv of saves) {
       const m = sv.slot && sv.slot.match(slotRe);
       if (m) bySlot.set(Number(m[1]), sv);
     }
+    let writing = false;
+    const buttons = [];
     for (let n = 1; n <= MANUAL_SLOTS; n++) {
       const slot = manualSlotName(reactorId, n);
       const sv = bySlot.get(n);
@@ -983,21 +1212,42 @@ function openSaveSlots() {
           })
         : t('save_slot_free', { n });
       const btn = el('button.rs-btn', { type: 'button' }, [label]);
-      btn.addEventListener('click', () => {
-        saveManualGame(slot).then((ok) => {
-          modal.hidden = true;
-          flash($('#rs-save'), t(ok ? 'save_ok' : 'save_failed'));
-          if (ok) refreshResumeList();
-        });
+      btn.addEventListener('click', async () => {
+        if (writing || !current()) return;
+        writing = true;
+        for (const button of buttons) button.disabled = true;
+        setText(message, t('save_pending'));
+        const ok = await saveManualGame(slot);
+        if (!current()) return;
+        if (ok) {
+          closeSaveSlots();
+          refreshResumeList();
+        } else {
+          writing = false;
+          for (const button of buttons) button.disabled = false;
+          setText(message, t('save_failed'));
+          setAttr(message, 'data-error', 'true');
+        }
       });
       const row = [btn];
       // Loeschen nur anbieten, wo etwas zum Loeschen da ist -- ein leerer
       // Slot hat nichts, das verschwinden koennte.
-      if (sv) row.push(makeDeleteSaveButton(slot, openSaveSlots));
+      if (sv) row.push(makeDeleteSaveButton(slot, () => {
+        if (current() && !writing) openSaveSlots();
+      }));
+      buttons.push(...row);
       list.append(el('div.rs-resume-row', null, row));
     }
-    modal.hidden = false;
-  });
+    setText(message, '');
+    return true;
+  } catch {
+    if (!current()) return false;
+    list.replaceChildren();
+    setText(message, t('save_list_failed'));
+    setAttr(message, 'data-error', 'true');
+    if (retry) retry.hidden = false;
+    return false;
+  }
 }
 
 function showFault(detail) {
@@ -1052,9 +1302,10 @@ function restart() {
  *  loest sie aus -- dieselbe Stelle, die auch die Server-Nachrechnung
  *  (game/replay.js) fuer 'scram' anspringt. */
 function triggerScram() {
+  const skipping = cancelXenonSkip();
   if (app.horn) app.horn.scram();
   record(app.engine, 'scram', null);
-  setSpeed(1);
+  if (!skipping) setSpeed(1);
 }
 
 /** Menü-Knopf UND Strg+X (siehe initStart()) rufen dieselbe Stelle -- ein
@@ -1072,11 +1323,21 @@ function clearEndDialogs() {
   $('#rs-debrief').hidden = true;
   $('#rs-destroyed').hidden = true;
   app.pendingResult = null;
+  if (app.xenonSkip) {
+    app.xenonSkip.cancelled = true;
+    setText($('#rs-xenon-skip'), app.xenonSkip.before);
+  }
+  app.xenonSkip = null;
   app.xenonSkipping = false;
   $('#rs-xenon-skip').disabled = false;
+  $('#rs-xenon-skip-cancel').hidden = true;
+  setText($('#rs-xenon-skip-message'), '');
+  $('#rs-xenon-skip-message').hidden = true;
 }
 
 function toMenu() {
+  cancelScenarioLoad();
+  closeSaveSlots();
   app.bootId = (app.bootId || 0) + 1;
   app.session = null;
   clearEndDialogs();
@@ -1281,7 +1542,10 @@ function applyStatusSelection(keys) {
   });
 }
 
-async function boot(reactorId, scenarioDef, loadSlot, cold) {
+async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
+  cancelScenarioLoad();
+  app.briefDef = scenarioDef || null;
+  resetSaveStatus();
   const plant = getPlant(reactorId);
   if (!plant) return;
 
@@ -1342,6 +1606,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
     if (!response.ok || !response.data) {
       app.bgMusic.stop();
       setText(startMessage, t('load_failed'));
+      setAttr(startMessage, 'data-error', 'true');
       return;
     }
     saved = response.data;
@@ -1382,10 +1647,12 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
       app.session = null;
       app.bgMusic.stop();
       setText(startMessage, t('load_failed'));
+      setAttr(startMessage, 'data-error', 'true');
       return;
     }
     app.engine.recorder = null;
     app.session.scenario?.catchUp(app.engine.state.t_sim);
+    resetSaveStatus(savedMeta);
   }
   setText(startMessage, '');
   $('#rs-start').hidden = true;

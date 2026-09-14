@@ -51,9 +51,10 @@ function harness(readSave = async () => ({ ok: false })) {
     },
     setSpeed(v) { app.loop.setSpeed(v); },
     loadScores() {}, renderLearning() {}, buildTutorial() {}, renderTutorialResult() {}, renderObjectiveResult() {},
+    closeSaveSlots() {}, resetSaveStatus() {},
     renderGuidance(host, def) { host.hidden = !def?.guidance; },
   });
-  for (const name of ['clearEndDialogs', 'toMenu', 'showBriefing', 'showDebrief', 'showDestroyed', 'boot']) {
+  for (const name of ['cancelScenarioLoad', 'clearEndDialogs', 'toMenu', 'showBriefing', 'showDebrief', 'showDestroyed', 'boot']) {
     const fn = source.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
     assert.ok(fn, name);
     vm.runInContext(fn[0], ctx);
@@ -99,6 +100,20 @@ test('load error stays in menu with persistent feedback and no autosave', async 
   assert.equal(h.counters.autosaves, 0);
   assert.equal(h.$('#rs-start').hidden, false);
   assert.equal(h.$('#rs-start-message').textContent, 'load_failed');
+});
+
+test('changing selection cancels a pending save restore even before another run starts', async () => {
+  const request = deferred();
+  const h = harness(() => request.promise);
+  const pending = h.ctx.boot('pwr', null, 'slot');
+  await Promise.resolve(); await Promise.resolve();
+  h.ctx.cancelScenarioLoad();
+  request.resolve({ ok: true, data: pack(createEngine(getPlant('pwr'))) });
+  await pending;
+  assert.equal(h.counters.starts, 0);
+  assert.equal(h.counters.autosaves, 0);
+  assert.equal(h.app.session, null);
+  assert.equal(h.$('#rs-start').hidden, false);
 });
 
 test('loaded state is applied before panels and first simulation step', async () => {

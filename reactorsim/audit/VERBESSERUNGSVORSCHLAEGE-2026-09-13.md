@@ -2,7 +2,7 @@
 
 Stand: 13.09.2026. Ergänzung zum [Spielaudit](AUDIT-2026-09-13.md) und zum [Physik-Audit](PHYSIK-AUDIT-2026-09-13.md).
 
-Neben den gefundenen Bugs und der Physik sollten vor allem Verständlichkeit, Bedienung und Langzeitmotivation verbessert werden. Die folgenden Punkte dokumentieren die ursprünglichen Vorschläge. Stand 14.09.2026: Die erste Etappe mit Diagnoseanzeigen (Punkt 2) und Schichtauswertung (Punkt 4) ist in Version 0.1.18 umgesetzt; Umfang und Grenzen stehen in [VERBESSERUNGEN-2026-09-14.md](VERBESSERUNGEN-2026-09-14.md). Das DWR-Anfahren-Tutorial (Punkt 1) ist in Version 0.1.19 umgesetzt; siehe [TUTORIAL-2026-09-14.md](TUTORIAL-2026-09-14.md). Version 0.1.20 setzt Punkt 6 teilweise und Punkt 7 für die beiden genannten Einzelstörungen mit Modellgrenzen um; siehe [SZENARIEN-2026-09-14.md](SZENARIEN-2026-09-14.md). Version 0.1.21 setzt Punkt 5 für die drei neuen DWR-Schichten um; siehe [SZENARIOZIELE-2026-09-14.md](SZENARIOZIELE-2026-09-14.md). Version 0.1.22 setzt Punkt 3 global und den Trendhistorien-Teil von Punkt 8 um; siehe [TRENDS-2026-09-14.md](TRENDS-2026-09-14.md). Ziele für die übrigen Szenarien und die unten genannten Komfortreste bleiben offen.
+Neben den gefundenen Bugs und der Physik sollten vor allem Verständlichkeit, Bedienung und Langzeitmotivation verbessert werden. Die folgenden Punkte dokumentieren die ursprünglichen Vorschläge. Stand 14.09.2026: Die erste Etappe mit Diagnoseanzeigen (Punkt 2) und Schichtauswertung (Punkt 4) ist in Version 0.1.18 umgesetzt; Umfang und Grenzen stehen in [VERBESSERUNGEN-2026-09-14.md](VERBESSERUNGEN-2026-09-14.md). Das DWR-Anfahren-Tutorial (Punkt 1) ist in Version 0.1.19 umgesetzt; siehe [TUTORIAL-2026-09-14.md](TUTORIAL-2026-09-14.md). Version 0.1.20 setzt Punkt 6 teilweise und Punkt 7 für die beiden genannten Einzelstörungen mit Modellgrenzen um; siehe [SZENARIEN-2026-09-14.md](SZENARIEN-2026-09-14.md). Version 0.1.21 setzt Punkt 5 für die drei neuen DWR-Schichten um; siehe [SZENARIOZIELE-2026-09-14.md](SZENARIOZIELE-2026-09-14.md). Version 0.1.22 setzt Punkt 3 global und den Trendhistorien-Teil von Punkt 8 um; siehe [TRENDS-2026-09-14.md](TRENDS-2026-09-14.md). Version 0.1.23 erfüllt Punkt 8 mit Speicherstatus und Zeitsprung-Abbruch vollständig; siehe [KOMFORT-2026-09-14.md](KOMFORT-2026-09-14.md). Ziele für die übrigen Szenarien und die weiteren fachlichen Erweiterungen bleiben offen.
 
 ## 1. Interaktives Anfahren-Tutorial — DWR-Einstieg umgesetzt in 0.1.19
 
@@ -79,17 +79,25 @@ Nichtstun nicht mehr zum Erfolg. Eine vollständige Diagnosewertung fehlt
 weiterhin, Scores beweisen keine richtige reale Behandlung. Die DE-/EN-Texte
 benennen diese Grenzen ausdrücklich.
 
-## 8. Komfort beim Spielen - Trendhistorie umgesetzt in 0.1.22
+## 8. Komfort beim Spielen - vollständig erfüllt in 0.1.23
 
-- Offen: letzten erfolgreichen (Auto-)Speicherzeitpunkt anzeigen.
-- Umgesetzt: vorgehaltene Trendhistorie und Marker nach Fortsetzen exakt
+- Umgesetzt in 0.1.23: globaler letzter erfolgreicher Auto-/Handspeicherzeitpunkt
+  unter den Bedienelementen, mit bleibendem Fehler auch bei laufendem Retry.
+  Neue Schreibbestätigung verwendet die Browserzeit, geladene Stände das echte
+  serverseitige `saved_at`; keine neue Speicherung beim Laden, Status je Runde.
+- Umgesetzt in 0.1.22: vorgehaltene Trendhistorie und Marker nach Fortsetzen exakt
   erhalten, ohne Ausdünnung der gespeicherten Daten; alte/ungültige Trendblöcke
   werden als fehlende Historie benannt, ohne gültige Anlagenzustände abzulehnen.
-- Offen: einen laufenden Zeitsprung ausdrücklich abbrechen können.
+- Umgesetzt in 0.1.23: ausdrücklicher Xenon-Zeitsprung-Abbruch sowie Abbruch
+  durch Pause, globale Leertaste oder SCRAM. Erreichter Zustand bleibt pausiert;
+  nur Zielerfolg setzt mit 1× fort, nicht das 48-Stunden-Limit.
 
 Zusätzlich umgesetzt: der gesamte Laufzeit-Hinweisbereich ist über seine
 Überschrift einklappbar, standardmäßig offen, mit gemerkter Wahl und weiterhin
 laufenden Zielen. Die Einweisung bleibt ohne äußeren Klappbereich.
+Sichere Speicherwarteschlangen und wiederholbares Szenarioladen ergänzen den
+Komfortabschluss; Umfang, Nachweise und Grenzen im
+[Komfort-Audit 0.1.23](KOMFORT-2026-09-14.md).
 
 ## Empfohlene Reihenfolge
 

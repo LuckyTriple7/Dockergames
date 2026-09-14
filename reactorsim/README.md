@@ -96,6 +96,14 @@ Glossar bleiben verfügbar; alle neuen Texte gibt es auf Deutsch und Englisch.
 Die globale Helfereinstellung wird nicht verändert. Bestehende Szenarien ohne
 `guidance` behalten ihr bisheriges Verhalten, unabhängig von ihrer Schwierigkeit.
 
+Beim neuen Start und beim Fortsetzen zeigt die Auswahl den Ladevorgang sowie
+Fehler mit Wiederholungsmöglichkeit. Eine Wiederholung bleibt an das gewählte
+Szenario, den Reaktortyp und gegebenenfalls den Speicherplatz gebunden.
+Fehlende Szenario-Metadaten werden erneut abgerufen; unpassende oder ungültige
+Definitionen starten nicht stillschweigend freies Spiel. Ein Auswahlwechsel,
+Zurück oder Menü verwirft verspätete Ergebnisse, auch beim anschließenden Laden
+des Spielstands. Ein unpassender Spielstand erhält eine allgemeine Ladefehlermeldung.
+
 Die Physik bleibt unverändert. Speisewasserverlust bedeutet hier nur Regler auf
 Hand/null: Automatik und Handstellwert bleiben bedienbar, ohne permanenten
 Pumpendefekt oder Hilfsspeisung. Das Rohrleck ist ein vereinfachter Masseneintrag
@@ -167,8 +175,17 @@ bleibt für den Server undurchsichtig und wird beim Laden im Browser geprüft.
 
 - **Zeitraffer** 1× / 4× / 16× / 60×. Der Rechenschritt bleibt dabei konstant,
   der Zeitraffer verändert die Genauigkeit also nicht. Bei einer Schnell-
-  abschaltung schaltet das Spiel selbst auf 1× zurück.
+  abschaltung schaltet das Spiel außerhalb eines aktiven Xenon-Zeitsprungs
+  selbst auf 1× zurück.
 - **SCRAM** braucht zwei Tipper: der erste scharf, der zweite löst aus.
+- **Xenon-Zeitsprung:** Nur im laufenden freien Spiel nach SCRAM bei `X > 1`.
+  **Abbrechen**, Pause, die globale Leertasten-Pausenfunktion oder ausgelöstes
+  SCRAM beenden den Sprung; der erreichte Anlagenzustand bleibt erhalten und
+  pausiert. Während des Sprungs sind positive Tempowechsel gesperrt.
+  Es laufen echte Physikschritte, kein direkter Zustandswechsel. Nur das Ziel
+  `X <= 1` führt zu Erfolg, Log-/Trendmarker und Weiterlauf bei 1×.
+  Das Limit von 48 Simulationsstunden ist kein Erfolg; Abbruch, Fehler oder
+  Zerstörung führen ebenfalls nicht zum automatischen Weiterlauf.
 - **Kein automatischer Schutz.** Die Meldetafel warnt zuverlässig, greift aber nie selbst ein — die Schnellabschaltung ist allein Sache des Bedieners. Wer eine Meldung ignoriert, riskiert echten Brennstoffschaden.
 - **Hochformat** zeigt die Panels als Reiter, breite Bildschirme als Raster mit
   dem Fließbild in der Mitte.
@@ -213,6 +230,29 @@ und gekürzte Markerlisten. Die Darstellung verdichtet Messpunkte je Pixel
 unter Erhalt von Min/Max und Kurvenlücken, nicht die gespeicherten Daten.
 
 ## Spielstände
+
+Automatische Sicherungen laufen alle 60 echten Sekunden in eigenen Slots je
+Reaktortyp und Szenario beziehungsweise freiem Spiel. **Speichern** öffnet zehn
+Handspeicherplätze je Reaktortyp; ein Klick schreibt in den gewählten Platz.
+Scheitert das Laden der Platzliste, erscheinen Fehler und Wiederholen statt
+scheinbar freier Plätze. Ein Schreibfehler lässt den Dialog für einen erneuten
+Versuch offen; geschlossene oder veraltete Dialoge schreiben nicht in eine neue Runde.
+
+Der globale Speicherstatus unter den Bedienelementen zeigt den letzten
+erfolgreichen Auto-/Handspeicherzeitpunkt. Ein Fehler bleibt auch während eines
+neuen Versuchs neben dem bisherigen Erfolg sichtbar. Nach einem neuen Schreiben
+gilt die Bestätigungszeit im Browser (`Date.now()`); beim Fortsetzen stammt die
+Zeit aus den echten Server-Metadaten (`saved_at`). Laden zählt nicht als neue
+Speicherung. Der Status wird je Runde zurückgesetzt; außer geladenen Metadaten
+gibt es keine rundenübergreifend gespeicherte Statushistorie.
+
+Jeder neue Speicherauftrag hält den Zustand bereits beim Auslösen als
+abgetrennten Snapshot fest. Schreibaufträge desselben Slots laufen auch über
+Rundenwechsel hinweg in Reihenfolge, damit alte Antworten keinen neueren Stand
+überschreiben. Die Warteschlange ist auf 16 Aufträge je Slot begrenzt;
+ausstehende Autosicherungen desselben Kontexts werden zusammengefasst.
+Fehler blockieren spätere Aufträge nicht; alte Antworten verändern nicht die
+Statusanzeige der aktuellen Runde. Details: [Komfort-Audit](audit/KOMFORT-2026-09-14.md).
 
 Speichern erhält alle noch vorgehaltenen Trendwerte und Marker. Die 15
 Float32-Kanäle und Float64-Zeitwerte werden vollständig binär/Base64 abgelegt,
