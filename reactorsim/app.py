@@ -253,6 +253,7 @@ def _load_scenarios() -> list:
             'brief_key': data.get('brief_key'),
             'duration_s': data.get('duration_s', 0),
             'tutorial': data.get('tutorial'),
+            'guidance': data.get('guidance'),
         })
     return out
 

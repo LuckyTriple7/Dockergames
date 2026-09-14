@@ -39,8 +39,9 @@ function harness(readSave = async () => ({ ok: false })) {
     scramLabel: () => 'SCRAM', refreshResumeList() {}, playClip() {},
     showFault() {}, AUTOSAVE_INTERVAL_MS: 60000, XENON_SKIP_TARGET: 1,
     window: { clearInterval() {}, setInterval() { counters.autosaves++; return 1; } },
-    buildPanels() {
+    buildPanels(engine, render, helperEnabled) {
       counters.panels++;
+      counters.helperEnabled = helperEnabled;
       return { horn: { silence() {}, meltdown() {} }, annun: { log() {} },
         sampleTrends() { counters.samples++; } };
     },
@@ -50,6 +51,7 @@ function harness(readSave = async () => ({ ok: false })) {
     },
     setSpeed(v) { app.loop.setSpeed(v); },
     loadScores() {}, renderLearning() {}, buildTutorial() {}, renderTutorialResult() {},
+    renderGuidance(host, def) { host.hidden = !def?.guidance; },
   });
   for (const name of ['clearEndDialogs', 'toMenu', 'showBriefing', 'showDebrief', 'showDestroyed', 'boot']) {
     const fn = source.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
@@ -189,4 +191,34 @@ test('tutorial resumes its objective, stays unranked and restarts from preparati
   assert.equal(resumed.app.session.tutorial.index, 0);
   assert.equal(resumed.app.engine.state.rod[0], 1);
   assert.equal(resumed.$('#rs-debrief').hidden, true);
+});
+
+test('scenario assistance survives resume and never changes the global helper preference', async () => {
+  const defs = ['pwr_feedwater_loss', 'pwr_sg_tube_leak', 'pwr_combined_faults'].map(id =>
+    JSON.parse(readFileSync(new URL(`../static/data/scenarios/${id}.json`, import.meta.url))));
+  const h = harness();
+  h.app.prefs.helper = true;
+  for (const def of defs) {
+    await h.ctx.boot('pwr', def);
+    assert.equal(h.counters.helperEnabled, def.difficulty === 1);
+    assert.equal(h.$('#rs-guidance').hidden, false);
+    h.$('#rs-brief .rs-modal-box').scrollTop = 350;
+    h.ctx.showBriefing(def);
+    assert.equal(h.$('#rs-brief .rs-modal-box').scrollTop, 0);
+    assert.equal(h.$('#rs-brief-guidance').hidden, false);
+    assert.equal(h.app.session.tutorial, null, 'ordinary scenarios remain ranked');
+    assert.equal(h.app.prefs.helper, true);
+  }
+  const def = defs[2];
+  const saved = JSON.parse(JSON.stringify(pack(h.app.engine, def.id, h.app.session.run, h.app.session)));
+  const resumed = harness(async () => ({ ok: true, data: saved }));
+  await resumed.ctx.boot('pwr', def, 'slot');
+  assert.equal(resumed.counters.helperEnabled, false);
+  assert.equal(resumed.$('#rs-guidance').hidden, false);
+  await resumed.ctx.boot('pwr', null);
+  assert.equal(resumed.counters.helperEnabled, true);
+  assert.equal(resumed.$('#rs-guidance').hidden, true);
+  h.app.prefs.helper = false;
+  await h.ctx.boot('pwr', defs[0]);
+  assert.equal(h.counters.helperEnabled, false, 'guided play still respects user preference');
 });

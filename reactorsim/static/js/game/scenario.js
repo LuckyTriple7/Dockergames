@@ -77,6 +77,7 @@ export class Scenario {
 
   /** Fällige akustische Vorwarnungen -- je Ereignis einmal, 2-5 Minuten davor. */
   dueAlerts(t) {
+    if (this.def.guidance?.event_alerts === false) return [];
     const out = [];
     for (const e of this.events) {
       if (!e.alertFired && t >= e.alertAt) { e.alertFired = true; out.push(e); }

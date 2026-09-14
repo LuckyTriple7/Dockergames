@@ -2,7 +2,7 @@
 
 Stand: 13.09.2026. Ergänzung zum [Spielaudit](AUDIT-2026-09-13.md) und zum [Physik-Audit](PHYSIK-AUDIT-2026-09-13.md).
 
-Neben den gefundenen Bugs und der Physik sollten vor allem Verständlichkeit, Bedienung und Langzeitmotivation verbessert werden. Die folgenden Punkte dokumentieren die ursprünglichen Vorschläge. Stand 14.09.2026: Die erste Etappe mit Diagnoseanzeigen (Punkt 2) und Schichtauswertung (Punkt 4) ist in Version 0.1.18 umgesetzt; Umfang und Grenzen stehen in [VERBESSERUNGEN-2026-09-14.md](VERBESSERUNGEN-2026-09-14.md). Das DWR-Anfahren-Tutorial (Punkt 1) folgt in Version 0.1.19; siehe [TUTORIAL-2026-09-14.md](TUTORIAL-2026-09-14.md). Die Punkte 3 und 5–8 bleiben offen.
+Neben den gefundenen Bugs und der Physik sollten vor allem Verständlichkeit, Bedienung und Langzeitmotivation verbessert werden. Die folgenden Punkte dokumentieren die ursprünglichen Vorschläge. Stand 14.09.2026: Die erste Etappe mit Diagnoseanzeigen (Punkt 2) und Schichtauswertung (Punkt 4) ist in Version 0.1.18 umgesetzt; Umfang und Grenzen stehen in [VERBESSERUNGEN-2026-09-14.md](VERBESSERUNGEN-2026-09-14.md). Das DWR-Anfahren-Tutorial (Punkt 1) ist in Version 0.1.19 umgesetzt; siehe [TUTORIAL-2026-09-14.md](TUTORIAL-2026-09-14.md). Version 0.1.20 setzt Punkt 6 teilweise und Punkt 7 für die beiden genannten Einzelstörungen mit Modellgrenzen um; siehe [SZENARIEN-2026-09-14.md](SZENARIEN-2026-09-14.md). Die Punkte 3, 5 und 8 bleiben offen.
 
 ## 1. Interaktives Anfahren-Tutorial — DWR-Einstieg umgesetzt in 0.1.19
 
@@ -33,13 +33,28 @@ Nach der Schicht erklären:
 
 Neben „bestanden“ auch Zwischenziele zeigen: Anlage stabilisiert, Wärmeabfuhr hergestellt, Versorgung wiederhergestellt. Punkte sollten gute Störfallbeherrschung erkennbar belohnen.
 
-## 6. Gestufte Schwierigkeit
+## 6. Gestufte Schwierigkeit - teilweise umgesetzt in 0.1.20
 
 Einstieg mit Einweisung und Hinweisen; anspruchsvollere Schichten mit unvollständigen Messinformationen und kombinierten Störungen. Physikalische Zusammenhänge bleiben gleich.
 
-## 7. Mehr Abwechslung durch vorhandene Mechanik
+Umgesetzt: drei DWR-Stufen mit konkreter Anleitung, selbständiger Einzelstörung
+und kombinierten Störungen; Profile auf den Karten, Hinweise in Einweisung und
+Spiel. Vorwarnung und automatischer Helfer sind szenarioabhängig begrenzt,
+ohne Änderung der Physik oder globalen Helferpräferenz. Unvollständige
+Messinformationen und generische Messausfälle bleiben späterem Ausbau vorbehalten.
+
+## 7. Mehr Abwechslung durch vorhandene Mechanik - zwei Einzelstörungen umgesetzt in 0.1.20
 
 Dampferzeugerrohrbruch oder Speisewasserausfall als eigenständige Diagnoseaufgabe anbieten. Zunächst jeweils eine klare Störung verwenden, bevor mehrere Ereignisse kombiniert werden.
+
+`pwr_sg_tube_leak` und `pwr_feedwater_loss` sind eigene Schichten;
+`pwr_combined_faults` ergänzt die Kombination. Das Rohrleck verwendet nur einen
+zusammengefassten DE und eine vereinfachte Leckwirkung, ohne Einzelisolation oder
+Aktivitätsmessung. Speisewasserverlust setzt nur den Regler auf Hand/null,
+jederzeit wiederherstellbar und ohne Hilfsspeisung. Eine Diagnosewertung oder
+neue Szenarioziele sind nicht umgesetzt (Punkt 5 bleibt offen): Beim Rohrleck
+kann auch Nichtstun den Zeitabschluss erreichen; Scores beweisen keine richtige
+Behandlung. Die DE-/EN-Texte benennen diese Grenzen ausdrücklich.
 
 ## 8. Komfort beim Spielen
 

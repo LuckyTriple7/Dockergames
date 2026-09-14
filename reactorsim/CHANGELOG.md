@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.20
+
+- Drei kurze DWR-Schichten mit gestufter Unterstützung: Speisewasserregelung
+  (geführt, Schwierigkeit 1, 15 Minuten), Dampferzeuger-Rohrleck mit 8 kg/s
+  (selbständig, Schwierigkeit 2, 15 Minuten) und kombinierter Turbinen-/
+  Speisewasserstörung (anspruchsvoll, Schwierigkeit 3, 18 Minuten).
+- Szenarioauswahl nach Schwierigkeit, Tutorial zuerst; Stufenprofile auf den
+  Karten. Deutsche/englische Hinweise in Einweisung und Spiel, Einweisung
+  erneut zu öffnen. `guidance` steuert `hint_key`, `event_alerts` und
+  `auto_helper`: Stufe 1 erlaubt Vorwarnung/Helfer gemäß Einstellungen,
+  Stufen 2 und 3 nicht. Globale Helferpräferenz und alte Szenarien ohne
+  `guidance` bleiben unverändert.
+- Keine Physikänderung: Speisewasserregelung bleibt wiederherstellbar, ohne
+  Hilfsspeisung oder permanenten Pumpendefekt. Rohrleck nur im vereinfachten
+  zusammengefassten DE-Modell, ohne Einzelisolation/Aktivitätsmessung.
+  Zeitabschluss und Punkte prüfen keine Diagnose oder korrekte Behandlung;
+  beim Rohrleck kann auch Nichtstun zum Zeitabschluss führen. Diese Grenzen
+  stehen ausdrücklich in den deutschen und englischen Szenariotexten.
+- JavaScript 164/164 und Python 82/82 bestanden; neue Guidance- und
+  Progressionstests sowie ergänzte Lifecycle-/API-Tests. Echter Chromium-Check
+  auf Desktop und emulierter Mobilansicht: 289 Prüfungen bestanden. Dabei
+  übernommene Scrollpositionen in Einweisung und Hinweiskarten korrigiert.
+- Umfang, Reproduktion, Balancing und offener Ausbau:
+  `audit/SZENARIEN-2026-09-14.md`.
+
 ## 0.1.19
 
 - Interaktives DWR-Anfahren-Tutorial als eigene Übung in der Szenarioauswahl.

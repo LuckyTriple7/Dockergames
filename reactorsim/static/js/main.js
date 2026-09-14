@@ -21,6 +21,7 @@ import { attachRecorder } from './game/recorder.js';
 import { record } from './game/coreActions.js';
 import { renderLearning } from './ui/debrief.js';
 import { buildTutorial, renderTutorialResult } from './ui/tutorial.js';
+import { renderGuidance } from './ui/guidance.js';
 
 // Panel-Buchstaben fuer die Fenster-Tastenkuerzel (siehe initControls():
 // Tastatur am Rechner). Ungewandeltes Zeichen statt Kachel-Position, damit
@@ -453,7 +454,8 @@ function renderScenarios(reactorId) {
   const list = $('#rs-scn-list');
   const headline = $('#rs-scn-headline');
   const go = $('#rs-start-go');
-  const mine = app.scenarios.filter((x) => x.reactor === reactorId);
+  const mine = app.scenarios.filter((x) => x.reactor === reactorId)
+    .sort((a, b) => Number(!!b.tutorial) - Number(!!a.tutorial) || a.difficulty - b.difficulty);
 
   app.chosen = null;
   setText(go, t('start_free_play'));
@@ -467,6 +469,7 @@ function renderScenarios(reactorId) {
     const meta = scn.id
       ? `${t('brief_duration')} ${Math.round(scn.duration_s / 60)} min · `
         + `${t('brief_difficulty')} ${'\u2605'.repeat(scn.difficulty)}`
+        + (scn.guidance ? ` / ${t('scn_level_' + scn.difficulty)}` : '')
       : t('scn_free_desc');
     const btn = el('button.rs-scn', { type: 'button', 'aria-pressed': String(scn.id === null) }, [
       el('span.rs-scn-name', { text: t(scn.title_key) }),
@@ -501,6 +504,8 @@ function showBriefing(def) {
   // daneben waere sinnlos.
   $('#rs-brief-back').hidden = running;
   $('#rs-brief').hidden = false;
+  renderGuidance($('#rs-brief-guidance'), def);
+  $('#rs-brief .rs-modal-box').scrollTop = 0;
 }
 
 /** Szenariodatei nachladen und die Einweisung zeigen. */
@@ -1363,8 +1368,10 @@ async function boot(reactorId, scenarioDef, loadSlot, cold) {
   // prefs.helper ist ungesetzt bei jedem Spieler, der die Kopfzeile im
   // Startbildschirm nie angefasst hat -- Standard ist AN, siehe rs-helper-
   // toggle in initStart().
-  const built = buildPanels(app.engine, app.render, app.prefs.helper !== false);
+  const built = buildPanels(app.engine, app.render,
+    app.prefs.helper !== false && scenarioDef?.guidance?.auto_helper !== false);
   buildTutorial(app.session, app.render);
+  renderGuidance($('#rs-guidance'), scenarioDef, () => showBriefing(scenarioDef));
   app.horn = built.horn;
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;

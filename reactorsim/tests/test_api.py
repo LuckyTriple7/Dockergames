@@ -72,6 +72,21 @@ def test_health_and_meta(client):
     assert all(s['reactor'] in ('pwr', 'bwr', 'rbmk') for s in meta['scenarios'])
 
 
+def test_progression_scenarios_and_guidance_are_discoverable(client):
+    scenarios = {s['id']: s for s in client.get('/api/meta').get_json()['scenarios']}
+    ids = ['pwr_feedwater_loss', 'pwr_sg_tube_leak', 'pwr_combined_faults']
+    for difficulty, scenario_id in enumerate(ids, 1):
+        scenario = scenarios[scenario_id]
+        assert scenario['difficulty'] == difficulty
+        assert not scenario['tutorial']
+        assert scenario['guidance']['auto_helper'] == (difficulty == 1)
+        assert scenario['guidance']['event_alerts'] == (difficulty == 1)
+        assert scenario['guidance']['hint_key'] == f'scn_{scenario_id}_hint'
+    page = client.get('/').get_data(as_text=True)
+    assert 'id="rs-guidance"' in page
+    assert 'id="rs-brief-guidance"' in page
+
+
 @pytest.mark.parametrize('slot', ['UPPER', 'mit punkt.', 'a' * 33, 'mit leer zeichen'])
 def test_bad_slot_names_rejected(client, slot):
     r = client.put(f'/api/saves/{slot}', json={'v': 1})

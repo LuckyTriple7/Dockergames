@@ -1,0 +1,18 @@
+{
+  "id": "pwr_combined_faults",
+  "reactor": "pwr",
+  "difficulty": 3,
+  "title_key": "scn_pwr_combined_faults_title",
+  "brief_key": "scn_pwr_combined_faults_brief",
+  "guidance": {
+    "hint_key": "scn_pwr_combined_faults_hint",
+    "event_alerts": false,
+    "auto_helper": false
+  },
+  "duration_s": 1080,
+  "seed": 20260916,
+  "demand": [{ "t": 0, "mw": 1400 }, { "t": 1080, "mw": 1400 }],
+  "grid": { "tolerance_mw": 60 },
+  "events": [{ "t": 180, "id": "turbine_trip" }, { "t": 240, "id": "feedwater_loss" }],
+  "fail": [{ "type": "fuel_damage" }, { "type": "trip_ignored", "for_s": 90 }]
+}

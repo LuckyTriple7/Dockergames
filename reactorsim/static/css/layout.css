@@ -273,3 +273,4 @@
 .rs-tutorial-hint { color: var(--rs-fg-dim); }
 .rs-tutorial details { margin-top: 6px; }
 .rs-tutorial summary { cursor: pointer; }
+.rs-guidance p { white-space: pre-line; }

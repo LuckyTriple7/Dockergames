@@ -65,13 +65,45 @@ gelieferte Energie, Abweichung vom Bedarf, unquittierte Alarmsekunden,
 Grenzwertüberschreitungen nach Schwere, Schnellabschaltungen und
 Brennstoffschaden.
 
-| Szenario | Typ | Dauer |
-|---|---|---|
-| Lastfolge über vier Stunden | DWR | 240 min |
-| Turbinenschnellschluss | DWR | 60 min |
-| Lastfolge über den Umwälzstrom | SWR | 180 min |
-| Frischdampf-Absperrung | SWR | 45 min |
-| Nachtschicht | RBMK | 180 min |
+Alle 14 Szenariodateien, einschließlich Tutorial (Dauer in Simulationszeit):
+
+| Szenario | Typ | Schwierigkeit | Dauer |
+|---|---|---|---|
+| Tutorial: DWR selbst anfahren | DWR | 1, Tutorial | max. 60 min |
+| Lastfolge über vier Stunden | DWR | 1 | 240 min |
+| Speisewasserregelung: geführte Störung | DWR | 1, geführt | 15 min |
+| Turbinenschnellschluss | DWR | 2 | 60 min |
+| Dampferzeuger-Rohrleck: selbständige Einordnung | DWR | 2, selbständig | 15 min |
+| Klemmendes Abblaseventil | DWR | 3 | 60 min |
+| Kombinierte Störungen: Prioritäten setzen | DWR | 3, anspruchsvoll | 18 min |
+| Lastfolge über den Umwälzstrom | SWR | 2 | 180 min |
+| Frischdampf-Absperrung | SWR | 3 | 45 min |
+| Dichtewellen-Instabilität | SWR | 3 | 60 min |
+| Station-Blackout | SWR | 3 | 360 min |
+| Ausfall einer Umwälzpumpengruppe | RBMK | 2 | 60 min |
+| Nachtschicht | RBMK | 3 | 180 min |
+| Wiederanlauf aus heissem Stillstand | RBMK | 3 | 150 min |
+
+Die Auswahl ist je Reaktortyp nach Schwierigkeit sortiert, das Tutorial steht
+zuerst. Die drei neuen DWR-Schichten zeigen ihr Stufenprofil auf der Karte:
+**geführt** mit konkreten Hinweisen, Ereignisvorwarnungen und erlaubter
+automatischer Hilfe gemäß Einstellungen; **selbständig** mit einer Einzelstörung;
+**anspruchsvoll** mit kombinierten Störungen. Die beiden höheren Profile haben
+keine Ereignisvorwarnungen und keine automatische Behebung. Hinweise stehen in
+Einweisung und Spiel, die Einweisung lässt sich erneut öffnen. Alarmtexte und
+Glossar bleiben verfügbar; alle neuen Texte gibt es auf Deutsch und Englisch.
+Die globale Helfereinstellung wird nicht verändert. Bestehende Szenarien ohne
+`guidance` behalten ihr bisheriges Verhalten, unabhängig von ihrer Schwierigkeit.
+
+Die Physik bleibt unverändert. Speisewasserverlust bedeutet hier nur Regler auf
+Hand/null: Automatik und Handstellwert bleiben bedienbar, ohne permanenten
+Pumpendefekt oder Hilfsspeisung. Das Rohrleck ist ein vereinfachter Masseneintrag
+in einen zusammengefassten Dampferzeuger mit sinkendem Druckhalterfüllstand,
+keine vollständige Primärleckbilanz; Einzelisolation und Aktivitätsmessung fehlen.
+Auch Nichtstun kann beim Rohrleck den Zeitabschluss erreichen. Zeitabschluss und
+Punkte beweisen keine richtige Behandlung; neue Diagnoseziele oder eine
+Diagnosewertung sind nicht enthalten. Umfang, Balancing und Nachweise:
+[Szenario-Audit](audit/SZENARIEN-2026-09-14.md).
 
 Ein Szenario ist eine Datendatei unter `static/data/scenarios/`. Störungs-
 zeitpunkte dürfen `"rand(6000,8400)"` sein und werden über den Startwert des

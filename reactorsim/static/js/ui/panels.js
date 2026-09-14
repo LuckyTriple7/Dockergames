@@ -458,7 +458,7 @@ export function buildPanels(engine, render, helperEnabled) {
   // (annun.log() weiter unten definiert; der Klick kommt immer erst, NACHDEM
   // buildPanels() zurueckgekehrt ist, also existiert annun laengst).
   fixBtn.addEventListener('click', () => {
-    if (!helpDef || !helpDef.id) return;
+    if (!helperEnabled || !helpDef || !helpDef.id) return;
     const { status, actions } = runHelper(engine, sp.id, helpDef.id);
     fixResult.hidden = false;
     if (status === 'fixed') {

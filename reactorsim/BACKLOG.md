@@ -56,21 +56,33 @@ Bestenliste mit Namen Sinn.
 
 ## Weitere Störszenarien
 
-RBMK bekam mit "Ausfall einer Umwälzpumpengruppe" (0.1.5) ein neuntes
-Szenario. Der Rest der Ideensammlung aus derselben Rückmeldung, sortiert
-danach, was schon an Bausteinen da ist:
+Stand 0.1.20: 14 Szenariodateien einschließlich Anfahren-Tutorial. Zwei
+Einzelstörungen aus der Ideensammlung sind jetzt als eigene DWR-Schichten
+umgesetzt, ergänzt um eine kombinierte Stufe. Details und Nachweise:
+[Szenario-Audit](audit/SZENARIEN-2026-09-14.md).
 
-**Fast geschenkt -- Ereignis existiert schon, nur noch nie als eigenes
+**Umgesetzt in 0.1.20, mit Modellgrenzen:**
+- **DWR: Dampferzeuger-Rohrleck.** `pwr_sg_tube_leak`, Schwierigkeit 2,
+  15 Minuten, konstantes Leck von 8 kg/s ohne Vorwarnung/automatischen Helfer.
+  `sg_tube_leak` erhöht die Wassermasse des zusammengefassten Dampferzeugers
+  und senkt den Druckhalterfüllstand. Keine vollständige Primärleckbilanz,
+  keine druckabhängige Leckrate, keine einzelnen Dampferzeuger zur Diagnose
+  „welcher DE?“, keine Einzelisolation oder Aktivitätsmessung. Die
+  Speisewasserregelung kann den DE-Pegel stabil halten; RESA stoppt das Leck
+  nicht. Auch Nichtstun kann den Zeitabschluss erreichen. Punkte sind kein
+  Nachweis korrekter Leckbehandlung; eine Diagnoseprüfung fehlt weiterhin.
+- **DWR: Verlust der Speisewasserregelung.** `pwr_feedwater_loss`,
+  Schwierigkeit 1, 15 Minuten, geführte Einzelstörung mit Vorwarnung und
+  automatischer Hilfe gemäß Einstellungen. `feedwater_loss` setzt den Regler
+  einmalig auf Hand/null; Automatik oder Handstellwert lassen sich jederzeit
+  wieder ändern. Kein permanenter Pumpendefekt und keine Hilfsspeisung.
+- **DWR: Kombinierte Störungen.** `pwr_combined_faults`, Schwierigkeit 3,
+  18 Minuten, Turbinenschnellschluss bei 180 s und Speisewasserverlust bei
+  240 s, ohne Vorwarnung/automatischen Helfer. Dieselbe unveränderte Physik.
+
+**Weiter offen -- Ereignis existiert schon, nur noch nicht als eigenes
 Szenario verpackt:**
-- **DWR: Dampferzeugerrohrbruch.** `sg_tube_leak` (game/events.js) simuliert
-  den Primär→Sekundär-Leckpfad bereits vollständig (Druckhalterpegel faellt,
-  betroffener Dampferzeugerpegel steigt) -- wird bisher von keinem
-  Szenario benutzt. Fehlt nur die Einweisung samt Diagnoseaufgabe (welcher
-  von den Dampferzeugern ist es?).
-- **DWR: Verlust der Speisewasserversorgung.** `feedwater_loss` steckt
-  schon in `pwr_turbine_trip.json` als ZWEITE Störung -- als eigenes,
-  einziges Szenario waere die Diagnoseaufgabe (Hilfsspeisewasser, Pegel
-  von Hand halten) viel klarer zu lernen als im Doppelpack.
+
 - **DWR: Ausfall einer Hauptkühlmittelpumpe.** `rcp_trip` mit `loop`
   funktioniert für PWR bereits (`ctx.pumps[i].trip()`, vier Schleifen) --
   nur noch nie als alleiniger Szenario-Anlass benutzt.
@@ -93,9 +105,10 @@ Szenario verpackt:**
 
 **Kleine neue Bausteine -- bestehendes Muster leicht erweitert:**
 - **SWR: Speisewasserregler außer Kontrolle.** `feedwater_loss` setzt
-  `fwCtl.manual` fest auf 0 (ganz zu) -- eine "haengt bei 70 %"-Variante
-  braucht nur denselben Griff mit einem Prozentwert als Argument statt
-  der festen 0, keine neue Mechanik.
+  `fwCtl` einmalig auf Hand mit `manual = 0` (ganz zu), sperrt aber keine
+  spätere Bedienung. Ein anderer anfänglicher Stellwert wäre eine kleine
+  Erweiterung; echtes „hängt bei 70 %“ müsste den Defekt zusätzlich dauerhaft
+  gegen Bedienung durchsetzen.
 - **RBMK: Trommelwasserstand außer Kontrolle.** Gleiches Muster, RBMK hat
   mit `ctx.fwCtl` dieselbe Reglerklasse wie DWR/SWR.
 
