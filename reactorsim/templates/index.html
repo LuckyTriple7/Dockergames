@@ -450,6 +450,23 @@
   </div>
 </div>
 
+<!-- ── Tutorial-Anleitung ───────────────────────────────────────────────── -->
+<!-- Voller Aufgabentext, Warum-Erklaerung und Lernziel-Checkliste des
+     Anfahren-Tutorials -- ausgelagert aus der Statusleiste (#rs-tutorial),
+     die sonst mit dem Absatz halb den Bildschirm einnahm. Inhalt fuellt
+     buildTutorial() in tutorial.js, Oeffnen/Schliessen verdrahtet
+     initControls() wie beim Glossar. -->
+<div class="rs-modal" id="rs-tutorial-modal" hidden>
+  <div class="rs-modal-box rs-modal-wide">
+    <h2 id="rs-tutorial-modal-title"></h2>
+    <p id="rs-tutorial-modal-instruction"></p>
+    <p id="rs-tutorial-modal-hold"></p>
+    <details><summary>{{ t.tut_why }}</summary><p id="rs-tutorial-modal-why"></p></details>
+    <details open><summary>{{ t.tut_steps }}</summary><ol id="rs-tutorial-modal-steps"></ol></details>
+    <button type="button" class="rs-btn rs-btn-primary" id="rs-tutorial-modal-close">{{ t.btn_close }}</button>
+  </div>
+</div>
+
 <!-- ── Tastenkuerzel ────────────────────────────────────────────────────── -->
 <div class="rs-modal" id="rs-shortcuts-modal" hidden>
   <div class="rs-modal-box rs-modal-wide">

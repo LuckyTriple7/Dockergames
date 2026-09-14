@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.29
+
+- Anfahren-Tutorial-Statusleiste (`#rs-tutorial`) verkleinert: der statische
+  Aufgabentext, die "Warum wirkt das?"-Erklärung und die Lernziele-Checkliste
+  wandern in einen eigenen "Anleitung"-Dialog (`#rs-tutorial-modal`), der
+  wie Glossar/Tastenkürzel per Knopf geöffnet wird -- sie ändern sich nur
+  fünfmal pro Lauf, kosteten aber dauerhaft Platz. In der Leiste bleiben nur
+  Schritttitel, Livewerte, kompakte Haltezeit (`tut_hold_compact`) und der
+  zustandsabhängige Hinweis (`tut_hint_*`) sichtbar -- die ändern sich
+  während der Bedienung tatsächlich.
+
 ## 0.1.28
 
 - Ein-Zeiler-Hinweise unter Ventilstellung, Speisewasserstrom, Druckhalter

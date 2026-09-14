@@ -148,8 +148,11 @@ test('tutorial card shows localized task, switches mobile panel and disappears i
   const host = get('#rs-tutorial');
   assert.equal(host.hidden, false);
   assert.match(text(host), /Schritt 1\/5/);
-  assert.match(text(host), /140–164 bar/);
-  host.children.find(node => node.listeners?.click).listeners.click();
+  // Static per-step instruction now lives in the Anleitung modal, not the
+  // always-visible status bar -- see buildTutorial() in tutorial.js.
+  assert.match(get('#rs-tutorial-modal-instruction').textContent, /140–164 bar/);
+  const panelButton = host.children.find(n => n.textContent === window.RS_I18N.tut_show_panel);
+  panelButton.listeners.click();
   assert.equal(get('#rs-tab-prim').checked, true);
   assert.equal(get('#rs-p-prim').scrolled, true);
   session.tutorial.index = 1;

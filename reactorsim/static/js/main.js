@@ -652,6 +652,14 @@ function initControls() {
   $('#rs-glossary-close').addEventListener('click', () => { glossaryModal.hidden = true; });
   glossaryModal.addEventListener('click', (ev) => { if (ev.target === glossaryModal) glossaryModal.hidden = true; });
 
+  // Tutorial-Anleitung: der Oeffnen-Knopf steckt in der pro Runde neu
+  // gebauten Statusleiste (tutorial.js), Schliessen/Hintergrundklick sind
+  // wie beim Glossar hier fest verdrahtet -- die Modalhuelle selbst ist
+  // statisches Markup, nicht Teil von buildTutorial().
+  const tutorialModal = $('#rs-tutorial-modal');
+  $('#rs-tutorial-modal-close').addEventListener('click', () => { tutorialModal.hidden = true; });
+  tutorialModal.addEventListener('click', (ev) => { if (ev.target === tutorialModal) tutorialModal.hidden = true; });
+
   // Tastenkuerzel-Hilfe: statische Liste, einmal aus SHORTCUTS gebaut, wie
   // beim Glossar oben.
   const shortcutsModal = $('#rs-shortcuts-modal');

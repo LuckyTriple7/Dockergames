@@ -336,6 +336,7 @@
 .rs-tutorial p { margin: 5px 0; }
 .rs-tutorial-values { font-family: var(--rs-font-num); }
 .rs-tutorial-hint { color: var(--rs-fg-dim); }
+.rs-tutorial button { margin: 6px 8px 0 0; }
 .rs-tutorial details { margin-top: 6px; }
 .rs-tutorial summary { cursor: pointer; }
 .rs-tutorial > .rs-guidance-fold { margin: 0; }
