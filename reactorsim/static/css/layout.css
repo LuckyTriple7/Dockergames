@@ -137,6 +137,20 @@
   #rs-briefing-btn::before { content: "📋"; font-size: 16px; }
 }
 
+/* Auf schmalen Ansichten passt keine vollständige Leitstands-Toolbar neben-
+   einander. Sie bleibt deshalb eine Zeile und lässt sich horizontal scrollen,
+   statt einzelne Geschwindigkeiten am linken Rand abzuschneiden. */
+@media (max-width: 700px) {
+  .rs-status-controls {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .rs-status-controls > button,
+  .rs-status-controls > .rs-speed { flex: 0 0 auto; }
+  .rs-status-controls #rs-menu { margin-left: 0; }
+}
+
 .rs-status-feedback {
   display: flex;
   flex-wrap: wrap;

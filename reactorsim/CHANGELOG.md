@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.27
+
+- Die komplette Leitstands-Toolbar bleibt auf schmalen Ansichten in einer
+  horizontal scrollbaren Zeile. Geschwindigkeitswahl und Funktionsknöpfe werden
+  weder umgebrochen noch am Rand abgeschnitten.
+
 ## 0.1.26
 
 - Einweisung bleibt unterhalb der Desktop-Breite als kompakter Clipboard-Button
