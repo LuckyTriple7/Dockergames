@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.28
+
+- Mute, Hilfe, Tastaturhilfe und Statuskonfiguration haben in der Leitstands-
+  Toolbar dieselbe feste Breite. Die drei zuletzt schmaleren Symbolbuttons
+  besitzen damit dieselbe Klickfläche wie Mute.
+
 ## 0.1.27
 
 - Die komplette Leitstands-Toolbar bleibt auf schmalen Ansichten in einer

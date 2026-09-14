@@ -124,22 +124,11 @@
   overflow-wrap: anywhere;
 }
 
-/* Auf schmalen Bildschirmen darf der Einweisungsbutton die Bedienelemente
-   nicht in eine unlesbare Restzeile druecken. Die Beschriftung bleibt auf
-   breiten Leitstaenden sichtbar; mobil ist sie ueber aria-label und title
-   erreichbar. */
-@media (max-width: 1023.98px) {
-  #rs-briefing-btn {
-    min-width: 38px;
-    padding: 8px;
-    font-size: 0;
-  }
-  #rs-briefing-btn::before { content: "📋"; font-size: 16px; }
-}
+/* Alle Status-Symbolbuttons haben dieselbe Klickflaeche wie der Mute-Schalter.
+   Die Toolbar bleibt bei wenig Platz vollstaendig erreichbar, ohne Inhalte zu
+   stauchen oder umzubrechen. */
+.rs-status-controls > .rs-btn-icon { width: 56px; }
 
-/* Auf schmalen Ansichten passt keine vollständige Leitstands-Toolbar neben-
-   einander. Sie bleibt deshalb eine Zeile und lässt sich horizontal scrollen,
-   statt einzelne Geschwindigkeiten am linken Rand abzuschneiden. */
 @media (max-width: 700px) {
   .rs-status-controls {
     flex-wrap: nowrap;
