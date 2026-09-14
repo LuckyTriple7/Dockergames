@@ -134,6 +134,22 @@
   justify-content: center;
 }
 
+/* Anfahren-Tutorial: step + live values as a small clickable text sitting
+   next to Speichern, centered in the leftover toolbar space, instead of a
+   full-width banner above the workspace -- see buildTutorial() in
+   tutorial.js. Two lines via white-space: pre-line (\n in the text). */
+.rs-tutorial-status {
+  flex: 1 1 180px;
+  max-width: 480px;
+  padding: 4px 10px;
+  min-height: 0;
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: center;
+  white-space: pre-line;
+  color: var(--rs-fg-dim);
+}
+
 .rs-status-feedback {
   display: flex;
   flex-wrap: wrap;
@@ -334,9 +350,7 @@
 }
 .rs-tutorial h2 { font-size: 15px; margin: 0 0 6px; }
 .rs-tutorial p { margin: 5px 0; }
-.rs-tutorial-values { font-family: var(--rs-font-num); }
 .rs-tutorial-hint { color: var(--rs-fg-dim); }
-.rs-tutorial button { margin: 6px 8px 0 0; }
 .rs-tutorial details { margin-top: 6px; }
 .rs-tutorial summary { cursor: pointer; }
 .rs-tutorial > .rs-guidance-fold { margin: 0; }

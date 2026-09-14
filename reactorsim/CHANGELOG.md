@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.30
+
+- Anfahren-Tutorial nimmt keine eigene Zeile über dem Arbeitsbereich mehr
+  ein (0.1.29 hatte sie nur verkleinert, nicht entfernt -- weiterhin ein
+  eigener Balken). Schritt+Livewerte stehen jetzt als kleiner klickbarer
+  Text (11 px, zentriert, zwei Zeilen) direkt in der Kopfzeile neben
+  Speichern. Klick öffnet #rs-tutorial-modal mit Aufgabentext,
+  zustandsabhängigem Hinweis, Warum-Erklärung, Lernzielen und dem Knopf
+  "Passendes Panel anzeigen" (schließt den Dialog und springt zum Panel).
+  Passt auch im schmalen Querformat, da die Kopfzeile ohnehin umbricht.
+
 ## 0.1.29
 
 - Anfahren-Tutorial-Statusleiste (`#rs-tutorial`) verkleinert: der statische

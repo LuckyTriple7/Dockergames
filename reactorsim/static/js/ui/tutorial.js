@@ -5,32 +5,32 @@ import { TUTORIAL_STEPS } from '../game/tutorial.js';
 const PANELS = ['prim', 'prim', 'core', 'sec', 'trend'];
 
 export function buildTutorial(session, render) {
-  const host = $('#rs-tutorial');
-  host.replaceChildren();
-  host.hidden = !session.tutorial;
-  if (!session.tutorial) return;
-  const tutorial = session.tutorial;
-  // Status bar: step heading, live values and the state-dependent hint stay
-  // visible at all times -- they change as the player acts. The static
-  // per-step instruction, the "why" explanation and the Lernziele checklist
-  // only change five times over a whole run, so they move into
-  // #rs-tutorial-modal (see below) instead of taking permanent space.
-  const heading = el('h2', { 'aria-live': 'polite' });
-  const values = el('p.rs-tutorial-values');
-  const hold = el('p.rs-tutorial-hint');
-  const hint = el('p.rs-tutorial-hint');
+  // #rs-tutorial-status and #rs-tutorial-modal are static markup in
+  // index.html, not rebuilt per round -- they used to be a full-width
+  // banner above the workspace (#rs-tutorial), which even trimmed down
+  // still cost a fixed slice of every screen. Now it's a small clickable
+  // status text next to the Speichern button; the rest (task text, why,
+  // Lernziele, jump-to-panel) only shows in the modal it opens. Buttons are
+  // set via .onclick (not addEventListener) because this function reruns
+  // every round on the same persistent elements -- a plain assignment
+  // replaces the previous round's handler instead of stacking another one.
+  const status = $('#rs-tutorial-status');
   const modal = $('#rs-tutorial-modal');
   const modalTitle = $('#rs-tutorial-modal-title');
   const modalInstruction = $('#rs-tutorial-modal-instruction');
   const modalHold = $('#rs-tutorial-modal-hold');
+  const modalHint = $('#rs-tutorial-modal-hint');
   const modalWhy = $('#rs-tutorial-modal-why');
   const modalSteps = $('#rs-tutorial-modal-steps');
+  const modalPanelBtn = $('#rs-tutorial-modal-panel');
+  status.hidden = !session.tutorial;
+  if (!session.tutorial) return;
+  const tutorial = session.tutorial;
   const checklist = TUTORIAL_STEPS.map(() => el('li'));
   modalSteps.replaceChildren(...checklist);
-  const guideButton = el('button.rs-btn', { type: 'button', text: t('tut_instructions') });
-  guideButton.addEventListener('click', () => { modal.hidden = false; });
-  const panelButton = el('button.rs-btn', { type: 'button', text: t('tut_show_panel') });
-  panelButton.addEventListener('click', () => {
+  status.onclick = () => { modal.hidden = false; };
+  modalPanelBtn.onclick = () => {
+    modal.hidden = true;
     const name = PANELS[Math.min(tutorial.index, PANELS.length - 1)];
     const radio = $('#rs-tab-' + name);
     if (radio) radio.checked = true;
@@ -40,20 +40,21 @@ export function buildTutorial(session, render) {
       const title = panel.querySelector('h2');
       if (title) { title.setAttribute('tabindex', '-1'); title.focus({ preventScroll: true }); }
     }
-  });
-  host.append(heading, values, hold, hint, guideButton, panelButton);
+  };
   const update = () => {
     const v = tutorial.view();
-    if (v.done) { setText(heading, t('tut_completed')); return; }
+    if (v.done) { setText(status, t('tut_completed')); return; }
     const title = t('tut_' + v.id + '_title');
-    setText(heading, t('tut_heading', { n: v.index + 1, total: TUTORIAL_STEPS.length, title }));
+    const heading = t('tut_heading', { n: v.index + 1, total: TUTORIAL_STEPS.length, title });
+    const hold = t('tut_hold_compact', { held: Math.floor(v.held), required: v.required });
     const vars = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, num(x, k === 'neutron' ? 4 : 1)]));
-    setText(values, t('tut_' + v.id + '_values', vars));
-    setText(hold, t('tut_hold_compact', { held: Math.floor(v.held), required: v.required }));
-    setText(hint, t(v.hint));
-    setText(modalTitle, t('tut_heading', { n: v.index + 1, total: TUTORIAL_STEPS.length, title }));
+    const values = t('tut_' + v.id + '_values', vars);
+    // Two lines in one small button, see .rs-tutorial-status (white-space: pre-line).
+    setText(status, `${heading} · ${hold}\n${values}`);
+    setText(modalTitle, heading);
     setText(modalInstruction, t('tut_' + v.id + '_instruction'));
     setText(modalHold, t('tut_hold', { held: Math.floor(v.held), required: v.required }));
+    setText(modalHint, t(v.hint));
     setText(modalWhy, t('tut_' + v.id + '_why'));
     TUTORIAL_STEPS.forEach((id, i) => setText(checklist[i], `${t(i < v.index ? 'tut_done' : i === v.index ? 'tut_current' : 'tut_pending')} · ${t('tut_' + id + '_title')}`));
   };

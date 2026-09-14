@@ -180,6 +180,12 @@
            boot() in main.js) -- im freien Spiel gibt es keine Einweisung. -->
       <button type="button" class="rs-btn rs-btn-ghost rs-btn-icon" id="rs-briefing-btn" hidden
               aria-label="{{ t.btn_briefing }}" title="{{ t.btn_briefing }}">📋</button>
+      <!-- Anfahren-Tutorial: Schritt+Werte als schmaler, klickbarer Text statt
+           eigenem Balken über dem Arbeitsbereich -- Klick öffnet
+           #rs-tutorial-modal mit Volltext, Warum-Erklärung, Lernzielen und
+           dem Panel-Sprung. Nur sichtbar, wenn session.tutorial existiert
+           (siehe buildTutorial() in tutorial.js), wie #rs-briefing-btn oben. -->
+      <button type="button" class="rs-btn rs-btn-ghost rs-tutorial-status" id="rs-tutorial-status" hidden></button>
       <button type="button" class="rs-btn rs-btn-ghost" id="rs-save" title="{{ t.save_none }}">{{ t.btn_save }}</button>
       <button type="button" class="rs-btn rs-btn-ghost" id="rs-menu">{{ t.btn_menu }}</button>
       <button type="button" class="rs-scram" id="rs-scram">{{ t.btn_scram }}</button>
@@ -191,7 +197,6 @@
   </header>
 
   <div class="rs-workspace">
-    <section id="rs-tutorial" class="rs-tutorial" aria-label="{{ t.tut_label }}" hidden></section>
     <input type="radio" name="rs-tab" id="rs-tab-core" class="rs-tabinput" checked>
     <input type="radio" name="rs-tab" id="rs-tab-prim" class="rs-tabinput">
     <input type="radio" name="rs-tab" id="rs-tab-sec" class="rs-tabinput">
@@ -452,18 +457,22 @@
 
 <!-- ── Tutorial-Anleitung ───────────────────────────────────────────────── -->
 <!-- Voller Aufgabentext, Warum-Erklaerung und Lernziel-Checkliste des
-     Anfahren-Tutorials -- ausgelagert aus der Statusleiste (#rs-tutorial),
-     die sonst mit dem Absatz halb den Bildschirm einnahm. Inhalt fuellt
-     buildTutorial() in tutorial.js, Oeffnen/Schliessen verdrahtet
-     initControls() wie beim Glossar. -->
+     Anfahren-Tutorials -- Klick auf #rs-tutorial-status in der Kopfzeile
+     oeffnet dieses Fenster statt eines eigenen Balkens ueber dem
+     Arbeitsbereich. Inhalt fuellt buildTutorial() in tutorial.js,
+     Oeffnen/Schliessen verdrahtet initControls() wie beim Glossar. -->
 <div class="rs-modal" id="rs-tutorial-modal" hidden>
   <div class="rs-modal-box rs-modal-wide">
     <h2 id="rs-tutorial-modal-title"></h2>
     <p id="rs-tutorial-modal-instruction"></p>
     <p id="rs-tutorial-modal-hold"></p>
+    <p class="rs-tutorial-hint" id="rs-tutorial-modal-hint"></p>
     <details><summary>{{ t.tut_why }}</summary><p id="rs-tutorial-modal-why"></p></details>
     <details open><summary>{{ t.tut_steps }}</summary><ol id="rs-tutorial-modal-steps"></ol></details>
-    <button type="button" class="rs-btn rs-btn-primary" id="rs-tutorial-modal-close">{{ t.btn_close }}</button>
+    <div class="rs-modal-actions">
+      <button type="button" class="rs-btn" id="rs-tutorial-modal-panel">{{ t.tut_show_panel }}</button>
+      <button type="button" class="rs-btn rs-btn-primary" id="rs-tutorial-modal-close">{{ t.btn_close }}</button>
+    </div>
   </div>
 </div>
 

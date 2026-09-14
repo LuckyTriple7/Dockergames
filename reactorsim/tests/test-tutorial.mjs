@@ -145,24 +145,29 @@ test('tutorial card shows localized task, switches mobile panel and disappears i
   const { session } = start();
   let update;
   buildTutorial(session, { add(group, callback) { update = callback; } });
-  const host = get('#rs-tutorial');
-  assert.equal(host.hidden, false);
-  assert.match(text(host), /Schritt 1\/5/);
-  // Static per-step instruction now lives in the Anleitung modal, not the
-  // always-visible status bar -- see buildTutorial() in tutorial.js.
+  // #rs-tutorial-status is the small clickable status text in the toolbar
+  // (heading + live values); it opens #rs-tutorial-modal for the static
+  // instruction, why-explanation and Lernziele -- see buildTutorial() in
+  // tutorial.js. Buttons use .onclick (single-slot, safe to reassign each
+  // round on these persistent elements), not addEventListener/.listeners.
+  const status = get('#rs-tutorial-status');
+  const modal = get('#rs-tutorial-modal');
+  assert.equal(status.hidden, false);
+  assert.match(status.textContent, /Schritt 1\/5/);
   assert.match(get('#rs-tutorial-modal-instruction').textContent, /140–164 bar/);
-  const panelButton = host.children.find(n => n.textContent === window.RS_I18N.tut_show_panel);
-  panelButton.listeners.click();
+  status.onclick();
+  assert.equal(modal.hidden, false);
+  get('#rs-tutorial-modal-panel').onclick();
+  assert.equal(modal.hidden, true, 'jumping to the panel also closes the dialog');
   assert.equal(get('#rs-tab-prim').checked, true);
   assert.equal(get('#rs-p-prim').scrolled, true);
   session.tutorial.index = 1;
   update();
-  assert.match(text(host), /Schritt 2\/5/);
+  assert.match(status.textContent, /Schritt 2\/5/);
   const resultNode = new Node();
   renderTutorialResult(resultNode, { tutorial: { completed: [{ id: 'inspect', t: 5 }] } });
   assert.match(text(resultNode), /Erreicht 00:00:05/);
   assert.match(text(resultNode), /ohne Punkte/);
   buildTutorial({ tutorial: null }, { add() {} });
-  assert.equal(host.hidden, true);
-  assert.equal(host.children.length, 0);
+  assert.equal(status.hidden, true);
 });
