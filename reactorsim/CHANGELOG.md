@@ -1,14 +1,5 @@
 # Changelog
 
-## 0.2.4
-
-- 🐛 **AZ-5-Folgen im Chernobyl-Tutorial bleiben sichtbar.** Der letzte
-  Tutorialschritt öffnete bereits eine Sekunde nach dem Auslösen von AZ-5 die
-  Auswertung und verdeckte damit Graphitspitzeneffekt, Leistungsanstieg und
-  Stabeinlauf. Die Nachbeobachtung läuft jetzt 20 Simulationssekunden; der
-  AZ-5-Handler schaltet dabei automatisch auf Echtzeit zurück. Eine vorher
-  eintretende Kernzerstörung beendet das Szenario weiterhin unmittelbar.
-
 ## 0.2.3
 
 - 🔧 **Speicher-Statuszeile schob die Leiste nicht mehr nach unten.**
