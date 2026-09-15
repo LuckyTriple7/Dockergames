@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.5
+
+- 🐛 **AZ-5 löst im Chernobyl-Tutorial jetzt die historische
+  Leistungsexkursion aus.** Der bisherige Tutorialzustand hatte beim
+  Turbinenauslauf noch etwa 25 ORM; sofortiges AZ-5 senkte deshalb die Leistung
+  und der frühere Test schrieb eine erst später selbständig eintretende
+  Zerstörung fälschlich AZ-5 zu. Für die rekonstruierten letzten Sekunden wird
+  nun reaktivitätsneutral die historische Niedrig-ORM-Lage hergestellt. Beim
+  sofortigen Drücken des angezeigten AZ-5-Schritts steigt die simulierte
+  Neutronenleistung im Regressionstest auf über 800 % und zerstört den Kern,
+  während AZ-5 ohne den vorbereiteten Turbinenauslauf weiterhin sicher wirkt.
+
 ## 0.2.4
 
 - 🐛 **AZ-5-Folgen im Chernobyl-Tutorial bleiben sichtbar.** Der letzte
