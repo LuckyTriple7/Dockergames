@@ -21,6 +21,7 @@ function tick({ engine, session }) {
 }
 function operate({ engine: e, session }, i) {
   const { state: s, ctx: c } = e;
+  if (session.tutorial.inspectReady) assert.equal(session.tutorial.confirmInspect(), true);
   const stage = session.tutorial.index;
   if (stage === 1) c.mcp.forEach((p, j) => { if (!p.running) record(e, 'pump_toggle', j); });
   if (stage >= 2 && !c.govCtl.auto) record(e, 'gov_auto', true);
@@ -84,6 +85,7 @@ test('RBMK instructions complete using normal controls; saved stability interval
 test('pump command is not flow; idle timeout and AZ-5 never complete the RBMK tutorial', () => {
   const run = start();
   for (let i = 0; i < 100; i++) tick(run);
+  assert.equal(run.session.tutorial.confirmInspect(), true);
   assert.equal(run.session.tutorial.index, 1);
   operate(run, 100);
   tick(run);
@@ -98,5 +100,96 @@ test('pump command is not flow; idle timeout and AZ-5 never complete the RBMK tu
   for (let i = 0; i < 72001 && idle.session.phase === PHASE.RUNNING; i++) tick(idle);
   assert.equal(idle.session.result.summary.completed, false);
   assert.equal(idle.session.result.summary.failed, 'tut_timeout');
-  assert.equal(idle.session.tutorial.index, 1);
+  assert.equal(idle.session.tutorial.index, 0);
+  assert.deepEqual(idle.session.tutorial.completed, []);
+});
+
+test('RBMK inspection requires five consecutive seconds and current conditions before explicit confirmation', () => {
+  const { engine, session } = start();
+  const tut = session.tutorial;
+  // Isolate the hold clock from physics; use the real prepared RBMK conditions.
+  const advance = dt => { engine.state.t_sim += dt; tut.step(dt); };
+  assert.equal(tut.conditions()[0], true);
+  assert.equal(tut.inspectReady, false);
+  assert.equal(tut.confirmInspect(), false);
+  advance(4.75);
+  assert.equal(tut.inspectReady, false);
+  assert.equal(tut.confirmInspect(), false);
+  assert.equal(tut.held, 4.75);
+  advance(0.25);
+  assert.equal(tut.inspectReady, true);
+  advance(10);
+  assert.equal(tut.index, 0, 'inspection never completes automatically');
+  assert.equal(tut.held, 5);
+  assert.deepEqual(tut.completed, []);
+
+  const level = engine.state.L_drum;
+  engine.state.L_drum = 0.2;
+  assert.equal(tut.conditions()[0], false);
+  assert.equal(tut.inspectReady, false, 'live drum level invalidates readiness without a tick');
+  const elapsed = tut.elapsed;
+  assert.equal(tut.confirmInspect(), false);
+  assert.equal(tut.held, 0);
+  assert.equal(tut.elapsed, elapsed);
+  engine.state.L_drum = level;
+  assert.equal(tut.inspectReady, false);
+  advance(4.75);
+  assert.equal(tut.confirmInspect(), false);
+  engine.state.L_drum = 0.2;
+  advance(0.25);
+  assert.equal(tut.held, 0, 'simulation steps also invalidate partial holds');
+  engine.state.L_drum = level;
+  advance(4.75);
+  assert.equal(tut.inspectReady, false);
+  assert.equal(tut.confirmInspect(), false);
+  advance(0.25);
+  assert.equal(tut.inspectReady, true);
+  assert.equal(tut.confirmInspect(), true);
+  assert.deepEqual(tut.snapshot(), { index: 1, held: 0, elapsed: 0,
+    completed: [{ id: 'inspect', t: engine.state.t_sim }], reactor: 'rbmk' });
+  const confirmed = tut.snapshot();
+  assert.equal(tut.inspectReady, false);
+  assert.equal(tut.confirmInspect(), false);
+  assert.deepEqual(tut.snapshot(), confirmed);
+});
+
+test('RBMK saves retain partial and pending inspection, explicit confirmation and legacy completion', () => {
+  for (const mode of ['partial', 'pending', 'confirmed', 'legacy']) {
+    const run = start();
+    const tut = run.session.tutorial;
+    const duration = mode === 'partial' ? 2.5 : 7;
+    run.engine.state.t_sim = duration;
+    tut.step(duration);
+    if (mode === 'confirmed') assert.equal(tut.confirmInspect(), true);
+    const save = JSON.parse(JSON.stringify(pack(run.engine, def.id, run.session.run, run.session)));
+    const expected = mode === 'legacy'
+      ? { index: 1, held: 0, elapsed: 2, completed: [{ id: 'inspect', t: 5 }], reactor: 'rbmk' }
+      : { index: mode === 'confirmed' ? 1 : 0,
+        held: mode === 'confirmed' ? 0 : Math.min(duration, 5),
+        elapsed: mode === 'confirmed' ? 0 : duration,
+        completed: mode === 'confirmed' ? [{ id: 'inspect', t: duration }] : [], reactor: 'rbmk' };
+    if (mode === 'legacy') save.session.tutorial = expected;
+    assert.deepEqual(save.session.tutorial, expected, 'RBMK save format remains unchanged');
+    const restored = start(false);
+    assert.equal(apply(save, restored.engine, restored.session.run, restored.session), null);
+    const loaded = restored.session.tutorial;
+    assert.deepEqual(loaded.snapshot(), expected);
+    assert.equal(loaded.inspectReady, mode === 'pending');
+    if (mode === 'partial' || mode === 'pending') {
+      if (mode === 'partial') {
+        assert.equal(loaded.confirmInspect(), false);
+        restored.engine.state.t_sim += 2.5;
+        loaded.step(2.5);
+      }
+      restored.engine.state.t_sim += 1;
+      loaded.step(1);
+      assert.equal(loaded.index, 0);
+      assert.equal(loaded.inspectReady, true);
+      assert.equal(loaded.confirmInspect(), true);
+      assert.deepEqual(loaded.completed, [{ id: 'inspect', t: restored.engine.state.t_sim }]);
+    } else {
+      assert.equal(loaded.confirmInspect(), false);
+      assert.deepEqual(loaded.snapshot(), expected);
+    }
+  }
 });

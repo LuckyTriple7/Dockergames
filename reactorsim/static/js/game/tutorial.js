@@ -40,6 +40,19 @@ export class StartupTutorial {
   get prefix() { return 'tut_'; }
   get demand() { return this.index >= 3 ? 150 : 0; }
 
+  get inspectReady() {
+    return this.index === 0 && this.held + 1e-8 >= HOLD_SECONDS[0] && this.conditions()[0];
+  }
+
+  confirmInspect() {
+    if (this.index !== 0) return false;
+    // Recheck even while paused: a stale button must not confirm a lost hold.
+    this.step(0);
+    if (!this.inspectReady) return false;
+    this.completeStep();
+    return true;
+  }
+
   conditions() {
     const { state: s, ctx: c } = this.engine;
     const d = this.engine.derive();
@@ -65,18 +78,21 @@ export class StartupTutorial {
     this.elapsed += dt;
     const heldBefore = this.held;
     const key = `${this.prefix}${TUTORIAL_STEPS[this.index]}_title`;
-    this.held = this.conditions()[this.index] ? this.held + dt : 0;
+    this.held = this.conditions()[this.index] ? Math.min(this.held + dt, HOLD_SECONDS[this.index]) : 0;
     if (heldBefore === 0 && this.held > 0) this.engine.ctx.trends?.mark({
       t: this.engine.state.t_sim, kind: 'goal_start', key });
     if (heldBefore > 0 && this.held === 0) this.engine.ctx.trends?.mark({
       t: this.engine.state.t_sim, kind: 'goal_reset', key });
-    if (this.held + 1e-8 >= HOLD_SECONDS[this.index]) {
-      this.completed.push({ id: TUTORIAL_STEPS[this.index], t: this.engine.state.t_sim });
-      this.engine.ctx.trends?.mark({ t: this.engine.state.t_sim, kind: 'goal_met', key });
-      this.index++;
-      this.held = 0;
-      this.elapsed = 0;
-    }
+    if (this.index > 0 && this.held + 1e-8 >= HOLD_SECONDS[this.index]) this.completeStep();
+  }
+
+  completeStep() {
+    const id = TUTORIAL_STEPS[this.index];
+    this.completed.push({ id, t: this.engine.state.t_sim });
+    this.engine.ctx.trends?.mark({ t: this.engine.state.t_sim, kind: 'goal_met', key: `${this.prefix}${id}_title` });
+    this.index++;
+    this.held = 0;
+    this.elapsed = 0;
   }
 
   hint() {
@@ -120,6 +136,8 @@ export class StartupTutorial {
     const s = this.engine.state;
     const d = this.engine.derive();
     return { ...this.snapshot(), id: TUTORIAL_STEPS[this.index], done: this.done,
+      inspectReady: this.inspectReady, inspectValid: this.index === 0 && this.conditions()[0],
+      inspectIntact: !s.destroyed && !s.fault && !s.scram.active,
       required: HOLD_SECONDS[this.index] || 0, hint: this.hint(),
       values: { pressure: s.p_prim, temperature: d.T_avg - 273.15, flow: s.W_core,
         neutron: s.n * 100, power: d.power_th_pct, electric: s.P_e, level: s.L_sg * 100,

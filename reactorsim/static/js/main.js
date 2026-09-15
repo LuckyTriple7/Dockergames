@@ -1348,6 +1348,7 @@ function leaveToMenu() {
 function clearEndDialogs() {
   $('#rs-debrief').hidden = true;
   $('#rs-destroyed').hidden = true;
+  $('#rs-tutorial-modal').hidden = true;
   app.pendingResult = null;
   if (app.xenonSkip) {
     app.xenonSkip.cancelled = true;
@@ -1382,6 +1383,7 @@ function toMenu() {
 
 /** Auswertung am Ende eines Szenarios. */
 function showDebrief(result, failed) {
+  $('#rs-tutorial-modal').hidden = true;
   // Free play has no score: its loss screen is opened after the next render.
   if (!result && app.engine.state.destroyed) return;
   setSpeed(0);

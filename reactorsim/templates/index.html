@@ -460,19 +460,22 @@
 <!-- Voller Aufgabentext, Warum-Erklaerung und Lernziel-Checkliste des
      Anfahren-Tutorials -- Klick auf #rs-tutorial-status in der Kopfzeile
      oeffnet dieses Fenster statt eines eigenen Balkens ueber dem
-     Arbeitsbereich. Inhalt fuellt buildTutorial() in tutorial.js,
-     Oeffnen/Schliessen verdrahtet initControls() wie beim Glossar. -->
-<div class="rs-modal" id="rs-tutorial-modal" hidden>
+     Arbeitsbereich. buildTutorial() fuellt den Inhalt und oeffnet Schritt 1
+     beim Start automatisch; initControls() verdrahtet das Schliessen. -->
+<div class="rs-modal" id="rs-tutorial-modal" role="dialog" aria-modal="true" aria-labelledby="rs-tutorial-modal-title" hidden>
   <div class="rs-modal-box rs-modal-wide">
-    <h2 id="rs-tutorial-modal-title"></h2>
+    <h2 id="rs-tutorial-modal-title" tabindex="-1"></h2>
     <p id="rs-tutorial-modal-instruction"></p>
+    <ul id="rs-tutorial-modal-inspection" hidden></ul>
+    <p id="rs-tutorial-modal-inspect-status" role="status" hidden></p>
     <p id="rs-tutorial-modal-hold"></p>
     <p class="rs-tutorial-hint" id="rs-tutorial-modal-hint"></p>
     <details><summary>{{ t.tut_why }}</summary><p id="rs-tutorial-modal-why"></p></details>
     <details open><summary>{{ t.tut_steps }}</summary><ol id="rs-tutorial-modal-steps"></ol></details>
     <div class="rs-modal-actions">
+      <button type="button" class="rs-btn rs-btn-primary" id="rs-tutorial-modal-confirm" aria-describedby="rs-tutorial-modal-inspect-status" disabled hidden>{{ t.tut_inspect_confirm }}</button>
       <button type="button" class="rs-btn" id="rs-tutorial-modal-panel">{{ t.tut_show_panel }}</button>
-      <button type="button" class="rs-btn rs-btn-primary" id="rs-tutorial-modal-close">{{ t.btn_close }}</button>
+      <button type="button" class="rs-btn" id="rs-tutorial-modal-close">{{ t.btn_close }}</button>
     </div>
   </div>
 </div>

@@ -1,6 +1,7 @@
 import { $, el, setText } from './dom.js';
 import { t, num, clock } from './i18n.js';
 import { TUTORIAL_STEPS } from '../game/tutorial.js';
+import { PHASE } from '../game/session.js';
 
 const PANELS = ['prim', 'prim', 'core', 'sec', 'trend'];
 
@@ -10,7 +11,8 @@ export function buildTutorial(session, render) {
   // banner above the workspace (#rs-tutorial), which even trimmed down
   // still cost a fixed slice of every screen. Now it's a small clickable
   // status text next to the Speichern button; the rest (task text, why,
-  // Lernziele, jump-to-panel) only shows in the modal it opens. Buttons are
+  // Lernziele, jump-to-panel) shows in the modal, opened for inspection at
+  // startup and otherwise through the status button. Buttons are
   // set via .onclick (not addEventListener) because this function reruns
   // every round on the same persistent elements -- a plain assignment
   // replaces the previous round's handler instead of stacking another one.
@@ -23,13 +25,25 @@ export function buildTutorial(session, render) {
   const modalWhy = $('#rs-tutorial-modal-why');
   const modalSteps = $('#rs-tutorial-modal-steps');
   const modalPanelBtn = $('#rs-tutorial-modal-panel');
+  const modalInspection = $('#rs-tutorial-modal-inspection');
+  const modalInspectStatus = $('#rs-tutorial-modal-inspect-status');
+  const modalConfirm = $('#rs-tutorial-modal-confirm');
   status.hidden = !session.tutorial;
+  modal.hidden = !session.tutorial || session.tutorial.index !== 0;
   if (!session.tutorial) return;
   const tutorial = session.tutorial;
   const prefix = tutorial.prefix;
   const checklist = TUTORIAL_STEPS.map(() => el('li'));
   modalSteps.replaceChildren(...checklist);
-  status.onclick = () => { modal.hidden = false; };
+  const inspection = t(prefix + 'inspect_checks').split('\n').map(() => el('li'));
+  modalInspection.replaceChildren(...inspection);
+  status.onclick = () => { modal.hidden = false; modalTitle.focus(); };
+  modalConfirm.onclick = () => {
+    if (session.phase !== PHASE.RUNNING) return;
+    const confirmed = tutorial.confirmInspect();
+    update();
+    if (confirmed) modalTitle.focus();
+  };
   modalPanelBtn.onclick = () => {
     modal.hidden = true;
     const name = PANELS[Math.min(tutorial.index, PANELS.length - 1)];
@@ -56,22 +70,33 @@ export function buildTutorial(session, render) {
   };
   const update = () => {
     const v = tutorial.view();
+    modalConfirm.hidden = modalInspection.hidden = modalInspectStatus.hidden = v.index !== 0;
+    modalConfirm.disabled = !v.inspectReady || session.phase !== PHASE.RUNNING;
     if (v.done) { setText(status, t('tut_completed')); return; }
     const title = t(prefix + v.id + '_title');
     const heading = t('tut_heading', { n: v.index + 1, total: TUTORIAL_STEPS.length, title });
-    const hold = t('tut_hold_compact', { held: Math.floor(v.held), required: v.required });
+    const held = Math.floor(v.held + 1e-8);
+    const hold = v.inspectReady ? t('tut_inspect_pending') : t('tut_hold_compact', { held, required: v.required });
     const vars = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, num(x, k === 'neutron' ? 4 : 1)]));
     const values = t(prefix + v.id + '_values', vars);
     // Two lines in one small button, see .rs-tutorial-status (white-space: pre-line).
     setText(status, `${heading} · ${hold}\n${values}`);
     setText(modalTitle, heading);
     setText(modalInstruction, t(prefix + v.id + '_instruction'));
-    setText(modalHold, t('tut_hold', { held: Math.floor(v.held), required: v.required }));
+    setText(modalHold, t('tut_hold', { held, required: v.required }));
+    if (v.index === 0) {
+      const lines = t(prefix + 'inspect_checks', { ...vars,
+        integrity: t(v.inspectIntact ? 'tut_inspect_intact' : 'tut_inspect_not_intact') }).split('\n');
+      inspection.forEach((row, i) => setText(row, lines[i]));
+      setText(modalInspectStatus, t(v.inspectReady ? 'tut_inspect_ready'
+        : v.inspectValid ? 'tut_inspect_checking' : 'tut_inspect_invalid'));
+    }
     setText(modalHint, t(v.hint));
     setText(modalWhy, t(prefix + v.id + '_why'));
     TUTORIAL_STEPS.forEach((id, i) => setText(checklist[i], `${t(i < v.index ? 'tut_done' : i === v.index ? 'tut_current' : 'tut_pending')} · ${t(prefix + id + '_title')}`));
   };
   update();
+  if (!modal.hidden) modalTitle.focus();
   render.add('text', update);
 }
 

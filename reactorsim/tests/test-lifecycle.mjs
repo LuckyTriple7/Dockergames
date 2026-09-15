@@ -22,7 +22,7 @@ function harness(readSave = async () => ({ ok: false })) {
   const nodes = new Map();
   const $ = (key) => {
     if (!nodes.has(key)) nodes.set(key, { hidden: true, children: [], textContent: '',
-      append() {}, replaceChildren() {} });
+      append() {}, replaceChildren() {}, focus() {} });
     return nodes.get(key);
   };
   const counters = { starts: 0, autosaves: 0, samples: 0, panels: 0 };
@@ -188,22 +188,57 @@ test('tutorial resumes its objective, stays unranked and restarts from preparati
     h.app.engine.step(0.05);
     h.app.session.step(0.05, h.app.engine.trips.tiles(), 0);
   }
+  assert.equal(h.app.session.tutorial.index, 0);
+  assert.equal(h.app.session.tutorial.confirmInspect(), true);
   assert.equal(h.app.session.tutorial.index, 1);
   const saved = JSON.parse(JSON.stringify(pack(h.app.engine, def.id, h.app.session.run, h.app.session)));
   const resumed = harness(async () => ({ ok: true, data: saved }));
   await resumed.ctx.boot('pwr', def, 'slot');
   assert.equal(resumed.app.session.tutorial.index, 1);
+  resumed.$('#rs-tutorial-modal').hidden = false;
   resumed.app.engine.state.t_sim = 3600;
   resumed.app.session.step(0.05, [], 0);
   assert.equal(resumed.$('#rs-debrief').hidden, false);
+  assert.equal(resumed.$('#rs-tutorial-modal').hidden, true, 'tutorial must not cover the result');
   assert.equal(resumed.$('#rs-debrief-submit').hidden, true);
   assert.equal(resumed.$('#rs-debrief-score').textContent, 'tut_unranked_short');
   assert.equal(resumed.app.pendingResult, null);
+  resumed.$('#rs-tutorial-modal').hidden = false;
   await resumed.ctx.boot(resumed.app.lastReactor, resumed.app.lastScenarioDef);
   assert.equal(resumed.app.session.tutorial.index, 0);
   assert.equal(resumed.app.engine.state.rod[0], 1);
   assert.equal(resumed.$('#rs-debrief').hidden, true);
+  assert.equal(resumed.$('#rs-tutorial-modal').hidden, true, 'boot clears stale dialogs before building new UI');
 });
+
+for (const reactor of ['pwr', 'rbmk']) {
+  test(`${reactor}: boot restores a pending inspection without confirming it`, async () => {
+    const def = JSON.parse(readFileSync(new URL(`../static/data/scenarios/${reactor}_startup_tutorial.json`, import.meta.url)));
+    const h = harness();
+    await h.ctx.boot(reactor, def);
+    for (let i = 0; i < 140; i++) {
+      h.app.engine.step(0.05);
+      h.app.session.step(0.05, h.app.engine.trips.tiles(), 0);
+    }
+    assert.equal(h.app.session.tutorial.index, 0);
+    assert.equal(h.app.session.tutorial.inspectReady, true);
+    assert.equal(h.app.session.tutorial.held, 5);
+    const saved = JSON.parse(JSON.stringify(pack(h.app.engine, def.id, h.app.session.run, h.app.session)));
+    const resumed = harness(async () => ({ ok: true, data: saved }));
+    await resumed.ctx.boot(reactor, def, 'slot');
+    assert.deepEqual(resumed.app.session.tutorial.snapshot(), h.app.session.tutorial.snapshot());
+    assert.equal(resumed.app.session.tutorial.inspectReady, true);
+    assert.deepEqual(resumed.app.session.tutorial.completed, []);
+    assert.equal(resumed.app.session.tutorial.confirmInspect(), true);
+    assert.equal(resumed.app.session.tutorial.index, 1);
+    assert.deepEqual(resumed.app.session.tutorial.completed, [{ id: 'inspect', t: resumed.app.engine.state.t_sim }]);
+    await resumed.ctx.boot(reactor, def);
+    assert.equal(resumed.app.session.tutorial.index, 0);
+    assert.equal(resumed.app.session.tutorial.inspectReady, false);
+    assert.equal(resumed.app.session.tutorial.held, 0);
+    assert.deepEqual(resumed.app.session.tutorial.completed, []);
+  });
+}
 
 test('scenario assistance survives resume and never changes the global helper preference', async () => {
   const defs = ['pwr_feedwater_loss', 'pwr_sg_tube_leak', 'pwr_combined_faults'].map(id =>

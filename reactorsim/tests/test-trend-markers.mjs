@@ -12,6 +12,7 @@ import { Session } from '../static/js/game/session.js';
 import { Scenario } from '../static/js/game/scenario.js';
 import { ScenarioObjectives } from '../static/js/game/objectives.js';
 import { StartupTutorial, TUTORIAL_STEPS } from '../static/js/game/tutorial.js';
+import { RbmkStartupTutorial } from '../static/js/game/rbmkTutorial.js';
 import { eventKey, getEvent } from '../static/js/game/events.js';
 import { pack, apply } from '../static/js/net/persist.js';
 
@@ -306,46 +307,80 @@ for (const type of ['pwr_feedwater', 'pwr_heat_removal', 'pwr_power_limited']) {
   });
 }
 
-test('tutorial holds mark start/reset and completed title before advancing, never prepare/restore', () => {
-  const e = makeEngine('pwr', { cold: true, n: 1e-6 });
-  const markers = capture(e);
-  const tutorial = new StartupTutorial(e);
-  tutorial.prepare();
-  assert.deepEqual(markers, []);
-  const tick = dt => { e.state.t_sim += dt; tutorial.step(dt); };
-  tick(1);
-  tick(1);
-  e.state.p_prim = 100;
-  tick(1);
-  tick(1);
-  assert.deepEqual(markers, [
-    { t: 1, kind: 'goal_start', key: 'tut_inspect_title' },
-    { t: 3, kind: 'goal_reset', key: 'tut_inspect_title' },
-  ]);
-  e.state.p_prim = 158;
-  // Conditions are isolated here; full physical startup has its own regression suite.
-  tutorial.conditions = () => TUTORIAL_STEPS.map(() => true);
-  for (const hold of [5, 3, 2, 15, 120]) {
-    const index = tutorial.index;
-    const key = `tut_${TUTORIAL_STEPS[index]}_title`;
+for (const reactor of ['pwr', 'rbmk']) {
+  test(`${reactor}: inspection marks completion only on confirmation; later holds still advance automatically`, () => {
+    const e = makeEngine(reactor, { cold: true, n: 1e-6 });
+    const markers = capture(e);
+    const tutorial = reactor === 'rbmk' ? new RbmkStartupTutorial(e) : new StartupTutorial(e);
+    tutorial.prepare();
+    assert.deepEqual(markers, []);
+    assert.equal(tutorial.confirmInspect(), false);
+    const tick = dt => { e.state.t_sim += dt; tutorial.step(dt); };
     tick(1);
-    const snapshot = tutorial.snapshot();
-    const count = markers.length;
-    tutorial.restore(snapshot);
-    assert.equal(markers.length, count);
-    tick(hold - 1);
-    assert.equal(tutorial.index, index + 1);
-    assert.deepEqual(markers.slice(-2), [
-      { t: e.state.t_sim - hold + 1, kind: 'goal_start', key },
-      { t: e.state.t_sim, kind: 'goal_met', key },
+    assert.equal(tutorial.confirmInspect(), false);
+    tick(1);
+    e.state[reactor === 'rbmk' ? 'p_drum' : 'p_prim'] = 100;
+    e.state.t_sim = 3;
+    assert.equal(tutorial.confirmInspect(), false, 'invalid click uses the zero-time reset path');
+    assert.equal(tutorial.held, 0);
+    assert.equal(tutorial.elapsed, 2);
+    assert.equal(tutorial.confirmInspect(), false);
+    tick(1);
+    assert.deepEqual(markers, [
+      { t: 1, kind: 'goal_start', key: `${tutorial.prefix}inspect_title` },
+      { t: 3, kind: 'goal_reset', key: `${tutorial.prefix}inspect_title` },
     ]);
-  }
-  const count = markers.length;
-  tick(1);
-  tutorial.restore(tutorial.snapshot());
-  assert.equal(markers.length, count);
-  assert.equal(tutorial.done, true);
-});
+    // Conditions are isolated here; full physical startup has its own regression suite.
+    tutorial.conditions = () => TUTORIAL_STEPS.map(() => true);
+    for (const hold of [5, 3, 2, 15, 120]) {
+      const index = tutorial.index;
+      const key = `${tutorial.prefix}${TUTORIAL_STEPS[index]}_title`;
+      tick(1);
+      const startedAt = e.state.t_sim;
+      const snapshot = tutorial.snapshot();
+      const count = markers.length;
+      tutorial.restore(snapshot);
+      assert.equal(markers.length, count);
+      if (index >= 3) {
+        tick(5);
+        const laterHold = tutorial.snapshot();
+        assert.equal(tutorial.held, 6);
+        assert.equal(tutorial.inspectReady, false, 'five held seconds in a later step are not inspection readiness');
+        assert.equal(tutorial.confirmInspect(), false);
+        assert.deepEqual(tutorial.snapshot(), laterHold, 'confirmation cannot alter a later hold');
+        assert.equal(markers.length, count);
+        tick(hold - 6);
+      } else tick(hold - 1);
+      if (index === 0) {
+        tick(2);
+        assert.equal(tutorial.index, 0);
+        assert.equal(tutorial.held, 5);
+        assert.equal(tutorial.inspectReady, true);
+        assert.equal(markers.length, count, 'ready and still waiting emits no goal_met');
+        const pending = tutorial.snapshot();
+        tutorial.restore(pending);
+        assert.deepEqual(tutorial.snapshot(), pending);
+        assert.equal(markers.length, count, 'restoring pending confirmation emits nothing');
+        assert.equal(tutorial.confirmInspect(), true);
+        assert.deepEqual(tutorial.completed, [{ id: 'inspect', t: e.state.t_sim }]);
+        assert.equal(tutorial.confirmInspect(), false);
+        assert.equal(markers.length, count + 1, 'confirmation emits exactly one goal_met');
+      }
+      assert.equal(tutorial.index, index + 1);
+      assert.deepEqual(markers.slice(-2), [
+        { t: startedAt, kind: 'goal_start', key },
+        { t: e.state.t_sim, kind: 'goal_met', key },
+      ]);
+    }
+    const count = markers.length;
+    tick(1);
+    tutorial.restore(tutorial.snapshot());
+    assert.equal(tutorial.inspectReady, false);
+    assert.equal(tutorial.confirmInspect(), false);
+    assert.equal(markers.length, count);
+    assert.equal(tutorial.done, true);
+  });
+}
 
 test('journal and physical restore replay neither actions nor active alarm/SCRAM markers', () => {
   const source = makeEngine();
