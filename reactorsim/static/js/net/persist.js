@@ -94,6 +94,7 @@ export function pack(engine, scenarioId, runState, session) {
       pumpsStuck: engine.ctx.pumpsStuck ? Array.from(engine.ctx.pumpsStuck) : undefined,
       recircPumpStuck: engine.ctx.recircPumpStuck,
       recircRunback: engine.ctx.recircRunback,
+      mcpRunback: engine.ctx.mcpRunback,
       porvStuck: engine.ctx.porvStuck,
       sgLeak: engine.ctx.sgLeak,
       boronRunaway: engine.ctx.boronRunaway,
@@ -248,6 +249,12 @@ export function apply(blob, engine, runState, session) {
       const { from, to, t0, dur } = m.recircRunback;
       if ([from, to, t0, dur].every((x) => typeof x === 'number' && Number.isFinite(x))) {
         engine.ctx.recircRunback = { from, to, t0, dur };
+      }
+    }
+    if (m.mcpRunback && typeof m.mcpRunback === 'object') {
+      const { from, to, t0, dur } = m.mcpRunback;
+      if ([from, to, t0, dur].every((x) => typeof x === 'number' && Number.isFinite(x))) {
+        engine.ctx.mcpRunback = { from, to, t0, dur };
       }
     }
     if (m.porvStuck) engine.ctx.porvStuck = true;

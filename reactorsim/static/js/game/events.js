@@ -196,6 +196,22 @@ const EVENTS = {
     apply(e) { if (e.ctx.powerCtl) e.ctx.powerCtl.auto = false; },
   },
 
+  rbmk_mcp_runback: {
+    key: 'ev_rbmk_mcp_runback',
+    severity: 2,
+    apply(e, args) {
+      // Wie recirc_runback beim SWR: der Durchsatz sinkt ueber die
+      // angegebene Zeit, nicht in einem Schritt -- Naeherung an den
+      // Turbinenauslauf, der die vom Turbogenerator mitversorgten
+      // Hauptumwaelzpumpen langsam auslaufen liess. Keine eigene
+      // Rotordrehzahl-Zustandsgroesse, bewusst geskriptet (siehe BACKLOG).
+      if (e.state.reactor !== 'rbmk' || e.state.mcpDmd === undefined) return;
+      const to = (args && Number.isFinite(args.to)) ? args.to : 0;
+      const dur = (args && Number.isFinite(args.over_s) && args.over_s > 0) ? args.over_s : 30;
+      e.ctx.mcpRunback = { from: e.state.mcpDmd, to, t0: e.state.t_sim, dur };
+    },
+  },
+
   // ── Netz ─────────────────────────────────────────────────────────────────
   turbine_trip: {
     key: 'ev_turbine_trip',
@@ -286,5 +302,19 @@ export function stepEvents(e, dt) {
 
   if (ctx.boronRunaway && s.C_B_cmd !== undefined) {
     s.boronFlow = -1;
+  }
+
+  // Kuehlmittel-Auslauf (siehe rbmk_mcp_runback oben): laeuft ueber
+  // mehrere Sekunden statt in einem Schritt, danach behaelt der Spieler die
+  // volle Handregelung -- genau wie recircRunback beim SWR.
+  if (ctx.mcpRunback && s.mcpDmd !== undefined) {
+    const rb = ctx.mcpRunback;
+    const frac = (s.t_sim - rb.t0) / rb.dur;
+    if (frac >= 1) {
+      s.mcpDmd = rb.to;
+      ctx.mcpRunback = null;
+    } else if (frac > 0) {
+      s.mcpDmd = rb.from + (rb.to - rb.from) * frac;
+    }
   }
 }

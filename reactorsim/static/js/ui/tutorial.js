@@ -33,7 +33,8 @@ export function buildTutorial(session, render) {
   if (!session.tutorial) return;
   const tutorial = session.tutorial;
   const prefix = tutorial.prefix;
-  const checklist = TUTORIAL_STEPS.map(() => el('li'));
+  const steps = tutorial.steps;
+  const checklist = steps.map(() => el('li'));
   modalSteps.replaceChildren(...checklist);
   const inspection = t(prefix + 'inspect_checks').split('\n').map(() => el('li'));
   modalInspection.replaceChildren(...inspection);
@@ -75,7 +76,7 @@ export function buildTutorial(session, render) {
     modalConfirm.disabled = !v.inspectReady || session.phase !== PHASE.RUNNING;
     if (v.done) { setText(status, t('tut_completed')); return; }
     const title = t(prefix + v.id + '_title');
-    const heading = t('tut_heading', { n: v.index + 1, total: TUTORIAL_STEPS.length, title });
+    const heading = t('tut_heading', { n: v.index + 1, total: steps.length, title });
     const held = Math.floor(v.held + 1e-8);
     const hold = v.inspectReady ? t('tut_inspect_pending') : t('tut_hold_compact', { held, required: v.required });
     const vars = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, num(x, k === 'neutron' ? 4 : 1)]));
@@ -94,7 +95,7 @@ export function buildTutorial(session, render) {
     }
     setText(modalHint, t(v.hint, vars));
     setText(modalWhy, t(prefix + v.id + '_why'));
-    TUTORIAL_STEPS.forEach((id, i) => setText(checklist[i], `${t(i < v.index ? 'tut_done' : i === v.index ? 'tut_current' : 'tut_pending')} · ${t(prefix + id + '_title')}`));
+    steps.forEach((id, i) => setText(checklist[i], `${t(i < v.index ? 'tut_done' : i === v.index ? 'tut_current' : 'tut_pending')} · ${t(prefix + id + '_title')}`));
   };
   update();
   if (!modal.hidden) modalTitle.focus();
@@ -103,10 +104,17 @@ export function buildTutorial(session, render) {
 
 export function renderTutorialResult(parent, result) {
   if (!result?.tutorial) return;
-  const prefix = result.tutorial.reactor === 'rbmk' ? 'tut_rbmk_'
-    : result.tutorial.reactor === 'bwr' ? 'tut_bwr_' : 'tut_';
+  // `steps`/`prefix` kommen aus session.js -- nur dort ans (ansonsten
+  // unveraenderte) Speicherformat von snapshot() angehaengt, siehe
+  // tutorial.js. `reactor` allein reicht seit dem Chernobyl-Tutorial nicht
+  // mehr: das ist auch ein RBMK-Tutorial, aber mit eigenem Text-Praefix.
+  // Fallback auf die alte reactor-Ableitung bzw. die fuenf Anfahrschritte,
+  // falls (wie in aelteren Tests) nur ein schlankes Objekt hereinkommt.
+  const prefix = result.tutorial.prefix ?? (result.tutorial.reactor === 'rbmk' ? 'tut_rbmk_'
+    : result.tutorial.reactor === 'bwr' ? 'tut_bwr_' : 'tut_');
+  const steps = result.tutorial.steps ?? TUTORIAL_STEPS;
   parent.append(el('h3', { text: t('tut_steps') }), el('p', { text: t('tut_unranked') }),
-    el('ol', null, TUTORIAL_STEPS.map(id => {
+    el('ol', null, steps.map(id => {
       const entry = result.tutorial.completed.find(e => e.id === id);
       return el('li', { text: `${t(prefix + id + '_title')} · ${entry ? t('tut_done') + ' ' + clock(entry.t) : t('tut_pending')}` });
     })));

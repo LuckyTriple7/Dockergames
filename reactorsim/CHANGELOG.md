@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.2.2
+
+- ✨ **Neues Tutorial: „Block 4 – Die Nacht des 26. April“ (RBMK).** Geführter
+  historischer Nachbau der Chernobyl-Nacht ab der Schichtübergabe um
+  Mitternacht bis zum Turbinenauslaufversuch und AZ-5, basierend auf IAEA
+  INSAG-7. Der Ausgangszustand (ORM ≈ 28, ≈237 MWth) ist das Ergebnis einer
+  validierten zweistufigen Vorgeschichte (Volllast → 50 % → neun Stunden
+  halten → 7 %) und wird als geprüfter, fester Zustand in `prepare()`
+  hinterlegt (Live-Neuberechnung dauert im Browser ~3,7 s, siehe unten).
+  AZ-5 kombiniert mit einem geskripteten Kühlmittelauslauf (neues Event
+  `rbmk_mcp_runback`, 30 s) führt bei ausreichender Wartezeit zuverlässig zu
+  echter Brennstoffzerstörung -- mit der **bestehenden** RBMK-Physik
+  (Graphitverdränger- und Dampfblasen-Rückkopplung), keine neue Kalibrierung
+  nötig. Ein realer Leistungseinbruch wird bewusst NICHT mechanisch
+  nachgestellt: Schon ein kurzer, moderater Einbruch riss beim Testen mehr
+  Xenon auf, als sich mit den verbleibenden Steuerstäben je zurückholen
+  ließ, auch mit voll gezogenen Stäben -- eine Grenze dieses vereinfachten
+  Modells, keine Kalibrierfrage, im Anleitungstext offen benannt.
+- 🔧 **Tutorial-Basisklasse generalisiert.** `TUTORIAL_STEPS`/`HOLD_SECONDS`
+  in `game/tutorial.js` waren Modulkonstanten, geteilt von allen drei
+  bestehenden Anfahrtutorials (PWR/BWR/RBMK) -- keine Unterklasse konnte
+  eine andere Schrittzahl haben. Jetzt überschreibbare Instanz-Getter
+  (`steps`/`holdSeconds`), Default unverändert. `ui/tutorial.js` liest die
+  Schrittliste jetzt von der lebenden Instanz bzw. (für die Debrief-Anzeige
+  nach Sitzungsende) von einem zusätzlichen, nur dort angehängten Feld --
+  das Speicherformat von `snapshot()` bleibt unverändert. Keine Auswirkung
+  auf die drei bestehenden Anfahrtutorials (26 Regressionstests weiterhin
+  grün).
+
 ## 0.2.1
 
 - 🐛 Admin konnte sich nicht abmelden: die Rollenweiche in `_require_login()`

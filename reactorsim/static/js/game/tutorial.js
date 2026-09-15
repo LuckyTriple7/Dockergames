@@ -1,6 +1,12 @@
 // State-based training objectives. This module never drives the plant after
 // initial preparation; every operating action uses the normal controls.
 export const STARTUP_TUTORIAL = 'pwr_startup';
+// Historical fixed 5-step startup sequence, shared by PWR/BWR/RBMK anfahren
+// (their subclasses override conditions()/hint()/prepare(), not the steps
+// themselves). A tutorial for a DIFFERENT kind of walkthrough -- e.g. an
+// incident replay with its own chapters -- overrides the `steps`/
+// `holdSeconds` getters below instead of these module constants, so it
+// cannot affect the three existing subclasses that don't.
 export const TUTORIAL_STEPS = ['inspect', 'pumps', 'power', 'load', 'stable'];
 const HOLD_SECONDS = [5, 3, 2, 15, 120];
 
@@ -12,6 +18,10 @@ export class StartupTutorial {
     this.elapsed = 0;
     this.completed = [];
   }
+
+  /** Overridable per subclass. Defaults keep the historical PWR sequence. */
+  get steps() { return TUTORIAL_STEPS; }
+  get holdSeconds() { return HOLD_SECONDS; }
 
   prepare() {
     const { state: s, ctx: c, spec: sp, reactivity } = this.engine;
@@ -36,12 +46,12 @@ export class StartupTutorial {
     s.P_demand = 0;
   }
 
-  get done() { return this.index === TUTORIAL_STEPS.length; }
+  get done() { return this.index === this.steps.length; }
   get prefix() { return 'tut_'; }
   get demand() { return this.index >= 3 ? 150 : 0; }
 
   get inspectReady() {
-    return this.index === 0 && this.held + 1e-8 >= HOLD_SECONDS[0] && this.conditions()[0];
+    return this.index === 0 && this.held + 1e-8 >= this.holdSeconds[0] && this.conditions()[0];
   }
 
   confirmInspect() {
@@ -77,17 +87,17 @@ export class StartupTutorial {
     if (this.done) return;
     this.elapsed += dt;
     const heldBefore = this.held;
-    const key = `${this.prefix}${TUTORIAL_STEPS[this.index]}_title`;
-    this.held = this.conditions()[this.index] ? Math.min(this.held + dt, HOLD_SECONDS[this.index]) : 0;
+    const key = `${this.prefix}${this.steps[this.index]}_title`;
+    this.held = this.conditions()[this.index] ? Math.min(this.held + dt, this.holdSeconds[this.index]) : 0;
     if (heldBefore === 0 && this.held > 0) this.engine.ctx.trends?.mark({
       t: this.engine.state.t_sim, kind: 'goal_start', key });
     if (heldBefore > 0 && this.held === 0) this.engine.ctx.trends?.mark({
       t: this.engine.state.t_sim, kind: 'goal_reset', key });
-    if (this.index > 0 && this.held + 1e-8 >= HOLD_SECONDS[this.index]) this.completeStep();
+    if (this.index > 0 && this.held + 1e-8 >= this.holdSeconds[this.index]) this.completeStep();
   }
 
   completeStep() {
-    const id = TUTORIAL_STEPS[this.index];
+    const id = this.steps[this.index];
     this.completed.push({ id, t: this.engine.state.t_sim });
     this.engine.ctx.trends?.mark({ t: this.engine.state.t_sim, kind: 'goal_met', key: `${this.prefix}${id}_title` });
     this.index++;
@@ -116,29 +126,34 @@ export class StartupTutorial {
   }
 
   snapshot() {
+    // Bewusst OHNE `steps` -- das ist das Speicherformat (siehe
+    // net/persist.js), und das darf sich nicht aendern. Fuer die
+    // Debrief-Anzeige nach einem ANDEREN Tutorial als den fuenf Anfahrschritten
+    // haengt session.js die Schrittliste separat an result.tutorial an.
     return { index: this.index, held: this.held, elapsed: this.elapsed,
       completed: this.completed.map(e => ({ ...e })) };
   }
 
   restore(data) {
-    if (!data || !Number.isInteger(data.index) || data.index < 0 || data.index > TUTORIAL_STEPS.length) return;
+    const steps = this.steps;
+    if (!data || !Number.isInteger(data.index) || data.index < 0 || data.index > steps.length) return;
     const entries = data.completed;
     if (!Array.isArray(entries) || entries.length !== data.index
-      || entries.some((e, i) => e?.id !== TUTORIAL_STEPS[i] || !Number.isFinite(e.t)
+      || entries.some((e, i) => e?.id !== steps[i] || !Number.isFinite(e.t)
         || e.t < 0 || e.t > this.engine.state.t_sim)) return;
     this.index = data.index;
     this.completed = entries.map(e => ({ ...e }));
-    this.held = Number.isFinite(data.held) ? Math.max(0, Math.min(data.held, HOLD_SECONDS[this.index] || 0)) : 0;
+    this.held = Number.isFinite(data.held) ? Math.max(0, Math.min(data.held, this.holdSeconds[this.index] || 0)) : 0;
     this.elapsed = Number.isFinite(data.elapsed) ? Math.max(0, data.elapsed) : 0;
   }
 
   view() {
     const s = this.engine.state;
     const d = this.engine.derive();
-    return { ...this.snapshot(), id: TUTORIAL_STEPS[this.index], done: this.done,
+    return { ...this.snapshot(), id: this.steps[this.index], done: this.done,
       inspectReady: this.inspectReady, inspectValid: this.index === 0 && this.conditions()[0],
       inspectIntact: !s.destroyed && !s.fault && !s.scram.active,
-      required: HOLD_SECONDS[this.index] || 0, hint: this.hint(),
+      required: this.holdSeconds[this.index] || 0, hint: this.hint(),
       values: { pressure: s.p_prim, temperature: d.T_avg - 273.15, flow: s.W_core,
         neutron: s.n * 100, power: d.power_th_pct, electric: s.P_e, level: s.L_sg * 100,
         rho: d.rho_pcm, pumps: this.engine.ctx.pumpList.filter(p => p.running && p.speed >= 0.9).length } };

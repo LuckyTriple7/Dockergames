@@ -10,6 +10,7 @@ import { Rng } from '../rng.js';
 import { StartupTutorial, STARTUP_TUTORIAL } from './tutorial.js';
 import { RbmkStartupTutorial, RBMK_STARTUP_TUTORIAL } from './rbmkTutorial.js';
 import { BwrStartupTutorial, BWR_STARTUP_TUTORIAL } from './bwrTutorial.js';
+import { RbmkChernobylTutorial, RBMK_CHERNOBYL_TUTORIAL } from './chernobylTutorial.js';
 import { noteEvent, observeAlarms, learningReport } from './learning.js';
 import { ScenarioObjectives } from './objectives.js';
 import { TrendHistory } from './trendHistory.js';
@@ -53,7 +54,9 @@ export class Session {
       : scenarioDef?.tutorial === RBMK_STARTUP_TUTORIAL && engine.spec.id === 'rbmk'
         ? new RbmkStartupTutorial(engine)
         : scenarioDef?.tutorial === BWR_STARTUP_TUTORIAL && engine.spec.id === 'bwr'
-          ? new BwrStartupTutorial(engine) : null;
+          ? new BwrStartupTutorial(engine)
+          : scenarioDef?.tutorial === RBMK_CHERNOBYL_TUTORIAL && engine.spec.id === 'rbmk'
+            ? new RbmkChernobylTutorial(engine) : null;
     this.demandRng = this.free ? new Rng(Date.now() >>> 0) : null;
     this.demandTarget = null;
     this.demandNextChangeT = 0;
@@ -196,7 +199,13 @@ export class Session {
       this.result = { summary: sum, causes: this.run.topCauses(), learning: learningReport(this.engine), ...score(sum) };
       if (this.objectives) this.result.objectives = this.objectives.view();
       if (this.tutorial) {
-        this.result.tutorial = this.tutorial.snapshot();
+        // `steps`/`prefix` NICHT Teil von snapshot() (das ist das
+        // Speicherformat) -- nur hier fuer die einmalige Debrief-Anzeige
+        // angehaengt, damit renderTutorialResult() (ui/tutorial.js) auch ein
+        // Tutorial mit ANDEREN Schritten als den fuenf Anfahrschritten und
+        // eigenem Text-Praefix korrekt auflistet.
+        this.result.tutorial = { ...this.tutorial.snapshot(),
+          steps: this.tutorial.steps, prefix: this.tutorial.prefix };
         this.result.score = null;
         this.result.parts = {};
       }
