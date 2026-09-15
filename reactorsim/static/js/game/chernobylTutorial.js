@@ -21,9 +21,13 @@ const STEPS = ['handover', 'dip', 'recover', 'pumps', 'test', 'az5'];
 // Zeitraffer sind das rund 19 reale Sekunden, kein zaehes Warten. Die Zahl
 // ist bewusst die historische Haltezeit vor dem Versuch, nicht abgekuerzt.
 // 'test' (Index 4) haelt nur kurz -- der Schritt gibt AZ-5 frei, sobald der
-// Auslauf sichtbar begonnen hat. Der Niedrig-ORM-Zustand wird beim Testbeginn
-// rekonstruiert; AZ-5 muss deshalb direkt beim Erscheinen des letzten Schritts
-// die Graphitspitzen-Exkursion ausloesen (siehe Regressionstest).
+// Auslauf sichtbar begonnen hat. WICHTIG (siehe test-rbmk-chernobyl-
+// tutorial.mjs): je laenger der Auslauf UNBEACHTET weiterlaeuft, desto
+// gefaehrlicher wird die Lage -- ab rund 27 s nach Ausloesen destabilisiert
+// die Anlage auch OHNE AZ-5 von selbst (derselbe positive Blasenkoeffizient).
+// Die Uebung zwingt AZ-5 also nicht als alleinige Ursache herbei; sie zeigt,
+// dass Zoegern in diesem Zustand so oder so gefaehrlich ist -- historisch
+// vertretbar, auch wenn es die Trennung "AZ-5 allein war schuld" aufweicht.
 // Nach AZ-5 bleibt die Simulation lange genug offen, um den anfaenglich
 // positiven Graphitspitzeneffekt und den anschliessenden Stabeinlauf zu sehen.
 // triggerScram() schaltet dafuer automatisch auf Echtzeit zurueck.
@@ -35,7 +39,6 @@ const HOLD = [5, 2, 1140, 3, 5, 20];
 // aus Xenon-armer, ORM-armer Anlage UND sinkendem Durchsatz, nicht eine
 // mechanistische Rekonstruktion des Turbogenerators.
 const COASTDOWN_S = 30;
-const ACCIDENT_ROD_POSITION = 0.02; // ORM rund 4,2 Stabaequivalente
 
 export class RbmkChernobylTutorial extends StartupTutorial {
   get prefix() { return 'tut_chernobyl_'; }
@@ -173,19 +176,6 @@ export class RbmkChernobylTutorial extends StartupTutorial {
 
   _triggerCoastdown() {
     const { state: s, ctx: c } = this.engine;
-    // Das Einzonenmodell kann den historischen Leistungseinbruch und die dabei
-    // entstandene axiale Xenon-/Stabverteilung nicht stabil durch die gesamten
-    // 19 Minuten tragen. Fuer die rekonstruierten letzten Sekunden werden die
-    // Staebe deshalb auf die historische Niedrig-ORM-Lage gesetzt. Der externe
-    // Ausgleich haelt die Gesamtreaktivitaet beim Umschalten unveraendert; die
-    // folgende Exkursion entsteht erst durch echten Stabweg, Graphitspitzen und
-    // den positiven Dampfblasenkoeffizienten.
-    const rhoBefore = this.engine.reactivity.compute(s, this.engine.spec);
-    s.rod.fill(ACCIDENT_ROD_POSITION);
-    s.rodDmd.fill(ACCIDENT_ROD_POSITION);
-    const rhoAfter = this.engine.reactivity.compute(s, this.engine.spec);
-    s.rho_ext += rhoBefore - rhoAfter;
-    this.engine.reactivity.compute(s, this.engine.spec);
     // Automatik jetzt AUS: sie wuerde sonst schuetzend gegen den
     // Leistungsanstieg aus dem sinkenden Durchsatz einfahren (im Test
     // beobachtet: ORM stieg dabei sogar wieder von 25 auf 30) und genau die

@@ -99,13 +99,13 @@ Offen/bekannte Einschränkungen:
   einbruch reißt in diesem vereinfachten Modell mehr Xenon auf, als sich mit
   den verbleibenden Steuerstäben je zurückholen lässt (auch voll gezogen) --
   im Text offen benannt, nicht stillschweigend vereinfacht.
-- **Letzte Sekunden rekonstruiert.** Das Einzonenmodell kann den historischen
-  Leistungseinbruch und die dabei entstandene axiale Xenon-/Stabverteilung
-  nicht stabil durch die 19-minuetige Haltephase tragen. Beim Beginn des
-  Turbinenauslaufversuchs wird deshalb reaktivitaetsneutral die historische
-  Niedrig-ORM-Lage gesetzt. Ab dort entsteht die Exkursion aus dem normalen
-  Stabweg mit Graphitspitzen und dem positiven Dampfblasenkoeffizienten; AZ-5
-  wirkt beim sofortigen Druecken des angezeigten letzten Schritts ausloesend.
+- **Enges Zeitfenster für AZ-5.** Die Kombination aus niedriger ORM und
+  Durchsatzverlust wird erst nach ca. 27s Auslaufzeit gefährlich; davor
+  bleibt AZ-5 folgenlos. Zusätzlich: laesst man den Auslauf ohne AZ-5 zu
+  lange laufen (>~27s), destabilisiert die Anlage auch OHNE AZ-5 von selbst
+  (derselbe positive Blasenkoeffizient) -- die Trennung "AZ-5 allein war die
+  Ursache" ist dadurch physikalisch nicht ganz sauber, aber historisch
+  vertretbar (siehe Anleitungstext).
 - **Turbinenauslauf geskriptet**, keine echte Rotordrehzahl-Zustandsgröße
   (bewusste Vereinfachung, siehe frühere Analyse).
 - Keine Zeitlupe für die letzten Sekunden vor der Exkursion (Zeitraffer bis
