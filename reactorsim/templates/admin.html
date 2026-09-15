@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ t.app_title }} — {{ t.admin_title }}</title>
+<style nonce="{{ csp_nonce() }}">
+  /* Bewusst alles hier drin, wie in login.html: eigenstaendige Seite, kein
+     Nachladen aus static/. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100dvh; padding: 24px 16px;
+    background: radial-gradient(1200px 600px at 50% -10%, #14263a 0%, transparent 60%), #080b10;
+    color: #c9d6e3;
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 20px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: .03em; }
+  h1 span {
+    display: block; font-size: 11px; font-weight: 400; letter-spacing: .18em;
+    text-transform: uppercase; color: #56656f; margin-top: 3px;
+  }
+  .top { display: flex; align-items: baseline; gap: 12px; }
+  .top .ver { margin-left: auto; font-family: ui-monospace, monospace; font-size: 11px; color: #56656f; }
+  .top a { color: #64d8ff; text-decoration: none; font-size: 12px; }
+  section {
+    background: #121a24; border: 1px solid #223040; border-radius: 10px;
+    padding: 18px; display: grid; gap: 12px;
+  }
+  h2 { margin: 0; font-size: 15px; letter-spacing: .03em; }
+  label { display: grid; gap: 5px; font-size: 12px; color: #7e8fa0; }
+  input {
+    background: #0d1219; border: 1px solid #223040; border-radius: 5px;
+    color: #c9d6e3; padding: 8px 10px; font: inherit; min-height: 38px;
+  }
+  input:focus { outline: none; border-color: #64d8ff; }
+  form.inline { display: inline; }
+  .addform { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+  .addform label { flex: 1 1 220px; }
+  button {
+    background: #12405f; border: 1px solid #1d6c9c; border-radius: 6px;
+    color: #dff1ff; font: 600 13px/1 inherit; padding: 9px 14px; min-height: 38px;
+    cursor: pointer;
+  }
+  button:hover { background: #17537b; }
+  button.danger { background: #3a0f16; border-color: #7a1020; color: #ffb3bd; }
+  button.danger:hover { background: #4a141e; }
+  .ok {
+    margin: 0; padding: 9px 11px; border-radius: 5px; font-size: 13px;
+    background: #123a1f; border: 1px solid #1f7a3f; color: #b3ffcb;
+  }
+  .err {
+    margin: 0; padding: 9px 11px; border-radius: 5px; font-size: 13px;
+    background: #3a0f16; border: 1px solid #7a1020; color: #ffb3bd;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #1a242f; }
+  th { color: #7e8fa0; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  td.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .status-active { color: #7ee0a0; }
+  .status-locked { color: #ffb3bd; }
+  .muted { color: #56656f; }
+  .scroll { overflow-x: auto; }
+  code { font-family: ui-monospace, monospace; background: #0d1219; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>{{ t.app_title }}<span>{{ t.admin_title }}</span></h1>
+    <a href="/set-lang/de">DE</a>
+    <a href="/set-lang/en">EN</a>
+    <a href="/logout">{{ t.btn_logout }}</a>
+    <span class="ver">v{{ app_version }}</span>
+  </div>
+
+  {% if error %}
+    <p class="err">{{ t.get('admin_error_' + error, error) }}</p>
+  {% endif %}
+  {% if created %}
+    <p class="ok">
+      {% if created.generated_password %}
+        {{ t.admin_created_banner.format(email=created.email, password=created.generated_password) }}
+      {% else %}
+        {{ t.admin_created_banner_set.format(email=created.email) }}
+      {% endif %}
+    </p>
+  {% endif %}
+  {% if reset_password %}
+    <p class="ok">{{ t.admin_reset_banner.format(email=reset_password.email, password=reset_password.password) }}</p>
+  {% endif %}
+
+  <section>
+    <h2>{{ t.admin_add_user_heading }}</h2>
+    <form class="addform" method="post" action="/admin/users">
+      <label>{{ t.admin_email_label }}
+        <input type="email" name="email" required autocomplete="off">
+      </label>
+      <label>{{ t.admin_password_label }}
+        <input type="text" name="password" autocomplete="off" placeholder="{{ t.admin_password_hint }}">
+      </label>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit">{{ t.admin_add_submit }}</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>{{ t.admin_users_heading }}</h2>
+    <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>{{ t.admin_col_email }}</th>
+        <th>{{ t.admin_col_status }}</th>
+        <th>{{ t.admin_col_created }}</th>
+        <th>{{ t.admin_col_last_login }}</th>
+        <th>{{ t.admin_col_last_ip }}</th>
+        <th>{{ t.admin_col_playtime }}</th>
+        <th>{{ t.admin_col_actions }}</th>
+      </tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.email }}</td>
+          <td class="status-{{ u.status }}">
+            {{ t.admin_status_active if u.status == 'active' else t.admin_status_locked }}
+          </td>
+          <td>{{ u.created_at | fmt_time }}</td>
+          <td>{{ u.last_login_at | fmt_time }}</td>
+          <td><code>{{ u.last_login_ip or '\u2013' }}</code></td>
+          <td>{{ u.total_playtime_s | fmt_duration }}</td>
+          <td class="actions">
+            {% if u.status == 'active' %}
+            <form class="inline" method="post" action="/admin/users/{{ u.id }}/lock">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button type="submit" class="danger">{{ t.admin_action_lock }}</button>
+            </form>
+            {% else %}
+            <form class="inline" method="post" action="/admin/users/{{ u.id }}/unlock">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button type="submit">{{ t.admin_action_unlock }}</button>
+            </form>
+            {% endif %}
+            <form class="inline" method="post" action="/admin/users/{{ u.id }}/reset-password">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button type="submit">{{ t.admin_action_reset }}</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="muted">{{ t.admin_no_users }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>{{ t.admin_recent_logins_heading }}</h2>
+    <div class="scroll">
+    <table>
+      <thead><tr><th>{{ t.admin_col_email }}</th><th>{{ t.admin_col_when }}</th><th>{{ t.admin_col_last_ip }}</th></tr></thead>
+      <tbody>
+        {% for l in logins %}
+        <tr><td>{{ l.email }}</td><td>{{ l.at | fmt_time }}</td><td><code>{{ l.ip or '\u2013' }}</code></td></tr>
+        {% else %}
+        <tr><td colspan="3" class="muted">{{ t.admin_no_logins }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>{{ t.admin_recent_sessions_heading }}</h2>
+    <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>{{ t.admin_col_email }}</th><th>{{ t.admin_col_when }}</th>
+        <th>{{ t.admin_col_reactor }}</th><th>{{ t.admin_col_scenario }}</th>
+        <th>{{ t.admin_col_duration }}</th><th>{{ t.admin_col_completed }}</th>
+      </tr></thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td>{{ s.email }}</td><td>{{ s.at | fmt_time }}</td>
+          <td>{{ s.reactor or '\u2013' }}</td><td>{{ s.scenario or '\u2013' }}</td>
+          <td>{{ s.duration_s | fmt_duration }}</td>
+          <td>{{ t.admin_completed_yes if s.completed else t.admin_completed_no }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted">{{ t.admin_no_sessions }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+</div>
+</body>
+</html>

@@ -2,6 +2,24 @@
 
 ## Unveröffentlicht
 
+- ✨ **Admin-Panel statt REACTORSIM_USERS.** Das Konto aus
+  `REACTORSIM_USER`/`REACTORSIM_PASSWORD` ist jetzt ein reines Admin-Konto --
+  es spielt nicht, sondern landet nach der Anmeldung im Panel unter `/admin`.
+  Dort legt es Spielerkonten an (E-Mail-Adresse als Benutzername, Passwort
+  frei wählbar oder erzeugt), sperrt/entsperrt sie, setzt Passwörter zurück
+  und sieht je Konto Anmeldezeitpunkt, Absenderadresse (per `ProxyFix`,
+  konfigurierter Hop-Zaehler unveraendert bei 1) und die zuletzt gespielten,
+  ausgewerteten Läufe (Reaktortyp, Szenario, Dauer). `REACTORSIM_USERS`
+  entfällt ersatzlos; Spielerkonten liegen jetzt in `/data/users.db`
+  (SQLite) statt in der Umgebung. Eine Sperre wirkt sofort, auch bei
+  bereits laufender Sitzung. Mehrere Spielerkonten können gleichzeitig
+  spielen (eigene Spielstände, eigene Ratenbegrenzung, wie zuvor); je Konto
+  bleibt genau eine aktive Sitzung erzwungen, das Admin-Konto ist davon
+  ausgenommen (mehrere Tabs/Geräte fürs Panel erlaubt, da es ohnehin nicht
+  spielt). Passwort-Reset ist in dieser Phase manuell (Admin liest das neue
+  Passwort einmalig im Panel ab und gibt es weiter); automatischer
+  Mailversand folgt später. Bestehende Spielstände/Konten aus der
+  Entwicklungszeit werden mit diesem Umbau nicht migriert.
 - Anfahr-Tutorial für den SWR: vorbereiteter heißer, unterkritischer Start,
   Umwälzpumpe, manueller Leistungsaufbau und rund 300 MWe mit 120 Sekunden
   stabilem Betrieb. Dynamische Reaktivitätshinweise, eigene deutsche und

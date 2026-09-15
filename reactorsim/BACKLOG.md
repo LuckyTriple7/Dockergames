@@ -65,9 +65,22 @@ und die übrigen Erweiterungen bleiben offen. Details:
 
 ### Mehrbenutzerbetrieb
 
-`persist.py` führt schon ein Spieler-Token je Gerät, `auth.py` kennt dagegen
-genau ein Konto aus der Umgebung. Erst mit echten Konten ergibt eine
-Bestenliste mit Namen Sinn.
+Umgesetzt: Admin-Konto (`REACTORSIM_USER`/`REACTORSIM_PASSWORD`, spielt
+nicht) verwaltet Spielerkonten im Panel unter `/admin` -- anlegen (E-Mail als
+Benutzername), sperren/entsperren, Passwort zurücksetzen, Anmelde- und
+Spielprotokoll je Konto (Zeitpunkt, Absenderadresse, Reaktortyp/Szenario/
+Dauer). Spielerkonten liegen in `/data/users.db` (SQLite) statt in der
+Umgebung; `REACTORSIM_USERS` ist entfallen. Mehrere Spielerkonten spielen
+gleichzeitig, eigene Spielstände je Konto (`persist.Store.account_key`).
+
+Offen:
+
+- **Passwort-Reset Phase 2:** bisher zeigt das Panel ein neues Zufallspasswort
+  nur einmalig an (manuell weiterzugeben); automatischer Mailversand über
+  SMTP-Konfiguration folgt später.
+- **Self-Service:** ein Spieler kann sein Passwort nicht selbst ändern, nur
+  der Admin per Reset (bewusste Entscheidung für Phase 1).
+- Kein Löschen von Spielerkonten im Panel, nur Sperren.
 
 ## Weitere Störszenarien
 

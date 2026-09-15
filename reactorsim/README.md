@@ -28,17 +28,19 @@ Danach `http://<server>:17779` öffnen. Der Dienst hört im Container fest auf
 17779; willst du einen anderen Port, ändere nur die linke Seite der
 Portzuordnung in der `docker-compose.yml`.
 
-Der Zugang ist durch ein Konto geschützt — Benutzer und Passwort kommen aus
-`REACTORSIM_USER` und `REACTORSIM_PASSWORD`. Ohne gesetztes Passwort erzeugt
+Der Zugang ist durch ein Konto geschützt. Das **Admin-Konto** kommt aus
+`REACTORSIM_USER` und `REACTORSIM_PASSWORD` — ohne gesetztes Passwort erzeugt
 ReactorSim beim ersten Start eines und schreibt es ins Protokoll; offen steht
-die Seite nie. Weitere Konten (eigene Spielstände je Konto) über
-`REACTORSIM_USERS="name:passwort,name2:passwort2"`. Je Konto ist genau eine
-Sitzung gleichzeitig aktiv — meldet es sich auf einem zweiten Gerät an, endet
-die Sitzung auf dem ersten.
+die Seite nie. Der Admin spielt nicht: er meldet sich an und landet im Panel
+unter `/admin`, wo er **Spielerkonten** anlegt (E-Mail-Adresse als
+Benutzername), sperrt/entsperrt, Passwörter zurücksetzt und sieht, wer sich
+wann von welcher Adresse angemeldet und was er gespielt hat. Je Spielerkonto
+ist genau eine Sitzung gleichzeitig aktiv — meldet es sich auf einem zweiten
+Gerät an, endet die Sitzung auf dem ersten; das Admin-Konto ist davon
+ausgenommen.
 
-Unter `./data` landen Spielstände, Bestenliste und die Zugangsdaten (nur als
-Hash). Personenbezogene Daten entstehen keine — der Spielstand gehört dem
-Konto, nicht dem Gerät.
+Unter `./data` landen Spielstände, Bestenliste, Spielerkonten samt Anmelde-
+und Spielprotokoll (SQLite) sowie die Admin-Zugangsdaten (nur als Hash).
 
 ## Anfahren lernen
 

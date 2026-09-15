@@ -17,27 +17,34 @@ _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
 
 
-TEST_USER = 'tester'
+ADMIN_USER = 'admin-tester'
+ADMIN_PASSWORD = 'admin-passwort-123'
+# Spieler melden sich mit ihrer E-Mail-Adresse an (Phase 1, siehe users.py).
+TEST_USER = 'tester@example.test'
 TEST_PASSWORD = 'test-passwort-123'
 
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    """Angemeldeter Client.
+    """Angemeldeter Spieler-Client.
 
     Seit 0.0.13 liegt alles ausser /health und /login hinter der Anmeldung.
     Diese Tests pruefen die Schnittstelle selbst, nicht den Zugang -- der hat
-    seine eigene Datei (test_auth.py). Also hier einmal anmelden und fertig.
+    seine eigene Datei (test_auth.py). Das Admin-Konto spielt nicht mehr
+    (siehe users.py) -- das Spielerkonto fuer diese Tests legt der "Admin"
+    direkt ueber UserStore an, ohne den Umweg ueber das Admin-Panel-Formular.
     """
     import re
     monkeypatch.setenv('REACTORSIM_BASE', _ROOT)
     monkeypatch.setenv('REACTORSIM_DATA', str(tmp_path))
-    monkeypatch.setenv('REACTORSIM_USER', TEST_USER)
-    monkeypatch.setenv('REACTORSIM_PASSWORD', TEST_PASSWORD)
-    for mod in ('app', 'auth', 'persist', 'scoring', 'atomic_io'):
+    monkeypatch.setenv('REACTORSIM_USER', ADMIN_USER)
+    monkeypatch.setenv('REACTORSIM_PASSWORD', ADMIN_PASSWORD)
+    for mod in ('app', 'auth', 'persist', 'scoring', 'atomic_io', 'users'):
         sys.modules.pop(mod, None)
     import app as appmod
     appmod.app.config['TESTING'] = True
+    _, err = appmod.USERS.create_user(TEST_USER, TEST_PASSWORD, created_by=ADMIN_USER)
+    assert err is None, err
     c = appmod.app.test_client()
     html = c.get('/login').get_data(as_text=True)
     csrf = re.search(r'name="csrf" value="([^"]+)"', html).group(1)
@@ -437,12 +444,14 @@ def test_legacy_cookie_save_migrates_to_account_on_first_login(tmp_path, monkeyp
 
     monkeypatch.setenv('REACTORSIM_BASE', _ROOT)
     monkeypatch.setenv('REACTORSIM_DATA', str(tmp_path))
-    monkeypatch.setenv('REACTORSIM_USER', TEST_USER)
-    monkeypatch.setenv('REACTORSIM_PASSWORD', TEST_PASSWORD)
-    for mod in ('app', 'auth', 'persist', 'scoring', 'atomic_io'):
+    monkeypatch.setenv('REACTORSIM_USER', ADMIN_USER)
+    monkeypatch.setenv('REACTORSIM_PASSWORD', ADMIN_PASSWORD)
+    for mod in ('app', 'auth', 'persist', 'scoring', 'atomic_io', 'users'):
         sys.modules.pop(mod, None)
     import app as appmod
     appmod.app.config['TESTING'] = True
+    _, err = appmod.USERS.create_user(TEST_USER, TEST_PASSWORD, created_by=ADMIN_USER)
+    assert err is None, err
 
     legacy_store = persist.Store(str(tmp_path))
     legacy_pid = legacy_store.new_player_id()

@@ -1,25 +1,33 @@
 #!/usr/bin/env python3
 """Anmeldung.
 
-Mehrere Konten moeglich. Das Hauptkonto kommt wie bisher aus
-REACTORSIM_USER/REACTORSIM_PASSWORD (aus der Dockge-Konfiguration), weitere
-ueber REACTORSIM_USERS="name:passwort,name2:passwort2" -- jedes ein
-vollwertiges Konto mit eigenen Spielstaenden (siehe persist.Store.account_key).
+Zwei Arten von Konten, streng getrennt:
+
+* **Das Admin-Konto** kommt wie bisher aus REACTORSIM_USER/REACTORSIM_PASSWORD
+  (aus der Dockge-Konfiguration) -- genau eines, fest verdrahtet. Der Admin
+  spielt nicht: er legt Spielerkonten im Admin-Panel an, sperrt sie bei
+  Bedarf und setzt Passwoerter zurueck (siehe app.py, /admin-Routen).
+* **Spielerkonten** liegen in users.UserStore (SQLite, /data/users.db), vom
+  Admin angelegt statt aus der Umgebung. Jedes hat eigene Spielstaende (siehe
+  persist.Store.account_key).
 
 Grundsaetze:
 
-* **Ohne Passwort steht die Seite nicht offen.** Ist fuer das Hauptkonto
+* **Ohne Passwort steht die Seite nicht offen.** Ist fuer das Admin-Konto
   keines gesetzt, erzeugt ReactorSim beim ersten Start eines, schreibt es
   EINMAL ins Protokoll und legt nur den Hash auf der Platte ab. Ein Dienst,
   der im Internet steht und auf ein gesetztes Passwort hofft, ist ein Dienst
   ohne Passwort.
 * Der Hash entsteht ueber werkzeug.security (scrypt). Das Klartextpasswort aus
   der Umgebung wird beim Start gehasht und danach nicht mehr angefasst.
-* Die Sitzung haengt an einem signierten Token (itsdangerous) UND an einer je
-  Konto gemerkten Sitzungskennung: meldet sich ein Konto anderswo neu an, wird
-  die vorherige Kennung ungueltig, und die alte Sitzung stirbt beim naechsten
-  Zugriff -- genau eine aktive Sitzung je Konto, das Spiel kann nie auf zwei
-  Geraeten gleichzeitig weiterlaufen.
+* Die Sitzung haengt an einem signierten Token (itsdangerous) UND -- fuer
+  Spielerkonten -- an einer je Konto gemerkten Sitzungskennung: meldet sich
+  ein Spielerkonto anderswo neu an, wird die vorherige Kennung ungueltig, und
+  die alte Sitzung stirbt beim naechsten Zugriff, genau eine aktive Sitzung
+  je Konto, das Spiel kann nie auf zwei Geraeten gleichzeitig weiterlaufen.
+  Das Admin-Konto ist davon ausgenommen: es spielt nicht, Speicherstand-
+  Konflikte durch mehrere Sitzungen koennen also nicht entstehen, und mehrere
+  Tabs/Geraete fuer die Verwaltung sollen nicht gegenseitig ausloggen.
 * Der Signierschluessel liegt in /data und wird beim ersten Start erzeugt.
   Faellt er weg, sind alle Sitzungen ungueltig -- mehr passiert nicht.
 """
@@ -33,12 +41,16 @@ import secrets
 import string
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit, urlunsplit
 
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import atomic_io
+
+if TYPE_CHECKING:
+    import users
 
 log = logging.getLogger(__name__)
 
@@ -54,27 +66,20 @@ _ALPHABET = string.ascii_letters.replace('l', '').replace('I', '').replace('O', 
 
 class Auth:
     def __init__(self, data_dir: str, user: str, password: str | None,
-                 extra_users: dict[str, str] | None = None):
+                 players: users.UserStore | None = None):
         self._dir = Path(data_dir)
         self.user = (user or 'admin').strip() or 'admin'
         self._auth_path = self._dir / 'auth.json'
         self._key_path = self._dir / 'secret.key'
         self._sessions_path = self._dir / 'sessions.json'
         self._session_lock = threading.Lock()
+        self._players = players
 
-        self._hashes = {self.user: self._resolve_password(password)}
-        for uname, pw in (extra_users or {}).items():
-            uname = (uname or '').strip()
-            if not uname or uname in self._hashes:
-                # Leerer oder doppelter Name (auch ein Zusammenstoss mit dem
-                # Hauptkonto) -- ueberspringen statt das Hauptkonto zu
-                # verlieren. War schon vorher REACTORSIM_USER, gewinnt es.
-                log.warning("REACTORSIM_USERS: Konto %r uebersprungen (leer oder doppelt)", uname)
-                continue
-            self._hashes[uname] = generate_password_hash(pw)
-        # Fester Vergleichs-Hash fuer unbekannte Benutzernamen -- ohne ihn
-        # braeuchte check() fuer einen falschen Namen kein scrypt zu rechnen,
-        # und die Antwortzeit verriete, welcher Name ueberhaupt existiert.
+        self._admin_hash = self._resolve_password(password)
+        # Fester Vergleichs-Hash fuer unbekannte oder gesperrte Benutzernamen
+        # -- ohne ihn braeuchte check() fuer einen falschen Namen kein scrypt
+        # zu rechnen, und die Antwortzeit verriete, welcher Name ueberhaupt
+        # existiert (oder gerade gesperrt ist).
         self._dummy_hash = generate_password_hash(secrets.token_hex(16))
 
         self._serializer = URLSafeTimedSerializer(self._secret(), salt='rs-session')
@@ -143,23 +148,36 @@ class Auth:
 
     # ── Anmeldung ─────────────────────────────────────────────────────────────
 
-    def check(self, user: str, password: str) -> bool:
-        """Benutzer und Passwort pruefen.
+    def is_admin(self, user: str | None) -> bool:
+        return bool(user) and user == self.user
 
-        Das Passwort wird IMMER geprueft, auch bei unbekanntem Benutzernamen
-        (gegen den Vergleichs-Hash aus __init__) -- sonst verraet die
-        Antwortzeit, welcher Name existiert.
+    def check(self, user: str, password: str) -> bool:
+        """Benutzer und Passwort pruefen -- Admin-Konto ODER Spielerkonto.
+
+        Das Passwort wird IMMER genau einmal gegen EINEN Hash geprueft, auch
+        bei unbekanntem oder gesperrtem Benutzernamen (dann gegen den
+        Vergleichs-Hash aus __init__) -- sonst verraet die Antwortzeit,
+        welcher Name existiert oder gesperrt ist.
         """
         uname = (user or '').strip()
-        ok_user = uname in self._hashes
-        ok_pass = check_password_hash(self._hashes.get(uname, self._dummy_hash), password or '')
-        return ok_user and ok_pass
+        if uname and self.is_admin(uname):
+            return check_password_hash(self._admin_hash, password or '')
+        row = self._players.find_for_login(uname) if self._players else None
+        real_hash = row['password_hash'] if row else self._dummy_hash
+        ok_pass = check_password_hash(real_hash, password or '')
+        return bool(row) and row['status'] == 'active' and ok_pass
 
     def issue(self, user: str) -> str:
-        """Neues Sitzungstoken fuer `user` -- UND eine neue Sitzungskennung,
-        die jede vorher fuer dieses Konto ausgegebene Sitzung entwertet (siehe
-        valid()). Genau eine aktive Sitzung je Konto, gleich von welchem
-        Geraet zuletzt angemeldet wurde."""
+        """Neues Sitzungstoken fuer `user`.
+
+        Fuer Spielerkonten zusaetzlich eine neue Sitzungskennung, die jede
+        vorher fuer dieses Konto ausgegebene Sitzung entwertet (siehe
+        valid()) -- genau eine aktive Sitzung je Spielerkonto, gleich von
+        welchem Geraet zuletzt angemeldet wurde. Das Admin-Konto bekommt
+        keine Sitzungskennung: es spielt nicht, mehrere gleichzeitige
+        Admin-Sitzungen (Tabs, Geraete) sind erlaubt."""
+        if self.is_admin(user):
+            return self._serializer.dumps({'u': user})
         sid = secrets.token_hex(16)
         with self._session_lock:
             self._sessions[user] = sid
@@ -176,8 +194,13 @@ class Auth:
             return None
         if not isinstance(data, dict):
             return None
-        user, sid = data.get('u'), data.get('s')
-        if not user or not sid:
+        user = data.get('u')
+        if not user:
+            return None
+        if self.is_admin(user):
+            return user
+        sid = data.get('s')
+        if not sid:
             return None
         with self._session_lock:
             current = self._sessions.get(user)
@@ -186,8 +209,11 @@ class Auth:
     def revoke(self, user: str | None) -> None:
         """Sitzungskennung des Kontos loeschen -- ein Cookie, das nach dem
         Abmelden trotzdem noch im Browser laege, wirkt damit sofort nicht
-        mehr, nicht erst nach Ablauf."""
-        if not user:
+        mehr, nicht erst nach Ablauf. Fuer das Admin-Konto gibt es keine
+        gespeicherte Sitzungskennung (siehe issue()) -- Abmelden loescht dort
+        nur das Cookie im eigenen Browser, andere Admin-Sitzungen bleiben
+        wie gewollt bestehen."""
+        if not user or self.is_admin(user):
             return
         with self._session_lock:
             if self._sessions.pop(user, None) is not None:
@@ -210,16 +236,19 @@ class Auth:
                       'Ein-Geraet-Sperre wirkt bis zum naechsten Neustart nicht',
                       exc.__class__.__name__)
 
-    # ── CSRF fuer das Anmeldeformular ─────────────────────────────────────────
+    # ── CSRF fuer Anmelde- und Admin-Formulare ────────────────────────────────
+    #
+    # `scope` trennt die Formulare: ein abgelaufenes Anmeldeformular darf kein
+    # gueltiges Token fuer eine Admin-Aktion sein und umgekehrt.
 
-    def csrf_token(self) -> str:
-        return self._csrf.dumps('login')
+    def csrf_token(self, scope: str = 'login') -> str:
+        return self._csrf.dumps(scope)
 
-    def csrf_ok(self, token: str | None) -> bool:
+    def csrf_ok(self, token: str | None, scope: str = 'login') -> bool:
         if not token:
             return False
         try:
-            return self._csrf.loads(token, max_age=CSRF_MAX_AGE) == 'login'
+            return self._csrf.loads(token, max_age=CSRF_MAX_AGE) == scope
         except (BadSignature, SignatureExpired):
             return False
 

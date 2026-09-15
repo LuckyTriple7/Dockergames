@@ -17,16 +17,18 @@ import secrets
 import signal
 import subprocess
 
+from datetime import datetime, timezone
 from urllib.parse import quote
 
-from flask import (Flask, g, jsonify, make_response, redirect, render_template,
-                   request, send_from_directory)
+from flask import (Flask, abort, g, jsonify, make_response, redirect,
+                   render_template, request, send_from_directory)
 from waitress import serve
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import auth as authmod
 import persist
 import scoring
+import users as usersmod
 
 logging.basicConfig(format='[%(levelname)s] [%(asctime)s] %(message)s',
                     level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S', force=True)
@@ -53,37 +55,13 @@ VERIFY_TIMEOUT_S = 20
 
 PORT = int(os.environ.get('REACTORSIM_PORT', '17779'))
 
-# Zugangsdaten aus der Umgebung, also aus der Dockge-Konfiguration. Ist kein
-# Passwort fuer das Hauptkonto gesetzt, erzeugt auth.Auth beim ersten Start
-# eines und schreibt es ins Protokoll -- offen steht die Seite nie.
+# Zugangsdaten des Admin-Kontos aus der Umgebung, also aus der
+# Dockge-Konfiguration -- genau eines, fest verdrahtet. Ist kein Passwort
+# gesetzt, erzeugt auth.Auth beim ersten Start eines und schreibt es ins
+# Protokoll -- offen steht die Seite nie. Der Admin spielt nicht: er legt
+# Spielerkonten im Admin-Panel an (siehe users.py, /admin-Routen unten).
 REACTORSIM_USER = os.environ.get('REACTORSIM_USER', 'admin')
 REACTORSIM_PASSWORD = os.environ.get('REACTORSIM_PASSWORD', '')
-
-
-def _parse_extra_users(raw: str) -> dict:
-    """"name:passwort,name2:passwort2" -> {name: passwort}.
-
-    Ein kaputter Eintrag wird uebersprungen und ins Protokoll geschrieben,
-    statt den Start abzubrechen -- ein Tippfehler in einem ZWEITEN Konto soll
-    nicht die ganze Anlage lahmlegen, aber auch nicht unbemerkt verschwinden.
-    """
-    out = {}
-    for part in (raw or '').split(','):
-        part = part.strip()
-        if not part:
-            continue
-        name, sep, pw = part.partition(':')
-        name, pw = name.strip(), pw.strip()
-        if not sep or not name or not pw:
-            log.warning("REACTORSIM_USERS: Eintrag %r ohne 'name:passwort' ignoriert", part)
-            continue
-        out[name] = pw
-    return out
-
-
-# Weitere Konten neben dem Hauptkonto oben, je eines mit eigenen
-# Spielstaenden -- siehe auth.py und persist.Store.account_key.
-REACTORSIM_USERS = _parse_extra_users(os.environ.get('REACTORSIM_USERS', ''))
 
 # Eine einzige Versionsquelle: die Datei VERSION. Sie ist zugleich der Ausloeser
 # des Build-Workflows, deshalb kann sie hier nicht auseinanderlaufen. Der
@@ -115,7 +93,8 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 STORE = persist.Store(_DATA)
 LIMITS = persist.RateLimit()
-AUTH = authmod.Auth(_DATA, REACTORSIM_USER, REACTORSIM_PASSWORD, REACTORSIM_USERS)
+USERS = usersmod.UserStore(_DATA)
+AUTH = authmod.Auth(_DATA, REACTORSIM_USER, REACTORSIM_PASSWORD, USERS)
 
 PLAYER_COOKIE = 'rs_player'
 
@@ -125,14 +104,36 @@ PLAYER_COOKIE = 'rs_player'
 # auch auf der Anmeldeseite.
 _PUBLIC_ENDPOINTS = frozenset({'health', 'login', 'set_lang'})
 
+# Nur der Admin darf hier hinein, ein Spieler nie -- siehe _require_login().
+_ADMIN_ENDPOINTS = frozenset({
+    'admin_panel', 'admin_create_user', 'admin_lock_user',
+    'admin_unlock_user', 'admin_reset_password',
+})
+
 
 @app.before_request
 def _require_login():
     if request.endpoint in _PUBLIC_ENDPOINTS:
         return None
     user = AUTH.valid(request.cookies.get(authmod.SESSION_COOKIE))
+    if user and not AUTH.is_admin(user):
+        # Eine Sitzung kann laenger gueltig sein als das Konto aktiv ist --
+        # eine Sperre soll sofort wirken, nicht erst nach Ablauf des Cookies.
+        row = USERS.find_for_login(user)
+        if row is None or row['status'] != usersmod.STATUS_ACTIVE:
+            AUTH.revoke(user)
+            user = None
     if user:
         g.user = user
+        g.is_admin = AUTH.is_admin(user)
+        # Rollentrennung: der Admin spielt nicht, ein Spieler verwaltet nicht.
+        if g.is_admin:
+            if request.endpoint not in _ADMIN_ENDPOINTS:
+                if request.path.startswith('/api/'):
+                    return jsonify({'error': 'forbidden'}), 403
+                return redirect('/admin')
+        elif request.endpoint in _ADMIN_ENDPOINTS:
+            abort(403)
         return None
     # Anfragen aus dem Spiel heraus bekommen eine Zahl, keine Anmeldeseite --
     # sonst landete HTML im JSON-Parser und der Fehler waere unlesbar.
@@ -151,14 +152,23 @@ def login():
     if request.method == 'POST':
         # Gegen Durchprobieren: zehn Versuche je Minute und Absenderadresse.
         addr = request.remote_addr or '-'
+        raw_user = (request.form.get('user') or '').strip()
+        # Spieler melden sich mit ihrer E-Mail-Adresse an (Gross-/
+        # Kleinschreibung ist dort ohnehin gleichwertig); der Admin-Name
+        # bleibt exakt wie in der Konfiguration.
+        uname = raw_user if raw_user == AUTH.user else usersmod.normalize_email(raw_user)
         if not LIMITS.hit(f'login:{addr}', 10, 60):
             error = 'login_rate_limited'
         elif not AUTH.csrf_ok(request.form.get('csrf')):
             # Abgelaufenes Formular -- kein Angriff, nur eine alte Seite.
             error = 'login_expired'
-        elif AUTH.check(request.form.get('user', ''), request.form.get('password', '')):
-            uname = request.form.get('user', '').strip()
-            resp = make_response(redirect(nxt))
+        elif AUTH.check(uname, request.form.get('password', '')):
+            is_admin = AUTH.is_admin(uname)
+            if not is_admin:
+                row = USERS.find_for_login(uname)
+                if row:
+                    USERS.record_login(row['id'], addr)
+            resp = make_response(redirect('/admin' if is_admin else nxt))
             resp.set_cookie(authmod.SESSION_COOKIE, AUTH.issue(uname),
                             max_age=authmod.SESSION_MAX_AGE, httponly=True,
                             samesite='Lax', secure=request.is_secure)
@@ -293,6 +303,105 @@ def _account_id() -> str:
         g.account = STORE.account_key(g.user)
         STORE.migrate_legacy(g.account, request.cookies.get(PLAYER_COOKIE))
     return g.account
+
+
+def _current_player_row() -> dict | None:
+    """Der Datensatz aus users.py fuer das angemeldete Spielerkonto, oder
+    None fuer den Admin (der hat keinen). Fuer Login-/Spielprotokoll."""
+    if 'player_row' not in g:
+        g.player_row = None if g.is_admin else USERS.find_for_login(g.user)
+    return g.player_row
+
+
+# ── Admin-Panel ───────────────────────────────────────────────────────────────
+#
+# Nur der Admin erreicht diese Routen (siehe _require_login) -- er legt
+# Spielerkonten an, sperrt sie bei Bedarf und setzt Passwoerter zurueck. Er
+# sieht hier auch, wer sich wann von welcher Adresse angemeldet und was er
+# gespielt hat.
+
+_ADMIN_LIST_LIMIT = 50
+
+
+def _render_admin(status: int = 200, **extra):
+    lang = detect_language(request)
+    ctx = {
+        't': load_translations(lang), 'lang': lang, 'app_version': APP_VERSION,
+        'users': USERS.list_users(),
+        'logins': USERS.recent_login_events(_ADMIN_LIST_LIMIT),
+        'sessions': USERS.recent_play_sessions(_ADMIN_LIST_LIMIT),
+        'csrf': AUTH.csrf_token('admin'),
+        'created': None, 'reset_password': None, 'error': None,
+    }
+    ctx.update(extra)
+    resp = make_response(render_template('admin.html', **ctx), status)
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
+
+def _admin_csrf_ok() -> bool:
+    return AUTH.csrf_ok(request.form.get('csrf'), 'admin')
+
+
+@app.route('/admin', methods=['GET'])
+def admin_panel():
+    return _render_admin()
+
+
+@app.route('/admin/users', methods=['POST'])
+def admin_create_user():
+    if not _admin_csrf_ok():
+        return _render_admin(400, error='csrf_expired')
+    user, err = USERS.create_user(request.form.get('email', ''),
+                                  request.form.get('password') or None,
+                                  created_by=g.user)
+    if err:
+        return _render_admin(400, error=err)
+    return _render_admin(created=user)
+
+
+@app.route('/admin/users/<user_id>/lock', methods=['POST'])
+def admin_lock_user(user_id: str):
+    if not _admin_csrf_ok():
+        return _render_admin(400, error='csrf_expired')
+    ok = USERS.set_status(user_id, usersmod.STATUS_LOCKED)
+    return _render_admin() if ok else _render_admin(404, error='not_found')
+
+
+@app.route('/admin/users/<user_id>/unlock', methods=['POST'])
+def admin_unlock_user(user_id: str):
+    if not _admin_csrf_ok():
+        return _render_admin(400, error='csrf_expired')
+    ok = USERS.set_status(user_id, usersmod.STATUS_ACTIVE)
+    return _render_admin() if ok else _render_admin(404, error='not_found')
+
+
+@app.route('/admin/users/<user_id>/reset-password', methods=['POST'])
+def admin_reset_password(user_id: str):
+    if not _admin_csrf_ok():
+        return _render_admin(400, error='csrf_expired')
+    new_password, err = USERS.reset_password(user_id)
+    if err:
+        return _render_admin(404, error=err)
+    row = USERS.get_by_id(user_id)
+    return _render_admin(reset_password={'email': row['email'], 'password': new_password})
+
+
+@app.template_filter('fmt_time')
+def _fmt_time(ts):
+    if not ts:
+        return '\u2013'
+    return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+
+
+@app.template_filter('fmt_duration')
+def _fmt_duration(seconds):
+    if not seconds:
+        return '\u2013'
+    total = int(seconds)
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    return f'{h}:{m:02d}:{s:02d}' if h else f'{m}:{s:02d}'
 
 
 # ── Sicherheits-Kopfzeilen ────────────────────────────────────────────────────
@@ -568,6 +677,13 @@ def scores_add():
     result = scoring.score(summary)
     entry = STORE.add_score(reactor, scenario, name, result['score'], summary,
                             score_mode='incident_v1' if incident else 'legacy')
+    # Admin-Panel: was ein Spieler gespielt hat und wie lange -- nur fuer
+    # ausgewertete Laeufe (siehe Entscheidung Phase 1), das Tutorial landet
+    # schon oben bei 'tutorial_unranked' nie hier.
+    player = _current_player_row()
+    if player:
+        USERS.record_play_session(player['id'], reactor, scenario,
+                                  summary.get('duration_s'), bool(summary.get('completed')))
     return jsonify({'ok': True, 'entry': entry, 'score': result['score'],
                     'parts': result['parts'], 'summary': summary})
 
