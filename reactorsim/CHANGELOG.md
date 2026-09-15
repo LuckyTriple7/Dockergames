@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.3
+
+- 🔧 **Speicher-Statuszeile schob die Leiste nicht mehr nach unten.**
+  `save_pending`/`save_failed` standen sichtbar in `#rs-save-state` und
+  ließen die Zeile darunter bei jedem Autospeichern (alle 60 s) kurz
+  umbrechen bzw. wieder einlaufen. Text bleibt als `role=status`
+  (`rs-sr-only`) für Screenreader erhalten, ist aber nicht mehr sichtbar.
+  Erfolgreiches Autospeichern lässt stattdessen den Speichern-Button 1 s
+  grün aufleuchten (`flashSaveButton()`).
+
 ## 0.2.2
 
 - ✨ **Neues Tutorial: „Block 4 – Die Nacht des 26. April“ (RBMK).** Geführter
