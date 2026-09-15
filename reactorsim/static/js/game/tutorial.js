@@ -37,6 +37,7 @@ export class StartupTutorial {
   }
 
   get done() { return this.index === TUTORIAL_STEPS.length; }
+  get prefix() { return 'tut_'; }
   get demand() { return this.index >= 3 ? 150 : 0; }
 
   conditions() {
@@ -63,7 +64,7 @@ export class StartupTutorial {
     if (this.done) return;
     this.elapsed += dt;
     const heldBefore = this.held;
-    const key = `tut_${TUTORIAL_STEPS[this.index]}_title`;
+    const key = `${this.prefix}${TUTORIAL_STEPS[this.index]}_title`;
     this.held = this.conditions()[this.index] ? this.held + dt : 0;
     if (heldBefore === 0 && this.held > 0) this.engine.ctx.trends?.mark({
       t: this.engine.state.t_sim, kind: 'goal_start', key });
@@ -122,6 +123,6 @@ export class StartupTutorial {
       required: HOLD_SECONDS[this.index] || 0, hint: this.hint(),
       values: { pressure: s.p_prim, temperature: d.T_avg - 273.15, flow: s.W_core,
         neutron: s.n * 100, power: d.power_th_pct, electric: s.P_e, level: s.L_sg * 100,
-        rho: d.rho_pcm, pumps: this.engine.ctx.pumps.filter(p => p.running && p.speed >= 0.9).length } };
+        rho: d.rho_pcm, pumps: this.engine.ctx.pumpList.filter(p => p.running && p.speed >= 0.9).length } };
   }
 }

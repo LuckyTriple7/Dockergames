@@ -26,6 +26,7 @@ export function buildTutorial(session, render) {
   status.hidden = !session.tutorial;
   if (!session.tutorial) return;
   const tutorial = session.tutorial;
+  const prefix = tutorial.prefix;
   const checklist = TUTORIAL_STEPS.map(() => el('li'));
   modalSteps.replaceChildren(...checklist);
   status.onclick = () => { modal.hidden = false; };
@@ -56,19 +57,19 @@ export function buildTutorial(session, render) {
   const update = () => {
     const v = tutorial.view();
     if (v.done) { setText(status, t('tut_completed')); return; }
-    const title = t('tut_' + v.id + '_title');
+    const title = t(prefix + v.id + '_title');
     const heading = t('tut_heading', { n: v.index + 1, total: TUTORIAL_STEPS.length, title });
     const hold = t('tut_hold_compact', { held: Math.floor(v.held), required: v.required });
     const vars = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, num(x, k === 'neutron' ? 4 : 1)]));
-    const values = t('tut_' + v.id + '_values', vars);
+    const values = t(prefix + v.id + '_values', vars);
     // Two lines in one small button, see .rs-tutorial-status (white-space: pre-line).
     setText(status, `${heading} · ${hold}\n${values}`);
     setText(modalTitle, heading);
-    setText(modalInstruction, t('tut_' + v.id + '_instruction'));
+    setText(modalInstruction, t(prefix + v.id + '_instruction'));
     setText(modalHold, t('tut_hold', { held: Math.floor(v.held), required: v.required }));
     setText(modalHint, t(v.hint));
-    setText(modalWhy, t('tut_' + v.id + '_why'));
-    TUTORIAL_STEPS.forEach((id, i) => setText(checklist[i], `${t(i < v.index ? 'tut_done' : i === v.index ? 'tut_current' : 'tut_pending')} · ${t('tut_' + id + '_title')}`));
+    setText(modalWhy, t(prefix + v.id + '_why'));
+    TUTORIAL_STEPS.forEach((id, i) => setText(checklist[i], `${t(i < v.index ? 'tut_done' : i === v.index ? 'tut_current' : 'tut_pending')} · ${t(prefix + id + '_title')}`));
   };
   update();
   render.add('text', update);
@@ -76,9 +77,10 @@ export function buildTutorial(session, render) {
 
 export function renderTutorialResult(parent, result) {
   if (!result?.tutorial) return;
+  const prefix = result.tutorial.reactor === 'rbmk' ? 'tut_rbmk_' : 'tut_';
   parent.append(el('h3', { text: t('tut_steps') }), el('p', { text: t('tut_unranked') }),
     el('ol', null, TUTORIAL_STEPS.map(id => {
       const entry = result.tutorial.completed.find(e => e.id === id);
-      return el('li', { text: `${t('tut_' + id + '_title')} · ${entry ? t('tut_done') + ' ' + clock(entry.t) : t('tut_pending')}` });
+      return el('li', { text: `${t(prefix + id + '_title')} · ${entry ? t('tut_done') + ' ' + clock(entry.t) : t('tut_pending')}` });
     })));
 }

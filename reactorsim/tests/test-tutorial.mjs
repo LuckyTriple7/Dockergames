@@ -171,3 +171,26 @@ test('tutorial card shows localized task, switches mobile panel and disappears i
   buildTutorial({ tutorial: null }, { add() {} });
   assert.equal(status.hidden, true);
 });
+
+test('RBMK tutorial renders its own instructions, live drum readings and debrief labels', () => {
+  const rbmkDef = JSON.parse(readFileSync(new URL('../static/data/scenarios/rbmk_startup_tutorial.json', import.meta.url)));
+  const engine = createEngine(getPlant('rbmk'), { cold: true, n: 1e-6, seed: rbmkDef.seed });
+  const session = new Session(engine, rbmkDef);
+  session.start();
+  let update;
+  buildTutorial(session, { add(group, callback) { update = callback; } });
+  assert.match(get('#rs-tutorial-modal-instruction').textContent, /65–73 bar Trommeldruck/);
+  assert.match(get('#rs-tutorial-status').textContent, /ORM 211/);
+  for (let i = 0; i < TUTORIAL_STEPS.length; i++) {
+    session.tutorial.index = i;
+    update();
+    const instruction = get('#rs-tutorial-modal-instruction').textContent;
+    assert.ok(instruction.length > 80);
+    assert.doesNotMatch(instruction, /tut_|Dampferzeuger|Borkonzentration/);
+    if (i === 1) assert.match(get('#rs-tutorial-status').textContent, /0,0\/8/);
+  }
+  const resultNode = new Node();
+  renderTutorialResult(resultNode, { tutorial: { reactor: 'rbmk', completed: [{ id: 'inspect', t: 5 }] } });
+  assert.match(text(resultNode), /Heißen RBMK-Ausgangszustand/);
+  assert.match(text(resultNode), /Erreicht 00:00:05/);
+});

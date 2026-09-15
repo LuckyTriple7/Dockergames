@@ -50,6 +50,16 @@ dem Leitstand zeigt aktuelle Werte, passende Hinweise und die noch erforderliche
 Haltezeit. Über „Warum wirkt das?“ erhältst du die Erklärung, über
 „Passendes Panel anzeigen“ gelangst du zur jeweiligen Bedienung.
 
+Für den **RBMK-1000 → Tutorial: RBMK-1000 selbst anfahren** gibt es ebenfalls
+fünf Schritte: heißen, unterkritischen Zustand prüfen, acht Hauptumwälzpumpen
+hochfahren, mit Dampfentnahme etwa 30 % Neutronenleistung aufbauen, rund
+300 MWe einregeln und stabil halten. Die Hinweise berücksichtigen Trommeldruck
+und -füllstand, positive Dampfblasen-Rückkopplung sowie die Abschaltreserve ORM.
+Die Leistungsautomatik hält den beim Einschalten erreichten Wert; eine
+Netzanforderung fährt den RBMK nicht automatisch hoch. Beide Tutorials nutzen
+die normale Anlagenphysik und beginnen in einem vorbereiteten heißen Zustand,
+nicht mit einem thermischen Kaltstart.
+
 Zum Lesen kannst du pausieren. Nutze zunächst 1× für Stabfahrten und warte
 die tatsächliche Bewegung ab. Der Abschluss verlangt 120 zusammenhängende
 stabile Simulationssekunden; nach spätestens 60 Simulationsminuten endet ein
@@ -65,9 +75,9 @@ Betriebsszenarien zählen gelieferte Energie, Abweichung vom Bedarf, unquittiert
 Grenzwertüberschreitungen nach Schwere, Schnellabschaltungen und
 Brennstoffschaden. Vier Störungsschichten verwenden stattdessen die unten
 beschriebene Sicherheitswertung: drei DWR-Schichten seit 0.1.21 und die
-RBMK-Nach-AZ-5-Schicht seit 0.1.24. Das Tutorial bleibt ungewertet.
+RBMK-Nach-AZ-5-Schicht seit 0.1.24. Die Tutorials bleiben ungewertet.
 
-Alle 15 Szenariodateien, einschließlich Tutorial (Dauer in Simulationszeit):
+Alle 16 Szenariodateien, einschließlich Tutorials (Dauer in Simulationszeit):
 
 | Szenario | Typ | Schwierigkeit | Dauer |
 |---|---|---|---|
@@ -82,6 +92,7 @@ Alle 15 Szenariodateien, einschließlich Tutorial (Dauer in Simulationszeit):
 | Frischdampf-Absperrung | SWR | 3 | 45 min |
 | Dichtewellen-Instabilität | SWR | 3 | 60 min |
 | Station-Blackout | SWR | 3 | 360 min |
+| Tutorial: RBMK-1000 selbst anfahren | RBMK | 1, Tutorial | max. 60 min |
 | Ausfall einer Umwälzpumpengruppe | RBMK | 2 | 60 min |
 | Nachtschicht | RBMK | 3 | 180 min |
 | Wiederanlauf aus heissem Stillstand | RBMK | 3 | 150 min |

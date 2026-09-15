@@ -1,5 +1,14 @@
 # Changelog
 
+## Unveröffentlicht
+
+- Anfahr-Tutorial für den RBMK-1000: fünf zustandsbasierte Lernziele vom
+  vorbereiteten heißen Stillstand über acht Hauptumwälzpumpen und manuellen
+  Leistungsaufbau bis zu rund 300 MWe und 120 Sekunden stabilem Betrieb.
+  Eigene deutsche und englische Hinweise zu Trommeldruck, Wasserhaushalt,
+  ORM, Dampfblasen-Rückkopplung und Leistungsautomatik. Fortschritt inklusive
+  Haltezeit wird gespeichert; Abschluss ohne Bestenlistenwertung.
+
 ## 0.1.35
 
 - "Prompt kritisch" (ρ > β, s.promptCritical aus sim/kinetics.js) ist jetzt

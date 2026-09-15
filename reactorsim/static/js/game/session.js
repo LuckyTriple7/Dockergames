@@ -8,6 +8,7 @@ import { getEvent, eventKey, eventSeverity, stepEvents } from './events.js';
 import { score } from './scoring.js';
 import { Rng } from '../rng.js';
 import { StartupTutorial, STARTUP_TUTORIAL } from './tutorial.js';
+import { RbmkStartupTutorial, RBMK_STARTUP_TUTORIAL } from './rbmkTutorial.js';
 import { noteEvent, observeAlarms, learningReport } from './learning.js';
 import { ScenarioObjectives } from './objectives.js';
 import { TrendHistory } from './trendHistory.js';
@@ -47,7 +48,9 @@ export class Session {
     this.onAlert = null;
     this.result = null;
     this.tutorial = scenarioDef?.tutorial === STARTUP_TUTORIAL && engine.spec.id === 'pwr'
-      ? new StartupTutorial(engine) : null;
+      ? new StartupTutorial(engine)
+      : scenarioDef?.tutorial === RBMK_STARTUP_TUTORIAL && engine.spec.id === 'rbmk'
+        ? new RbmkStartupTutorial(engine) : null;
     this.demandRng = this.free ? new Rng(Date.now() >>> 0) : null;
     this.demandTarget = null;
     this.demandNextChangeT = 0;

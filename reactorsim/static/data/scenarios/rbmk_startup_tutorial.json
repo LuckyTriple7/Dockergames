@@ -1,0 +1,14 @@
+{
+  "id": "rbmk_startup_tutorial",
+  "reactor": "rbmk",
+  "tutorial": "rbmk_startup",
+  "difficulty": 1,
+  "title_key": "scn_rbmk_tutorial_title",
+  "brief_key": "scn_rbmk_tutorial_brief",
+  "duration_s": 3600,
+  "seed": 919,
+  "cold": true,
+  "demand": [{ "t": 0, "mw": 0 }, { "t": 3600, "mw": 0 }],
+  "events": [],
+  "fail": [{ "type": "fuel_damage" }, { "type": "scram" }]
+}
