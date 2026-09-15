@@ -61,6 +61,7 @@ function harness() {
     },
   };
   const ctx = vm.createContext({ app, api, $, Date: FakeDate,
+    window: { setTimeout: (...a) => setTimeout(...a), clearTimeout: (...a) => clearTimeout(...a) },
     packSave(...args) { packs.push(args); return pack(...args); },
     t: (key, params) => params ? key + ':' + JSON.stringify(params) : key,
     setText: (node, text) => { if (node) node.textContent = text; },
@@ -88,6 +89,7 @@ function harness() {
     queueSize: () => vm.runInContext('[...saveWriteQueues.values()].reduce((n, q) => n + q.length, 0)', ctx),
     last: () => $('#rs-save-last').textContent,
     status: () => $('#rs-save-state').textContent,
+    flash: () => $('#rs-save').attrs['data-flash'],
     message: () => $('#rs-save-slots-message').textContent,
     buttons: () => $('#rs-slot-list').children.map(row => row.children[0]),
   };
@@ -132,6 +134,21 @@ test('success/failure/success keeps last backup and persistent error until recov
   assert.equal(h.status(), '');
   assert.match(h.last(), /save_kind_manual/);
   assert.equal(h.$('#rs-save-status').attrs['data-error'], 'false');
+});
+
+test('autosave success flashes the Speichern button; manual success does not', async () => {
+  const h = harness();
+  assert.equal(h.flash(), undefined);
+  const auto = h.ctx.saveCurrentGame();
+  await flush();
+  h.writes[0].resolve({ ok: true });
+  assert.equal(await auto, true);
+  assert.equal(h.flash(), 'true');
+  const manual = h.ctx.saveManualGame('manual-pwr-slot1');
+  await flush();
+  h.writes[1].resolve({ ok: false });
+  assert.equal(await manual, false);
+  assert.equal(h.flash(), 'true', 'unrelated failure must not clear an active flash');
 });
 
 test('reset only accepts dated save metadata; no invented save on restore', () => {

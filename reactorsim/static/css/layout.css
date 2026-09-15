@@ -169,11 +169,12 @@
   max-width: 100%;
   overflow-wrap: anywhere;
 }
-#rs-save-status[data-error="true"] { color: var(--rs-warn); }
-#rs-save-state:not(:empty) { margin-inline-start: .5em; }
-
 /* Kept in the DOM (and announced via role=status) but not shown -- the text
-   doubles as the Speichern button's title tooltip, see renderSaveStatus(). */
+   doubles as the Speichern button's title tooltip, see renderSaveStatus().
+   #rs-save-state used to render visibly here too (pending/failed), but that
+   made a short-lived line appear/disappear on every autosave tick and shove
+   the row below down; it is sr-only now and autosave instead flashes
+   #rs-save green for a moment, see flashSaveButton() in main.js. */
 .rs-sr-only {
   position: absolute;
   width: 1px;
@@ -201,6 +202,14 @@
 #rs-save-slots-message:empty,
 #rs-xenon-skip-message:empty,
 #rs-save-state:empty { display: none; }
+
+/* Autosave feedback: no layout-shifting banner, just the Speichern button
+   flashing green for a moment -- see flashSaveButton() in main.js. */
+#rs-save[data-flash="true"] {
+  background: var(--rs-ok);
+  border-color: var(--rs-ok);
+  color: #08210f;
+}
 
 /* ── Reiter und Panels ────────────────────────────────────────────────────── */
 

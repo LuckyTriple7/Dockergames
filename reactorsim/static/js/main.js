@@ -1082,13 +1082,30 @@ function renderSaveStatus() {
   const lastText = last ? t('save_last_success', {
     when: new Date(last.when).toLocaleString(), kind: t('save_kind_' + last.kind),
   }) : t('save_none');
-  // Visually hidden (rs-sr-only): the text lives in the Speichern button's
-  // tooltip instead, so the status row does not cost sidebar space.
+  // Both spans are rs-sr-only (announced via role=status, nothing shown) --
+  // pending/failed text used to render visibly here too, but that shoved
+  // the row below down every time it appeared/disappeared (most noticeably
+  // once a minute, on every autosave). Last-save text lives in the
+  // Speichern button's tooltip instead; autosave success gets a green
+  // button flash, see flashSaveButton() below.
   setText($('#rs-save-last'), lastText);
   setAttr($('#rs-save'), 'title', lastText);
   setText($('#rs-save-state'), [saveStatus?.failed ? t('save_failed') : '',
     saveStatus?.pending ? t('save_pending') : ''].filter(Boolean).join(' '));
   setAttr($('#rs-save-status'), 'data-error', saveStatus?.failed ? 'true' : 'false');
+}
+
+let saveFlashTimer = null;
+/** Kurzes gruenes Aufleuchten des Speichern-Buttons statt Text in der Leiste. */
+function flashSaveButton() {
+  const btn = $('#rs-save');
+  if (!btn) return;
+  setAttr(btn, 'data-flash', 'true');
+  if (saveFlashTimer) window.clearTimeout(saveFlashTimer);
+  saveFlashTimer = window.setTimeout(() => {
+    saveFlashTimer = null;
+    setAttr(btn, 'data-flash', 'false');
+  }, 1000);
 }
 
 function captureSaveContext() {
@@ -1130,6 +1147,7 @@ function requestGameSave(slot, kind) {
         state.failed = !ok;
       }
       renderSaveStatus();
+      if (ok && kind === 'auto') flashSaveButton();
     }
     return ok;
   };
