@@ -126,6 +126,12 @@ def _require_login():
     if user:
         g.user = user
         g.is_admin = AUTH.is_admin(user)
+        # Abmelden geht immer, unabhaengig von der Rolle -- sonst kaeme der
+        # Admin nie am eigenen logout()-View vorbei (er faellt in KEINER der
+        # beiden Rollenpruefungen unten durch, _ADMIN_ENDPOINTS ist nur fuer
+        # die Verwaltungsrouten gedacht).
+        if request.endpoint == 'logout':
+            return None
         # Rollentrennung: der Admin spielt nicht, ein Spieler verwaltet nicht.
         if g.is_admin:
             if request.endpoint not in _ADMIN_ENDPOINTS:

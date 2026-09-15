@@ -282,6 +282,18 @@ def test_second_login_on_same_player_account_kicks_the_first(tmp_path, monkeypat
     assert geraet_a.get('/api/meta').status_code == 401
 
 
+def test_admin_can_log_out(client):
+    """Bug gefunden nach dem Rollenumbau: /logout ist weder oeffentlich noch
+    eine Admin-Route, die Rollenweiche in _require_login() schickte den Admin
+    dort also immer erst nach /admin, bevor logout() ueberhaupt lief."""
+    _login(client)
+    assert client.get('/admin').status_code == 200
+    r = client.get('/logout')
+    assert r.status_code == 302
+    assert r.headers['Location'].endswith('/login')
+    assert client.get('/admin').status_code == 302
+
+
 def test_admin_sessions_are_not_kicked(client):
     """Der Admin spielt nicht -- Speicherstand-Konflikte durch mehrere
     Sitzungen koennen also nicht entstehen. Mehrere Geraete/Tabs im Panel

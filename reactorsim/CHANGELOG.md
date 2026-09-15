@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- 🐛 Admin konnte sich nicht abmelden: die Rollenweiche in `_require_login()`
+  schickte ihn bei jedem Aufruf zuerst nach `/admin`, bevor `logout()`
+  überhaupt lief. `/logout` läuft jetzt unabhängig von der Rolle immer durch.
+
 ## 0.2.0
 
 - ✨ **Admin-Panel statt REACTORSIM_USERS.** Das Konto aus
