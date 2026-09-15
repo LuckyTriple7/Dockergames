@@ -28,7 +28,10 @@ const STEPS = ['handover', 'dip', 'recover', 'pumps', 'test', 'az5'];
 // Die Uebung zwingt AZ-5 also nicht als alleinige Ursache herbei; sie zeigt,
 // dass Zoegern in diesem Zustand so oder so gefaehrlich ist -- historisch
 // vertretbar, auch wenn es die Trennung "AZ-5 allein war schuld" aufweicht.
-const HOLD = [5, 2, 1140, 3, 5, 1];
+// Nach AZ-5 bleibt die Simulation lange genug offen, um den anfaenglich
+// positiven Graphitspitzeneffekt und den anschliessenden Stabeinlauf zu sehen.
+// triggerScram() schaltet dafuer automatisch auf Echtzeit zurueck.
+const HOLD = [5, 2, 1140, 3, 5, 20];
 
 // Kuehlmittelauslauf-Naeherung fuer den Turbinenauslaufversuch (siehe
 // events.js rbmk_mcp_runback) -- geskriptet statt einer echten
@@ -146,9 +149,9 @@ export class RbmkChernobylTutorial extends StartupTutorial {
       intact && pumpsRunning >= 8,
       // 4 test: der Kuehlmittelauslauf laeuft (siehe _triggerCoastdown).
       intact && s.mcpDmd < 0.9,
-      // 5 az5: Schnellabschaltung ausgeloest. Ob das noch glimpflich ausgeht
-      // oder nicht, entscheidet danach die Physik -- nicht dieser Schritt
-      // (siehe RunState.checkFail(), das immer VOR tutorial.done greift).
+      // 5 az5: Schnellabschaltung ausgeloest. Die Haltezeit laesst die Folgen
+      // sichtbar ablaufen. Ob das noch glimpflich ausgeht, entscheidet die
+      // Physik (RunState.checkFail() greift immer VOR tutorial.done).
       s.scram.active,
     ];
   }

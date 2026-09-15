@@ -130,6 +130,20 @@ test('pressing AZ-5 too early (no coastdown) does not destroy the core -- the co
   assert.equal(s.destroyed, false, 'AZ-5 without the coastdown should NOT reproduce the excursion');
 });
 
+test('AZ-5 keeps the tutorial running while the shutdown consequences unfold', () => {
+  const { engine, session } = boot();
+  const tut = session.tutorial;
+  // Isolate the final objective: the regression is that scram.active used to
+  // finish it after only one simulated second and immediately open debrief.
+  tut.index = tut.steps.indexOf('az5');
+  engine.scram('az5');
+  step({ engine, session }, Math.round(2 / DT));
+
+  assert.equal(session.phase, PHASE.RUNNING);
+  assert.equal(tut.done, false);
+  assert.ok(tut.held >= 1.9 && tut.held < tut.holdSeconds[tut.index]);
+});
+
 test('snapshot/restore round-trips through a save (own steps survive persist.js)', async () => {
   const { pack, apply } = await import('../static/js/net/persist.js');
   const { engine, session } = boot();
