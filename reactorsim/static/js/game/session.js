@@ -9,6 +9,7 @@ import { score } from './scoring.js';
 import { Rng } from '../rng.js';
 import { StartupTutorial, STARTUP_TUTORIAL } from './tutorial.js';
 import { RbmkStartupTutorial, RBMK_STARTUP_TUTORIAL } from './rbmkTutorial.js';
+import { BwrStartupTutorial, BWR_STARTUP_TUTORIAL } from './bwrTutorial.js';
 import { noteEvent, observeAlarms, learningReport } from './learning.js';
 import { ScenarioObjectives } from './objectives.js';
 import { TrendHistory } from './trendHistory.js';
@@ -50,7 +51,9 @@ export class Session {
     this.tutorial = scenarioDef?.tutorial === STARTUP_TUTORIAL && engine.spec.id === 'pwr'
       ? new StartupTutorial(engine)
       : scenarioDef?.tutorial === RBMK_STARTUP_TUTORIAL && engine.spec.id === 'rbmk'
-        ? new RbmkStartupTutorial(engine) : null;
+        ? new RbmkStartupTutorial(engine)
+        : scenarioDef?.tutorial === BWR_STARTUP_TUTORIAL && engine.spec.id === 'bwr'
+          ? new BwrStartupTutorial(engine) : null;
     this.demandRng = this.free ? new Rng(Date.now() >>> 0) : null;
     this.demandTarget = null;
     this.demandNextChangeT = 0;

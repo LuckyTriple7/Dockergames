@@ -2,6 +2,15 @@
 
 ## Unveröffentlicht
 
+- Anfahr-Tutorial für den SWR: vorbereiteter heißer, unterkritischer Start,
+  Umwälzpumpe, manueller Leistungsaufbau und rund 300 MWe mit 120 Sekunden
+  stabilem Betrieb. Dynamische Reaktivitätshinweise, eigene deutsche und
+  englische Texte zu Dampfblasen, Durchsatz und Domdruckregelung. Speichern
+  und Fortsetzen einschließlich ausstehender Inspektionsbestätigung;
+  keine Bestenlistenwertung und keine Änderungen am laufenden Anlagenmodell.
+- Alle Anfahr-Tutorials öffnen Schritt 1 im bestehenden Dialog und warten
+  nach der Zustandsprüfung auf „Zustand geprüft – weiter“. Messwerte und
+  Sollbereiche bleiben bis zur bewussten Bestätigung sichtbar.
 - Anfahr-Tutorial für den RBMK-1000: fünf zustandsbasierte Lernziele vom
   vorbereiteten heißen Stillstand über acht Hauptumwälzpumpen und manuellen
   Leistungsaufbau bis zu rund 300 MWe und 120 Sekunden stabilem Betrieb.

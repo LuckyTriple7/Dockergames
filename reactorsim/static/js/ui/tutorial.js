@@ -46,7 +46,8 @@ export function buildTutorial(session, render) {
   };
   modalPanelBtn.onclick = () => {
     modal.hidden = true;
-    const name = PANELS[Math.min(tutorial.index, PANELS.length - 1)];
+    const name = tutorial.engine.spec.id === 'bwr' && tutorial.index === 3
+      ? 'prim' : PANELS[Math.min(tutorial.index, PANELS.length - 1)];
     const radio = $('#rs-tab-' + name);
     if (radio) radio.checked = true;
     const panel = $('#rs-p-' + name);
@@ -91,7 +92,7 @@ export function buildTutorial(session, render) {
       setText(modalInspectStatus, t(v.inspectReady ? 'tut_inspect_ready'
         : v.inspectValid ? 'tut_inspect_checking' : 'tut_inspect_invalid'));
     }
-    setText(modalHint, t(v.hint));
+    setText(modalHint, t(v.hint, vars));
     setText(modalWhy, t(prefix + v.id + '_why'));
     TUTORIAL_STEPS.forEach((id, i) => setText(checklist[i], `${t(i < v.index ? 'tut_done' : i === v.index ? 'tut_current' : 'tut_pending')} · ${t(prefix + id + '_title')}`));
   };
@@ -102,7 +103,8 @@ export function buildTutorial(session, render) {
 
 export function renderTutorialResult(parent, result) {
   if (!result?.tutorial) return;
-  const prefix = result.tutorial.reactor === 'rbmk' ? 'tut_rbmk_' : 'tut_';
+  const prefix = result.tutorial.reactor === 'rbmk' ? 'tut_rbmk_'
+    : result.tutorial.reactor === 'bwr' ? 'tut_bwr_' : 'tut_';
   parent.append(el('h3', { text: t('tut_steps') }), el('p', { text: t('tut_unranked') }),
     el('ol', null, TUTORIAL_STEPS.map(id => {
       const entry = result.tutorial.completed.find(e => e.id === id);

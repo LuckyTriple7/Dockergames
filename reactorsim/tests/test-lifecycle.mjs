@@ -211,7 +211,7 @@ test('tutorial resumes its objective, stays unranked and restarts from preparati
   assert.equal(resumed.$('#rs-tutorial-modal').hidden, true, 'boot clears stale dialogs before building new UI');
 });
 
-for (const reactor of ['pwr', 'rbmk']) {
+for (const reactor of ['pwr', 'rbmk', 'bwr']) {
   test(`${reactor}: boot restores a pending inspection without confirming it`, async () => {
     const def = JSON.parse(readFileSync(new URL(`../static/data/scenarios/${reactor}_startup_tutorial.json`, import.meta.url)));
     const h = harness();

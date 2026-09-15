@@ -273,7 +273,7 @@ test('tutorial card shows localized task, switches mobile panel and disappears i
   assert.equal(modal.hidden, true);
 });
 
-for (const reactor of ['pwr', 'rbmk']) {
+for (const reactor of ['pwr', 'rbmk', 'bwr']) {
   test(`${reactor}: inspection dialog validates live readings and confirms through its actual click handler`, () => {
     nodes.clear();
     const scenario = JSON.parse(readFileSync(new URL(`../static/data/scenarios/${reactor}_startup_tutorial.json`, import.meta.url)));
@@ -300,9 +300,9 @@ for (const reactor of ['pwr', 'rbmk']) {
     assert.match(running, /Prüf|prüf|Sekunden|läuft|Haltezeit/);
     assert.doesNotMatch(running, /tut_|Ausgangszustand im Soll/);
     const readings = text(inspection);
-    assert.ok(inspection.children.length >= (reactor === 'rbmk' ? 6 : 4));
-    assert.match(readings, reactor === 'rbmk' ? /65–73\s*bar/ : /140–164\s*bar/);
-    assert.match(readings, reactor === 'rbmk' ? /270–295\s*°C/ : /270–305\s*°C/);
+    assert.ok(inspection.children.length >= ({ pwr: 4, rbmk: 6, bwr: 5 }[reactor]));
+    assert.match(readings, { pwr: /140–164\s*bar/, rbmk: /65–73\s*bar/, bwr: /67–73\s*bar/ }[reactor]);
+    assert.match(readings, reactor === 'pwr' ? /270–305\s*°C/ : /270–295\s*°C/);
     assert.match(readings, /Neutron/);
     assert.match(readings, /(?:<|unter|weniger als)\s*0,1\s*%/);
     assert.match(readings, /Reaktivität/);
@@ -321,6 +321,12 @@ for (const reactor of ['pwr', 'rbmk']) {
       assert.ok(readings.includes(values.level.toFixed(1).replace('.', ',')));
       assert.match(readings, /211/);
       assert.doesNotMatch(readings, /140–164|Dampferzeuger|Borkonzentration/);
+    }
+    if (reactor === 'bwr') {
+      assert.match(readings, /Domdruck/);
+      assert.match(readings, /35–65\s*%/);
+      assert.ok(readings.includes(values.level.toFixed(1).replace('.', ',')));
+      assert.doesNotMatch(readings, /140–164|Dampferzeuger|Borkonzentration|Trommel|ORM|DWR|RBMK/);
     }
     assert.doesNotMatch(readings, /tut_|\{\w+\}/);
     confirm.onclick();
@@ -415,4 +421,84 @@ test('RBMK tutorial renders its own instructions, live drum readings and debrief
   renderTutorialResult(resultNode, { tutorial: { reactor: 'rbmk', completed: [{ id: 'inspect', t: 5 }] } });
   assert.match(text(resultNode), /Heißen RBMK-Ausgangszustand/);
   assert.match(text(resultNode), /Erreicht 00:00:05/);
+});
+
+test('BWR renders all five own steps, interpolated hints, restored panel jump and debrief labels', () => {
+  nodes.clear();
+  const scenario = JSON.parse(readFileSync(new URL('../static/data/scenarios/bwr_startup_tutorial.json', import.meta.url)));
+  const engine = createEngine(getPlant('bwr'), { cold: true, n: 1e-6, seed: scenario.seed });
+  const session = new Session(engine, scenario);
+  session.start();
+  let update;
+  const render = { add(group, callback) { update = callback; } };
+  buildTutorial(session, render);
+  const labels = [];
+  for (let index = 0; index < TUTORIAL_STEPS.length; index++) {
+    session.tutorial.index = index;
+    update();
+    const id = TUTORIAL_STEPS[index];
+    const label = window.RS_I18N[`tut_bwr_${id}_title`];
+    assert.ok(label, `BWR label for ${id}`);
+    labels.push(label);
+    assert.ok(get('#rs-tutorial-modal-title').textContent.includes(label));
+    assert.equal(get('#rs-tutorial-modal-instruction').textContent, window.RS_I18N[`tut_bwr_${id}_instruction`]);
+    for (const selector of ['title', 'instruction', 'why', 'hint', 'steps']) {
+      const rendered = text(get(`#rs-tutorial-modal-${selector}`));
+      assert.ok(rendered.trim().length > 0);
+      assert.doesNotMatch(rendered, /tut_|\{\w+\}|Dampferzeuger|Borkonzentration|Trommel|ORM|RBMK/);
+    }
+    assert.doesNotMatch(get('#rs-tutorial-status').textContent, /tut_|\{\w+\}/);
+  }
+
+  // Exercise both sides of the moving target through the real hint renderer.
+  session.tutorial.index = 2;
+  engine.ctx.recircPump.start();
+  engine.ctx.recircPump.speed = 1;
+  engine.ctx.govCtl.auto = true;
+  engine.state.W_core = 13000;
+  const derived = { ...engine.derive(), rho_pcm: 0, period: 100 };
+  engine.derive = () => derived;
+  const hintKeys = new Set();
+  for (const n of [0.21, 0.24]) {
+    engine.state.n = n;
+    update();
+    const view = session.tutorial.view();
+    hintKeys.add(view.hint);
+    const template = window.RS_I18N[view.hint];
+    assert.match(template, /\{rho(?:Low|High)\}/, 'rod advice displays the current target band');
+    const hint = get('#rs-tutorial-modal-hint').textContent;
+    for (const [, key] of template.matchAll(/\{(\w+)\}/g)) {
+      const value = new Intl.NumberFormat('de', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(view.values[key]);
+      assert.ok(hint.includes(value), `${key}: hint interpolates ${value}`);
+    }
+    assert.doesNotMatch(hint, /tut_|\{\w+\}/);
+  }
+  assert.equal(hintKeys.size, 2, 'the moving target changes rod advice at unchanged reactivity');
+
+  // A saved load objective must jump to BWR recirculation, not PWR secondary.
+  engine.state.t_sim = 30;
+  session.tutorial.index = 3;
+  session.tutorial.completed = TUTORIAL_STEPS.slice(0, 3).map((id, i) => ({ id, t: 5 + i * 5 }));
+  const save = JSON.parse(JSON.stringify(pack(engine, scenario.id, session.run, session)));
+  const restoredEngine = createEngine(getPlant('bwr'));
+  const restored = new Session(restoredEngine, scenario);
+  restored.start();
+  assert.equal(apply(save, restoredEngine, restored.run, restored), null);
+  buildTutorial(restored, render);
+  get('#rs-tab-prim').checked = false;
+  get('#rs-tab-sec').checked = false;
+  get('#rs-tutorial-status').onclick();
+  get('#rs-tutorial-modal-panel').onclick();
+  assert.equal(get('#rs-tab-prim').checked, true);
+  assert.equal(get('#rs-tab-sec').checked, false);
+  assert.equal(get('#rs-p-prim').scrolled, true);
+  assert.equal(get('#rs-tutorial-modal').hidden, true);
+
+  const resultNode = new Node();
+  renderTutorialResult(resultNode, { tutorial: { reactor: 'bwr',
+    completed: TUTORIAL_STEPS.map((id, i) => ({ id, t: 5 + i * 5 })) } });
+  for (const label of labels) assert.ok(text(resultNode).includes(label));
+  assert.match(text(resultNode), /SWR/);
+  assert.match(text(resultNode), /Erreicht 00:00:05/);
+  assert.doesNotMatch(text(resultNode), /tut_|DWR|RBMK/);
 });

@@ -474,7 +474,7 @@ def test_atomic_write_survives_partial_failure(tmp_path):
     assert leftovers == []
 
 
-@pytest.mark.parametrize('reactor', ['pwr', 'rbmk'])
+@pytest.mark.parametrize('reactor', ['pwr', 'rbmk', 'bwr'])
 def test_startup_tutorial_is_discoverable_and_unranked(client, reactor):
     scenarios = client.get('/api/meta').get_json()['scenarios']
     scenario_id = f'{reactor}_startup_tutorial'

@@ -13,6 +13,7 @@ import { Scenario } from '../static/js/game/scenario.js';
 import { ScenarioObjectives } from '../static/js/game/objectives.js';
 import { StartupTutorial, TUTORIAL_STEPS } from '../static/js/game/tutorial.js';
 import { RbmkStartupTutorial } from '../static/js/game/rbmkTutorial.js';
+import { BwrStartupTutorial } from '../static/js/game/bwrTutorial.js';
 import { eventKey, getEvent } from '../static/js/game/events.js';
 import { pack, apply } from '../static/js/net/persist.js';
 
@@ -307,11 +308,12 @@ for (const type of ['pwr_feedwater', 'pwr_heat_removal', 'pwr_power_limited']) {
   });
 }
 
-for (const reactor of ['pwr', 'rbmk']) {
+for (const reactor of ['pwr', 'rbmk', 'bwr']) {
   test(`${reactor}: inspection marks completion only on confirmation; later holds still advance automatically`, () => {
     const e = makeEngine(reactor, { cold: true, n: 1e-6 });
     const markers = capture(e);
-    const tutorial = reactor === 'rbmk' ? new RbmkStartupTutorial(e) : new StartupTutorial(e);
+    const Tutorial = { pwr: StartupTutorial, rbmk: RbmkStartupTutorial, bwr: BwrStartupTutorial }[reactor];
+    const tutorial = new Tutorial(e);
     tutorial.prepare();
     assert.deepEqual(markers, []);
     assert.equal(tutorial.confirmInspect(), false);
@@ -319,7 +321,7 @@ for (const reactor of ['pwr', 'rbmk']) {
     tick(1);
     assert.equal(tutorial.confirmInspect(), false);
     tick(1);
-    e.state[reactor === 'rbmk' ? 'p_drum' : 'p_prim'] = 100;
+    e.state[{ pwr: 'p_prim', rbmk: 'p_drum', bwr: 'p_dome' }[reactor]] = 100;
     e.state.t_sim = 3;
     assert.equal(tutorial.confirmInspect(), false, 'invalid click uses the zero-time reset path');
     assert.equal(tutorial.held, 0);
