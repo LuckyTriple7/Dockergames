@@ -74,10 +74,42 @@ def test_every_reachable_module_is_copied():
         assert _covered(rel, targets), f'{rel} wird nicht ins Image kopiert'
 
 
+PY_IMPORT_RE = re.compile(r'^\s*(?:import|from)\s+([a-zA-Z_][\w.]*)', re.M)
+
+
+def _walk_py_imports(entry):
+    """Eigene lokale Module ab `entry` -- wie _walk_imports() fuer JS, nur
+    dass ein fehlender Eintrag hier beim Start sofort abstuerzt (siehe
+    ModuleNotFoundError-Vorfall mit users.py) statt nur still 404 zu liefern.
+    Trotzdem geprueft, damit der Fehler schon in der CI auffaellt, nicht erst
+    beim Deploy."""
+    seen = set()
+    stack = [entry]
+    while stack:
+        name = stack.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        path = os.path.join(_ROOT, name + '.py')
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding='utf-8') as f:
+            src = f.read()
+        for spec in PY_IMPORT_RE.findall(src):
+            top = spec.split('.')[0]
+            if top != name and os.path.exists(os.path.join(_ROOT, top + '.py')):
+                stack.append(top)
+    return seen
+
+
 def test_python_modules_are_copied():
     targets = _copy_targets()
-    for name in ('app.py', 'auth.py', 'persist.py', 'scoring.py', 'atomic_io.py', 'VERSION'):
-        assert _covered(name, targets), f'{name} fehlt im Dockerfile'
+    modules = _walk_py_imports('app')
+    assert 'auth' in modules and 'users' in modules and 'persist' in modules, \
+        f'Python-Importgraph unerwartet klein: {modules!r}'
+    for name in modules:
+        assert _covered(name + '.py', targets), f'{name}.py fehlt im Dockerfile'
+    assert _covered('VERSION', targets), 'VERSION fehlt im Dockerfile'
 
 
 def test_dev_only_files_stay_out():

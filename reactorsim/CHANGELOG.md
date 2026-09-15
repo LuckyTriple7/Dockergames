@@ -1,6 +1,6 @@
 # Changelog
 
-## Unveröffentlicht
+## 0.2.0
 
 - ✨ **Admin-Panel statt REACTORSIM_USERS.** Das Konto aus
   `REACTORSIM_USER`/`REACTORSIM_PASSWORD` ist jetzt ein reines Admin-Konto --
@@ -35,6 +35,11 @@
   Eigene deutsche und englische Hinweise zu Trommeldruck, Wasserhaushalt,
   ORM, Dampfblasen-Rückkopplung und Leistungsautomatik. Fortschritt inklusive
   Haltezeit wird gespeichert; Abschluss ohne Bestenlistenwertung.
+- 🐛 `users.py` fehlte im Dockerfile-`COPY`: Container startete seit dem
+  Admin-Panel-Umbau mit `ModuleNotFoundError`, sobald `app.py` es importierte.
+  Dockerfile korrigiert; `test_dockerfile.py` prüft jetzt den echten
+  Python-Importgraph ab `app.py` statt einer festen Namensliste, damit ein
+  fehlendes lokales Modul künftig in der CI auffällt statt erst beim Deploy.
 
 ## 0.1.35
 
