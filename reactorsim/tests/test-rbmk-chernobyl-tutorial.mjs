@@ -73,13 +73,18 @@ test('full guided sequence: handover, dip, hand-held recovery, pumps, coastdown,
 
   // 1 dip -- reine historische Einordnung im Text, keine mechanische
   // Simulation (siehe _triggerDip: ein echter Einbruch riss im Test mehr
-  // Xenon auf, als sich je zurueckholen liess). Schliesst fast sofort.
+  // Xenon auf, als sich je zurueckholen liess). Braucht wie 'handover' eine
+  // explizite Bestaetigung (siehe confirmIndices), sonst waere der Text weg,
+  // bevor er gelesen ist.
   step({ engine, session }, Math.round(5 / DT));
+  assert.ok(tut.confirmInspect());
   assert.equal(tut.index, 2, 'dip step did not complete');
 
   // 2 recover -- powerCtl haelt automatisch (siehe prepare()/_triggerDip:
   // das ist der validierte Pfad, kein manuelles Stabziehen als zusaetzliche
-  // Fehlerquelle). Die 19 Minuten laufen einfach ab.
+  // Fehlerquelle -- ein schmaler Trimm allein driftet hier nicht genug, um
+  // ohne Spielereingriff denselben Endzustand zu treffen, und aendert damit
+  // den spaeteren AZ-5-Ausgang). Die 19 Minuten laufen einfach ab.
   step({ engine, session }, Math.round(1160 / DT));
   assert.equal(tut.index, 3, `recover step did not complete (n=${(s.n * 100).toFixed(2)}%, orm=${engine.derive().orm.toFixed(1)})`);
 
@@ -128,6 +133,7 @@ test('pressing AZ-5 too early (no coastdown) does not destroy the core -- the co
   step({ engine, session }, Math.round(6 / DT));
   tut.confirmInspect();
   step({ engine, session }, Math.round(5 / DT));
+  tut.confirmInspect();
   assert.equal(tut.index, 2);
 
   step({ engine, session }, Math.round(1160 / DT));

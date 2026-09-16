@@ -22,6 +22,11 @@ export class StartupTutorial {
   /** Overridable per subclass. Defaults keep the historical PWR sequence. */
   get steps() { return TUTORIAL_STEPS; }
   get holdSeconds() { return HOLD_SECONDS; }
+  // Indices that need an explicit confirm button instead of auto-advancing
+  // once held long enough -- see confirmInspect()/step() below. Only step 0
+  // in the three original startup tutorials; the Chernobyl replay overrides
+  // this to add its narrative-only 'dip' step.
+  get confirmIndices() { return [0]; }
 
   prepare() {
     const { state: s, ctx: c, spec: sp, reactivity } = this.engine;
@@ -51,11 +56,12 @@ export class StartupTutorial {
   get demand() { return this.index >= 3 ? 150 : 0; }
 
   get inspectReady() {
-    return this.index === 0 && this.held + 1e-8 >= this.holdSeconds[0] && this.conditions()[0];
+    return this.confirmIndices.includes(this.index) && this.held + 1e-8 >= this.holdSeconds[this.index]
+      && this.conditions()[this.index];
   }
 
   confirmInspect() {
-    if (this.index !== 0) return false;
+    if (!this.confirmIndices.includes(this.index)) return false;
     // Recheck even while paused: a stale button must not confirm a lost hold.
     this.step(0);
     if (!this.inspectReady) return false;
@@ -93,7 +99,7 @@ export class StartupTutorial {
       t: this.engine.state.t_sim, kind: 'goal_start', key });
     if (heldBefore > 0 && this.held === 0) this.engine.ctx.trends?.mark({
       t: this.engine.state.t_sim, kind: 'goal_reset', key });
-    if (this.index > 0 && this.held + 1e-8 >= this.holdSeconds[this.index]) this.completeStep();
+    if (!this.confirmIndices.includes(this.index) && this.held + 1e-8 >= this.holdSeconds[this.index]) this.completeStep();
   }
 
   completeStep() {

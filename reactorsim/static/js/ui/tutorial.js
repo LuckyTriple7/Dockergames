@@ -72,7 +72,12 @@ export function buildTutorial(session, render) {
   };
   const update = () => {
     const v = tutorial.view();
-    modalConfirm.hidden = modalInspection.hidden = modalInspectStatus.hidden = v.index !== 0;
+    // Der Bestaetigen-Button gilt fuer jeden confirmIndices-Schritt (die
+    // Chernobyl-Uebung nutzt ihn auch fuer 'dip', nicht nur Schritt 0) --
+    // die Pruef-Checkliste selbst bleibt an Schritt 0 gebunden, da nur dort
+    // 'inspect_checks'/inspectIntact ueberhaupt befuellt sind.
+    modalConfirm.hidden = !(tutorial.confirmIndices?.includes(v.index) ?? (v.index === 0));
+    modalInspection.hidden = modalInspectStatus.hidden = v.index !== 0;
     modalConfirm.disabled = !v.inspectReady || session.phase !== PHASE.RUNNING;
     if (v.done) { setText(status, t('tut_completed')); return; }
     const title = t(prefix + v.id + '_title');

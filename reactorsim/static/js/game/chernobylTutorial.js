@@ -164,11 +164,11 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     c.powerCtl.setpoint = s.n;
   }
 
-  get inspectReady() {
-    // Wie die Basisklasse, aber ohne die feste 'inspect'-Bezeichnung: Schritt
-    // 0 heisst hier 'handover' und nutzt denselben Bestaetigen-Mechanismus.
-    return this.index === 0 && this.held + 1e-8 >= this.holdSeconds[0] && this.conditions()[0];
-  }
+  // 'handover' (0) UND 'dip' (1) brauchen beide eine explizite Bestaetigung
+  // statt Auto-Weiterlauf nach Ablauf der Haltezeit: 'dip' ist reiner
+  // Erzaehltext (siehe conditions()[1]/_triggerDip), der sonst nach 2s von
+  // selbst weiterspringt, bevor er gelesen ist.
+  get confirmIndices() { return [0, 1]; }
 
   conditions() {
     const { state: s, ctx: c } = this.engine;
