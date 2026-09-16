@@ -97,27 +97,33 @@ test('full guided sequence: handover, dip, hand-held recovery, pumps, coastdown,
   // Kuehlmittelauslauf die Drehzahl schon wieder zurueckgenommen hat.
   assert.equal(c.mcp.filter(p => p.running && p.speed >= 0.9).length, 8);
 
-  // 4 test -- completeStep('pumps') muss den Auslauf gestartet haben. mcpDmd
-  // faellt sofort, die Leistung bleibt aber gut 30s beim Sollwert stehen
-  // (Blasenkoeffizient braucht die volle Auslauframpe) -- 'test' schliesst
-  // deshalb NICHT schon bei sinkendem Durchsatz, sondern erst wenn n selbst
-  // sichtbar ueber den bisherigen Haltebereich steigt (siehe conditions()[4]
-  // in chernobylTutorial.js). Ein Spieler, der dem alten, zu frueh
-  // erscheinenden Hinweis folgte, druckte AZ-5 noch beim unveraenderten
-  // ~200-MWth-Ausgangswert und sah nie den historischen Leistungsanstieg.
+  // 4 test -- completeStep('pumps') muss den Auslauf gestartet haben. Der
+  // Schritt selbst schliesst schnell (AZ-5 wird frei, sobald der Auslauf
+  // sichtbar begonnen hat) -- das MUSS frueh passieren, nicht erst wenn die
+  // Leistung schon sichtbar steigt: der Hinweistext von 'az5' nennt die
+  // Zerstoerungsfenster als Sekunden SEIT AUSLAUFBEGINN (7-22s, 39-43s,
+  // siehe tut_chernobyl_hint_az5/view().values.sinceRunback) und braucht
+  // dafuer den vollen Zeitraum ab Auslaufbeginn, nicht nur einen Rest davon
+  // (ein frueherer Versuch, den Schritt erst bei hoher Leistung freizugeben,
+  // hat genau das kaputtgemacht -- siehe CHANGELOG 0.5.2/0.5.3). Der schmale
+  // AR-Trimm (siehe chernobylTutorial.js) haelt die Leistung bis zum
+  // Druecken von AZ-5 nahe am Sollwert -- wie historisch (Leistung blieb
+  // ~36s nahezu flach). Ob AZ-5 dann zerstoert, haengt an der genauen
+  // axialen Schieflage im Moment des Drueckens (_tipReactivity skaliert mit
+  // s.ao) und ist NICHT einfach "je spaeter, desto schlimmer" -- gemessen:
+  // ein Fenster bei ~7-22s nach Ausloesen des Auslaufs zerstoert, dazwischen
+  // (~23-38s) nicht, danach (~39-43s) wieder. 40s (in diesem zweiten
+  // Fenster) liegt naeher an der historischen Zeitspanne (Testbeginn
+  // 01:23:04, AZ-5 01:23:40, 36s spaeter) als das erste Fenster.
   assert.ok(c.mcpRunback, 'coastdown was not triggered when pumps step completed');
-  let testGuard = 0;
-  while (tut.index === 4 && testGuard < Math.round(60 / DT)) { step({ engine, session }, 1); testGuard++; }
+  step({ engine, session }, Math.round(10 / DT));
   assert.equal(tut.index, 5, 'test step did not complete');
-  t.diagnostic(`test step completed at t_sim=${s.t_sim.toFixed(2)}s, n=${(s.n * 100).toFixed(1)}%`);
+  assert.ok(tut.view().values.sinceRunback >= 9 && tut.view().values.sinceRunback <= 11,
+    `sinceRunback counter should track elapsed time, got ${tut.view().values.sinceRunback}`);
+  step({ engine, session }, Math.round(30 / DT));
 
-  // 5 az5 -- die historische Handlung, jetzt zum vom Spiel selbst
-  // vorgeschlagenen Zeitpunkt gedrueckt (nicht mehr an einem Testskript-
-  // eigenen Zeitversatz). Ob das gutgeht, entscheidet die Physik
-  // (RunState.checkFail() laeuft VOR tutorial.done, siehe session.js). Der
-  // gemessene Zerstoerungs-Zeitpunkt (siehe t.diagnostic unten) liegt nahe an
-  // der historischen Zeitspanne (Testbeginn 01:23:04, AZ-5 01:23:40, 36s
-  // spaeter).
+  // 5 az5 -- die historische Handlung. Ob das gutgeht, entscheidet die
+  // Physik (RunState.checkFail() laeuft VOR tutorial.done, siehe session.js).
   engine.scram('az5');
   step({ engine, session }, Math.round(20 / DT));
 

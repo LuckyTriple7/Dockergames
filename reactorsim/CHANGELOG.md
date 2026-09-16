@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.3
+
+- 🐛 **0.5.2 (AZ-5-Hinweis erst bei Leistungsanstieg) zurückgenommen, echter
+  Fix: Sekundenzähler seit Auslaufbeginn.** Der Hinweistext von Schritt
+  'az5' nennt die Zerstörungsfenster bereits korrekt als Sekunden seit
+  Auslaufbeginn (7-22 s, 39-43 s) -- er brauchte dafür nur den vollen
+  Zeitraum ab Auslaufbeginn, den 0.5.2 versehentlich verkürzt hatte (Schritt
+  'test' schloss erst bei n ≥ 15 % ab, das erste Fenster war damit
+  unerreichbar, vom zweiten blieb nur ein Rest). Schritt 'test' schließt
+  jetzt wieder sofort wie ursprünglich, dafür zeigen 'test' und 'az5' einen
+  laufenden Sekundenzähler seit Auslaufbeginn, damit sich der Hinweistext
+  tatsächlich befolgen lässt, statt die Sekunden im Kopf mitzählen zu
+  müssen.
+
 ## 0.5.2
 
 - 🐛 **Chernobyl-Tutorial: AZ-5-Hinweis erschien lange vor dem Leistungsanstieg.**

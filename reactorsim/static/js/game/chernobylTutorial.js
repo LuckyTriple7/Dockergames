@@ -190,18 +190,15 @@ export class RbmkChernobylTutorial extends StartupTutorial {
       intact && pressure && s.n >= 0.055 && s.n <= 0.09,
       // 3 pumps: die zwei zusaetzlichen Hauptumwaelzpumpen zuschalten.
       intact && pumpsRunning >= 8,
-      // 4 test: der Kuehlmittelauslauf allein reicht NICHT -- mcpDmd faellt
-      // schon nach wenigen Sekunden unter 0.9, lange bevor die Leistung
-      // ueberhaupt reagiert (Blasenkoeffizient braucht die volle 30s-Rampe,
-      // siehe COASTDOWN_S). Ein Spieler, der dem Hinweis sofort folgt, druecktw
-      // AZ-5 dann bei praktisch unveraendertem ~200-MWth-Ausgangswert und
-      // sieht nie den historischen Leistungsanstieg. Der AZ-5-Hinweis
-      // (Schritt 'az5') erscheint deshalb erst, wenn die Leistung selbst
-      // sichtbar ueber das 200-MWth-Haltefenster (bis 9 %) hinausgestiegen
-      // ist -- das aendert NICHTS an der Physik oder am AZ-5-Knopf selbst
-      // (der war nie gesperrt, siehe 'pressing AZ-5 too early'-Test), nur am
-      // Zeitpunkt des Hinweistexts.
-      intact && s.mcpDmd < 0.9 && s.n >= 0.15,
+      // 4 test: der Kuehlmittelauslauf laeuft (siehe _triggerCoastdown). Dieser
+      // Schritt MUSS frueh abschliessen (nicht erst wenn die Leistung schon
+      // sichtbar steigt!) -- der Hinweistext von 'az5' nennt die historisch
+      // gemessenen Zerstoerungsfenster als Sekunden SEIT AUSLAUFBEGINN (7-22s,
+      // 39-43s, siehe hint()/tut_chernobyl_hint_az5). Ein spaeteres Freigeben
+      // wuerde das erste Fenster unerreichbar machen und vom zweiten nur einen
+      // Rest lassen -- das war ein eigener, inzwischen zurueckgenommener
+      // Fehlversuch (siehe CHANGELOG 0.5.2/0.5.3).
+      intact && s.mcpDmd < 0.9,
       // 5 az5: Schnellabschaltung ausgeloest. Ob das noch glimpflich ausgeht
       // oder nicht, entscheidet danach die Physik -- nicht dieser Schritt
       // (siehe RunState.checkFail(), das immer VOR tutorial.done greift).
@@ -238,6 +235,12 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     this._withdrawToTipSpan();
     c.arTrim = { rho: s.rho_ext || 0, setpoint: s.n };
     c.mcpRunback = { from: s.mcpDmd, to: 0, t0: s.t_sim, dur: COASTDOWN_S };
+    // Eigener Merker, NICHT ueber c.mcpRunback.t0 -- events.js setzt
+    // c.mcpRunback auf null, sobald die 30s-Rampe fertig ist (siehe
+    // stepEvents), aber das zweite Zerstoerungsfenster (39-43s) liegt bereits
+    // danach. Der Countdown fuer den Spieler (siehe view()) muss also laenger
+    // leben als die Rampe selbst.
+    this._runbackT0 = s.t_sim;
   }
 
   /**
@@ -291,14 +294,26 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     return 'tut_hint_wait';
   }
 
-  snapshot() { return { ...super.snapshot(), reactor: 'rbmk' }; }
+  snapshot() {
+    return { ...super.snapshot(), reactor: 'rbmk',
+      runbackT0: Number.isFinite(this._runbackT0) ? this._runbackT0 : null };
+  }
+
+  restore(data) {
+    super.restore(data);
+    this._runbackT0 = Number.isFinite(data?.runbackT0) ? data.runbackT0 : null;
+  }
 
   view() {
     const view = super.view();
     const { state: s, ctx: c } = this.engine;
+    // Sekunden seit Auslaufbeginn -- damit der Spieler den in
+    // tut_chernobyl_hint_az5 genannten Zerstoerungsfenstern (7-22s, 39-43s)
+    // tatsaechlich folgen kann, statt sie im Kopf mitzuzaehlen.
+    const sinceRunback = Number.isFinite(this._runbackT0) ? Math.max(0, s.t_sim - this._runbackT0) : null;
     return { ...view, values: { ...view.values, pressure: s.p_drum,
       level: s.L_drum * 100, orm: this.engine.derive().orm,
       pumps: c.mcp.filter(p => p.running && p.speed >= 0.9).length,
-      mcpFlow: s.mcpDmd * 100 } };
+      mcpFlow: s.mcpDmd * 100, sinceRunback: sinceRunback ?? 0 } };
   }
 }
