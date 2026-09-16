@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1
+
+- 🐛 **Chernobyl-Tutorial: Schritt 'dip' sprang nach 2s ungelesen weiter.**
+  Der reine Erzähltext zum historischen Leistungseinbruch schloss automatisch
+  nach der kurzen Haltezeit ab -- braucht jetzt wie 'handover' einen
+  expliziten Bestätigen-Klick (`StartupTutorial.confirmIndices`).
+- 🐛 **Chernobyl-Tutorial: Schritt 'recover' sagte 'von Hand halten', hielt
+  aber automatisch.** Die Leistungsregelung (`c.powerCtl`) läuft während der
+  19-Minuten-Haltephase durchgehend automatisch -- das ist Absicht (siehe
+  Machbarkeitsprüfung, BACKLOG.md), der Text widersprach dem aber. Text/Hinweis
+  korrigiert statt der Physik.
+
 ## 0.5.0
 
 - ✨ **Kernzerstörung jetzt im Fließbild sichtbar.** Bisher zeigte nur das
