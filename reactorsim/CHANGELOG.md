@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.8
+
+- ✨ **Chernobyl-Tutorial: AZ-5 löst jetzt automatisch aus.** Das
+  Zerstörungsfenster ist nur 4 Sekunden breit (39-43s seit Auslaufbeginn) --
+  der AZ-5-Knopf braucht aber zwei Klicks (erst scharf machen, dann
+  bestätigen, Unfallschutz gegen Versehen-Drücken). Die Reaktionszeit
+  zwischen beiden Klicks fraß das Fenster in der Praxis zuverlässig auf
+  (Nutzerrückmeldung: zwei Versuche hintereinander 1,7-2,6s zu spät). AZ-5
+  löst in diesem Tutorial jetzt bei Sekunde 41 (Fenstermitte) von selbst
+  aus -- verifiziert per Testlauf ganz ohne jeden Klick, Kern wird
+  zuverlässig zerstört. Nur diese eine Übung ist betroffen, der Knopf
+  bleibt überall sonst unverändert zweistufig.
+
 ## 0.5.7
 
 - 🐛 **Chernobyl-Tutorial Schritt 6/7: "0/0.2 s" sah nach "gleich fertig"

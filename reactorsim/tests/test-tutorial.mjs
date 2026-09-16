@@ -297,10 +297,13 @@ test("chernobyl tutorial's window/az5 steps show the live hint, not a misleading
   assert.doesNotMatch(status.textContent, /0[.,]?\/0[.,]2/);
   assert.match(status.textContent, /warten/i);
 
-  // Move sinceRunback into PRESS_WINDOW -- status must switch to "press now".
+  // Move sinceRunback into PRESS_WINDOW -- status must switch to "about to
+  // trigger" (AZ-5 fires automatically in this tutorial, see AUTO_SCRAM_S
+  // in chernobylTutorial.js -- the double-click SCRAM confirmation ate the
+  // whole 4s window's worth of human reaction time, see user feedback).
   engine.state.t_sim += 40;
   update();
-  assert.match(status.textContent, /JETZT/);
+  assert.match(status.textContent, /von selbst/i);
 
   // Past both windows -- status must say the window has passed, not repeat
   // "press now" forever.

@@ -67,6 +67,18 @@ const DESTROY_WINDOWS = [[7, 22], [39, 43]];
 // anders als das erste, fruehere Fenster.
 const PRESS_WINDOW = DESTROY_WINDOWS[1];
 
+// AZ-5 loest in DIESEM Tutorial automatisch aus, bei Sekunde 41 seit
+// Auslaufbeginn (Mitte von PRESS_WINDOW, Sicherheitsabstand zu beiden
+// Raendern) -- Nutzerbefehl, nachdem zwei Versuche hintereinander das
+// Fenster knapp verfehlten: der Doppelklick-Sicherungsmechanismus des
+// AZ-5-Knopfes (erst "scharf", dann "bestaetigen", siehe main.js
+// initControls()) frisst bei einem nur 4 Sekunden breiten Fenster die
+// Reaktionszeit zwischen den zwei Klicks praktisch komplett auf. Siehe
+// step() unten -- engine.scram() ist idempotent, ein Spieler, der selbst
+// frueher drueckt (z.B. im ersten, hier nicht angezeigten Fenster), wird
+// dadurch nicht behindert.
+const AUTO_SCRAM_S = 41;
+
 // Kuehlmittelauslauf-Naeherung fuer den Turbinenauslaufversuch (siehe
 // events.js rbmk_mcp_runback) -- geskriptet statt einer echten
 // Turbinen-Rotortraegheit, wie besprochen: der Punkt ist die Kombination
@@ -327,6 +339,12 @@ export class RbmkChernobylTutorial extends StartupTutorial {
   step(dt) {
     super.step(dt);
     const { state: s, ctx: c } = this.engine;
+    // AZ-5 automatisch bei AUTO_SCRAM_S (siehe dort) -- idempotent (siehe
+    // engine.scram()), tut nichts, wenn der Spieler selbst schon gedrueckt
+    // hat.
+    if (!s.scram.active && this._sinceRunback(s) >= AUTO_SCRAM_S) {
+      this.engine.scram('az5');
+    }
     const trim = c.arTrim;
     if (!trim || s.scram.active) return;
     const err = s.n - trim.setpoint;
