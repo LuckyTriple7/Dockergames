@@ -520,10 +520,24 @@ function makeDeleteSaveButton(slot, onDone = refreshResumeList) {
 /** Ueberblendung zwischen Uebersicht und Reaktorseite (siehe .rs-fade in
  *  base.css) -- eine Sekunde Opacity-Crossfade, `instant` ueberspringt sie
  *  fuer den allerersten Bildaufbau bei Direktaufruf von /reaktor/<typ>. */
+// Merkt sich den Timer der zuletzt LAUFENDEN Ueberblendung -- ein zweiter
+// Klick (z.B. Reaktor -> Zurueck -> denselben Reaktor wieder, alles
+// innerhalb der einen Sekunde Fade) darf den alten Timer nicht einfach
+// weiterlaufen lassen. Der hat sein eigenes hideEl noch vom VORIGEN Aufruf
+// im Kopf und wuerde eine Sekunde spaeter genau den Bildschirm wegnehmen,
+// den der neue Aufruf gerade erst wieder eingeblendet hat -- Ergebnis: nach
+// der zweiten Fahrt auf denselben Reaktor blieben #rs-start UND #rs-reactor
+// beide hidden, ein leeres/schwarzes Fenster ohne jeden sichtbaren Inhalt.
+let fadeTimer = 0;
+
 function fadeScreens(hideEl, showEl, instant = false) {
+  window.clearTimeout(fadeTimer);
+  fadeTimer = 0;
   if (instant) {
     hideEl.hidden = true;
+    hideEl.classList.remove('rs-fade');
     showEl.hidden = false;
+    showEl.classList.remove('rs-fade');
     return;
   }
   showEl.hidden = false;
@@ -535,7 +549,8 @@ function fadeScreens(hideEl, showEl, instant = false) {
   void showEl.offsetWidth;
   hideEl.classList.add('rs-fade');
   showEl.classList.remove('rs-fade');
-  window.setTimeout(() => {
+  fadeTimer = window.setTimeout(() => {
+    fadeTimer = 0;
     hideEl.hidden = true;
     hideEl.classList.remove('rs-fade');
   }, 1000);
