@@ -858,6 +858,12 @@ function initControls() {
   const openPanelWindow = (section) => {
     if (!desktopMQ.matches) return;
     if (openPanel) closePanelWindow();
+    // Die Instrumentenuebersicht (siehe unten) zieht sich einzelne Knoten
+    // (Gauges, Stellteile) aus genau diesem .rs-panel-body -- gleichzeitig
+    // offen wanderte die ganze Kachel mitsamt Luecken dorthin, wo die
+    // Uebersicht sie sich schon geholt hat. Erst schliessen, dann sauber neu
+    // aufbauen.
+    if (openInstruments) closeInstrumentsWindow();
     const body = $('.rs-panel-body', section);
     if (!body) return;
     const placeholder = document.createComment('rs-panel-window-slot');
@@ -897,6 +903,75 @@ function initControls() {
   panelWindow.addEventListener('click', (ev) => { if (ev.target === panelWindow) closePanelWindow(); });
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && !panelWindow.hidden) closePanelWindow();
+  });
+
+  // Instrumentenübersicht (Taste O): buendelt die Rundinstrumente
+  // (#rs-*-gauges) und alle Stellteile (Staebe, Pumpen, Speisewasser,
+  // Sicherheitssysteme, Bor, Netz) aus allen acht Reitern auf einer
+  // Flaeche. Dieselbe Verschieben-statt-Kopieren-Regel wie bei
+  // openPanelWindow() oben -- jede Karte hier ist der echte Knoten aus
+  // seinem Reiter (Wertebindungen aus buildPanels() laufen genau EINMAL
+  // gegen diese Knoten, ein Klon liefe stumm mit toten Anzeigen). Anders
+  // als openPanelWindow() bewusst NICHT auf Desktop beschraenkt: auf dem
+  // Handy zeigt sonst kein Reiter mehrere Kacheln gleichzeitig, dort ist
+  // die Buendelung sogar der einzige Weg, Staebe und Pumpen ohne Wechseln
+  // nebeneinander zu sehen.
+  const instrumentsModal = $('#rs-instruments-modal');
+  const instrumentsGrid = $('#rs-instruments-grid');
+  // Nur die Gruppen-Optik (Kopfzeile, Innenabstand) wiederverwenden, siehe
+  // .rs-group > h3 in panels.css -- eigene Ueberschrift statt der echten
+  // <h3> aus dem Reiter, weil mehrere Ziele (Stab-Bedienung, Speisewasser,
+  // Sicherheitssysteme) ihre Ueberschrift mit Messwertzeilen teilen, die
+  // hier NICHT mitkommen (nur Rundinstrumente + Stellteile, keine reinen
+  // Zahlenzeilen, siehe Aufgabenstellung).
+  const INSTRUMENT_SECTIONS = [
+    ['rs-core-gauges', 'panel_core'],
+    ['rs-prim-gauges', 'panel_primary'],
+    ['rs-sec-gauges', 'panel_secondary'],
+    ['rs-rod-ctl', 'panel_core_rods'],
+    ['rs-pumps', 'panel_primary_pumps'],
+    ['rs-sec-ctl', 'panel_secondary_feed'],
+    ['rs-safety-ctl', 'panel_safety'],
+    ['rs-chem-ctl', 'panel_chemistry'],
+    ['rs-grid-ctl', 'panel_grid'],
+  ];
+  let openInstruments = null; // Array aus { node, placeholder } waehrend das Fenster offen ist
+
+  const closeInstrumentsWindow = () => {
+    if (!openInstruments) return;
+    for (const { node, placeholder } of openInstruments) placeholder.replaceWith(node);
+    openInstruments = null;
+    instrumentsModal.hidden = true;
+    instrumentsGrid.replaceChildren();
+  };
+
+  const openInstrumentsWindow = () => {
+    // Zweiter Druck auf O schliesst wieder -- ohne Maus die einzige
+    // Rueckmeldung darauf, dass die Taste ueberhaupt etwas tut.
+    if (openInstruments) { closeInstrumentsWindow(); return; }
+    // Vor dem ersten Rundenstart stehen die Zielknoten leer (buildPanels()
+    // hat sie noch nie gefuellt) -- ein leeres Fenster waere nur verwirrend.
+    if (!app.engine) return;
+    if (!panelWindow.hidden) closePanelWindow();
+    openInstruments = [];
+    for (const [id, labelKey] of INSTRUMENT_SECTIONS) {
+      const node = $('#' + id);
+      if (!node) continue;
+      const placeholder = document.createComment('rs-instruments-slot-' + id);
+      node.before(placeholder);
+      openInstruments.push({ node, placeholder });
+      instrumentsGrid.append(el('div.rs-group.rs-instruments-section', null, [
+        el('h3', { text: t(labelKey) }),
+        node,
+      ]));
+    }
+    instrumentsModal.hidden = false;
+  };
+
+  $('#rs-instruments-close').addEventListener('click', closeInstrumentsWindow);
+  instrumentsModal.addEventListener('click', (ev) => { if (ev.target === instrumentsModal) closeInstrumentsWindow(); });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !instrumentsModal.hidden) closeInstrumentsWindow();
   });
 
   // Kopfzeile anpassen: Checkboxen aus dem Katalog, vorbelegt mit der
@@ -1004,6 +1079,13 @@ function initControls() {
     else if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && PANEL_KEYS[ev.key.toLowerCase()]) {
       ev.preventDefault();
       openPanelWindow($('#' + PANEL_KEYS[ev.key.toLowerCase()]));
+    }
+    // O oeffnet die Instrumentenuebersicht (Rundinstrumente + Stellteile
+    // aller Reiter auf einer Flaeche) -- eigene Taste statt Q, das ist schon
+    // die Meldetafel-Quittierung (siehe oben).
+    else if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key.toLowerCase() === 'o') {
+      ev.preventDefault();
+      openInstrumentsWindow();
     }
   });
 

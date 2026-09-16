@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0
+
+- ✨ **Instrumentenübersicht (Taste O).** Rundinstrumente (Kern/Primär/
+  Sekundär) und alle Stellteile (Stäbe, Pumpen, Speisewasser,
+  Sicherheitssysteme, Bor, Netz) bündeln sich jetzt auf einer Fläche statt
+  über acht Reiter verstreut zu sein -- kein Trend-Diagramm, keine reinen
+  Zahlenzeilen, nur Gauges und Bedienung, wie gewünscht. Dieselbe
+  Verschieben-statt-Kopieren-Regel wie bei „Kachel als Fenster" (R/P/S/G/A/
+  V/M/C): jede Karte im neuen Fenster ist der echte Knoten aus seinem
+  Reiter, keine zweite Instanz mit totem Zustand -- Schließen legt alles an
+  seinen ursprünglichen Platz zurück. Anders als die einzelnen
+  Panel-Fenster bewusst NICHT auf Desktop beschränkt: auf dem Handy ist das
+  der einzige Weg, mehrere Stellteile ohne Reiterwechsel nebeneinander zu
+  sehen. Q bleibt die Meldetafel-Quittierung, keine Kollision.
+
 ## 0.3.1
 
 - 🐛 **Reaktor öffnen -> zurück -> denselben Reaktor wieder öffnen ergab ein

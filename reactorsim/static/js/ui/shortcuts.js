@@ -3,7 +3,8 @@
 // Reine Datenliste wie beim Glossar (glossary.js) -- Text kommt aus den
 // Sprachdateien. Muss von Hand synchron bleiben mit den tatsaechlichen
 // keydown-Zuhoerern in main.js (initControls: Leertaste/Ziffern/Stabfahrt/
-// Q fuer Quittieren/Panel-Fenster ueber PANEL_KEYS; initStart: Strg+S/X/Z/M,
+// Q fuer Quittieren/Panel-Fenster ueber PANEL_KEYS/O fuer die
+// Instrumentenuebersicht; initStart: Strg+S/X/Z/M,
 // rundenunabhaengig) und panels.js (buildPanels, Meldetafel-Hilfe): hier
 // steht nur die Erklaerung, nicht der Code, der sie umsetzt.
 
@@ -27,5 +28,6 @@ export const SHORTCUTS = [
   { key: 'sc_panel_trend', def: 'sc_panel_trend_d' },
   { key: 'sc_panel_alarm', def: 'sc_panel_alarm_d' },
   { key: 'sc_panel_chem', def: 'sc_panel_chem_d' },
+  { key: 'sc_instruments', def: 'sc_instruments_d' },
   { key: 'sc_escape', def: 'sc_escape_d' },
 ];

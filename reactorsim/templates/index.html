@@ -537,6 +537,25 @@
   </div>
 </div>
 
+<!-- ── Instrumentenübersicht ────────────────────────────────────────────── -->
+<!-- Buendelt die Rundinstrumente (Kern/Primaer/Sekundaer) und alle Stellteile
+     (Staebe, Pumpen, Speisewasser, Sicherheitssysteme, Bor, Netz) auf einer
+     Flaeche -- Taste O, siehe openInstrumentsWindow() in main.js. Dieselbe
+     Verschieben-statt-Kopieren-Regel wie bei "Kachel als Fenster" oben: jede
+     Karte hier ist der echte #rs-core-gauges/#rs-rod-ctl/...-Knoten aus
+     seinem Reiter, keine zweite Instanz mit eigenem (dann toten) Zustand. -->
+<div class="rs-modal rs-panel-modal" id="rs-instruments-modal" hidden>
+  <div class="rs-modal-box rs-modal-panel">
+    <div class="rs-modal-panel-head">
+      <h2>{{ t.instruments_title }}</h2>
+      <button type="button" class="rs-btn rs-btn-ghost rs-btn-sm" id="rs-instruments-close">{{ t.btn_close }}</button>
+    </div>
+    <div class="rs-panel-window-slot">
+      <div class="rs-instruments-grid" id="rs-instruments-grid"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Kopfzeile anpassen ───────────────────────────────────────────────── -->
 <!-- Auswahl gilt je Reaktortyp und bleibt beim Spieler gespeichert (/api/prefs)
      -- wirkt ab dem naechsten Rundenstart, kein Umbau der laufenden Anzeige. -->

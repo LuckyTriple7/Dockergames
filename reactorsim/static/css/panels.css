@@ -319,3 +319,24 @@ body.rs-ctl-paused #rs-safety-ctl {
 .rs-learning-log { max-height: 320px; }
 .rs-diagnostics { margin-top: 12px; overflow-wrap: anywhere; }
 .rs-diagnostics summary { cursor: pointer; font-weight: 600; }
+
+/* ── Instrumentenübersicht (Taste O) ──────────────────────────────────────── */
+/* Buendelt die Rundinstrumente und alle Stellteile aus Kern/Primaer/Sekundaer/
+   Netz/Chemie auf einer Flaeche, statt ueber acht Reiter verstreut -- siehe
+   openInstrumentsWindow() in main.js. Die Karten selbst sind dieselben
+   #rs-core-gauges/#rs-rod-ctl/... Knoten wie im Reiter, nur hierher verschoben
+   (nicht kopiert), deshalb .rs-group als Basis: dieselbe Kopfzeilen-Optik wie
+   jede andere Gruppe, kein eigenes zweites Regelwerk. */
+.rs-instruments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  align-content: start;
+  gap: 10px;
+  padding: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.rs-instruments-section {
+  border: 1px solid var(--rs-line);
+  border-radius: var(--rs-radius);
+}
