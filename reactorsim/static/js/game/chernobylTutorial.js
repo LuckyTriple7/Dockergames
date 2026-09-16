@@ -190,8 +190,18 @@ export class RbmkChernobylTutorial extends StartupTutorial {
       intact && pressure && s.n >= 0.055 && s.n <= 0.09,
       // 3 pumps: die zwei zusaetzlichen Hauptumwaelzpumpen zuschalten.
       intact && pumpsRunning >= 8,
-      // 4 test: der Kuehlmittelauslauf laeuft (siehe _triggerCoastdown).
-      intact && s.mcpDmd < 0.9,
+      // 4 test: der Kuehlmittelauslauf allein reicht NICHT -- mcpDmd faellt
+      // schon nach wenigen Sekunden unter 0.9, lange bevor die Leistung
+      // ueberhaupt reagiert (Blasenkoeffizient braucht die volle 30s-Rampe,
+      // siehe COASTDOWN_S). Ein Spieler, der dem Hinweis sofort folgt, druecktw
+      // AZ-5 dann bei praktisch unveraendertem ~200-MWth-Ausgangswert und
+      // sieht nie den historischen Leistungsanstieg. Der AZ-5-Hinweis
+      // (Schritt 'az5') erscheint deshalb erst, wenn die Leistung selbst
+      // sichtbar ueber das 200-MWth-Haltefenster (bis 9 %) hinausgestiegen
+      // ist -- das aendert NICHTS an der Physik oder am AZ-5-Knopf selbst
+      // (der war nie gesperrt, siehe 'pressing AZ-5 too early'-Test), nur am
+      // Zeitpunkt des Hinweistexts.
+      intact && s.mcpDmd < 0.9 && s.n >= 0.15,
       // 5 az5: Schnellabschaltung ausgeloest. Ob das noch glimpflich ausgeht
       // oder nicht, entscheidet danach die Physik -- nicht dieser Schritt
       // (siehe RunState.checkFail(), das immer VOR tutorial.done greift).

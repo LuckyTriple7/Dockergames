@@ -97,25 +97,27 @@ test('full guided sequence: handover, dip, hand-held recovery, pumps, coastdown,
   // Kuehlmittelauslauf die Drehzahl schon wieder zurueckgenommen hat.
   assert.equal(c.mcp.filter(p => p.running && p.speed >= 0.9).length, 8);
 
-  // 4 test -- completeStep('pumps') muss den Auslauf gestartet haben. Der
-  // Schritt selbst schliesst schnell (AZ-5 wird frei, sobald der Auslauf
-  // sichtbar begonnen hat). Der schmale AR-Trimm (siehe chernobylTutorial.js)
-  // haelt die Leistung bis zum Druecken von AZ-5 nahe am Sollwert -- wie
-  // historisch (Leistung blieb ~36s nahezu flach). Ob AZ-5 dann zerstoert,
-  // haengt an der genauen axialen Schieflage im Moment des Drueckens
-  // (_tipReactivity skaliert mit s.ao) und ist NICHT einfach "je spaeter,
-  // desto schlimmer" -- gemessen: ein Fenster bei ~7-22s nach Ausloesen des
-  // Auslaufs zerstoert, dazwischen (~23-38s) nicht, danach (~39-43s) wieder.
-  // 40s (in diesem zweiten Fenster) liegt naeher an der historischen
-  // Zeitspanne (Testbeginn 01:23:04, AZ-5 01:23:40, 36s spaeter) als das
-  // erste Fenster.
+  // 4 test -- completeStep('pumps') muss den Auslauf gestartet haben. mcpDmd
+  // faellt sofort, die Leistung bleibt aber gut 30s beim Sollwert stehen
+  // (Blasenkoeffizient braucht die volle Auslauframpe) -- 'test' schliesst
+  // deshalb NICHT schon bei sinkendem Durchsatz, sondern erst wenn n selbst
+  // sichtbar ueber den bisherigen Haltebereich steigt (siehe conditions()[4]
+  // in chernobylTutorial.js). Ein Spieler, der dem alten, zu frueh
+  // erscheinenden Hinweis folgte, druckte AZ-5 noch beim unveraenderten
+  // ~200-MWth-Ausgangswert und sah nie den historischen Leistungsanstieg.
   assert.ok(c.mcpRunback, 'coastdown was not triggered when pumps step completed');
-  step({ engine, session }, Math.round(10 / DT));
+  let testGuard = 0;
+  while (tut.index === 4 && testGuard < Math.round(60 / DT)) { step({ engine, session }, 1); testGuard++; }
   assert.equal(tut.index, 5, 'test step did not complete');
-  step({ engine, session }, Math.round(30 / DT));
+  t.diagnostic(`test step completed at t_sim=${s.t_sim.toFixed(2)}s, n=${(s.n * 100).toFixed(1)}%`);
 
-  // 5 az5 -- die historische Handlung. Ob das gutgeht, entscheidet die
-  // Physik (RunState.checkFail() laeuft VOR tutorial.done, siehe session.js).
+  // 5 az5 -- die historische Handlung, jetzt zum vom Spiel selbst
+  // vorgeschlagenen Zeitpunkt gedrueckt (nicht mehr an einem Testskript-
+  // eigenen Zeitversatz). Ob das gutgeht, entscheidet die Physik
+  // (RunState.checkFail() laeuft VOR tutorial.done, siehe session.js). Der
+  // gemessene Zerstoerungs-Zeitpunkt (siehe t.diagnostic unten) liegt nahe an
+  // der historischen Zeitspanne (Testbeginn 01:23:04, AZ-5 01:23:40, 36s
+  // spaeter).
   engine.scram('az5');
   step({ engine, session }, Math.round(20 / DT));
 

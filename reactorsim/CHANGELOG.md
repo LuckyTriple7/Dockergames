@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.2
+
+- 🐛 **Chernobyl-Tutorial: AZ-5-Hinweis erschien lange vor dem Leistungsanstieg.**
+  Schritt 'test' schloss bereits ab, sobald der Kühlmitteldurchsatz unter 90 %
+  fiel -- das passiert Sekunden nach Auslaufbeginn, lange bevor die Leistung
+  überhaupt reagiert (der Blasenkoeffizient braucht die volle 30-Sekunden-
+  Auslauframpe). Ein Spieler, der dem Hinweis sofort folgte, drückte AZ-5
+  noch beim unveränderten ~200-MWth-Ausgangswert und sah nie den
+  historischen Leistungsanstieg. `conditions()` verlangt jetzt zusätzlich
+  n ≥ 15 % -- ändert nichts an der Physik oder am AZ-5-Knopf selbst (der war
+  nie gesperrt), nur am Zeitpunkt des Hinweistexts. Damit fällt der
+  vorgeschlagene Drückzeitpunkt fast genau auf das validierte historische
+  Zerstörungsfenster (t+40s nach Auslaufbeginn).
+
 ## 0.5.1
 
 - 🐛 **Chernobyl-Tutorial: Schritt 'dip' sprang nach 2s ungelesen weiter.**
