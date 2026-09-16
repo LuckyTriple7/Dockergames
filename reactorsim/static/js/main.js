@@ -270,9 +270,20 @@ function initStart() {
     toMenu();
   });
 
+  // Nur das Fenster weg, die Anlage bleibt stehen -- Trends, Meldetafel und
+  // Instrumente lassen sich danach in Ruhe ansehen. "Menü" (oben) bleibt der
+  // Weg, die Runde wirklich zu verlassen, jederzeit erreichbar.
+  $('#rs-debrief-review').addEventListener('click', () => {
+    $('#rs-debrief').hidden = true;
+  });
+
   $('#rs-debrief-restart').addEventListener('click', () => {
     $('#rs-debrief').hidden = true;
     restart();
+  });
+
+  $('#rs-destroyed-review').addEventListener('click', () => {
+    $('#rs-destroyed').hidden = true;
   });
 
   $('#rs-destroyed-restart').addEventListener('click', () => {
@@ -1082,30 +1093,27 @@ function renderSaveStatus() {
   const lastText = last ? t('save_last_success', {
     when: new Date(last.when).toLocaleString(), kind: t('save_kind_' + last.kind),
   }) : t('save_none');
-  // Both spans are rs-sr-only (announced via role=status, nothing shown) --
-  // pending/failed text used to render visibly here too, but that shoved
-  // the row below down every time it appeared/disappeared (most noticeably
-  // once a minute, on every autosave). Last-save text lives in the
-  // Speichern button's tooltip instead; autosave success gets a green
-  // button flash, see flashSaveButton() below.
+  // Visually hidden (rs-sr-only): the text lives in the Speichern button's
+  // tooltip instead, so the status row does not cost sidebar space. Sighted
+  // feedback is the button itself turning red/green, see flashSaveOk() below
+  // and data-error in layout.css -- a visible text row here used to push
+  // the workspace down by a line whenever it appeared or disappeared.
   setText($('#rs-save-last'), lastText);
   setAttr($('#rs-save'), 'title', lastText);
   setText($('#rs-save-state'), [saveStatus?.failed ? t('save_failed') : '',
     saveStatus?.pending ? t('save_pending') : ''].filter(Boolean).join(' '));
   setAttr($('#rs-save-status'), 'data-error', saveStatus?.failed ? 'true' : 'false');
+  setAttr($('#rs-save'), 'data-error', saveStatus?.failed ? 'true' : 'false');
 }
 
 let saveFlashTimer = null;
-/** Kurzes gruenes Aufleuchten des Speichern-Buttons statt Text in der Leiste. */
-function flashSaveButton() {
-  const btn = $('#rs-save');
-  if (!btn) return;
-  setAttr(btn, 'data-flash', 'true');
-  if (saveFlashTimer) window.clearTimeout(saveFlashTimer);
-  saveFlashTimer = window.setTimeout(() => {
-    saveFlashTimer = null;
-    setAttr(btn, 'data-flash', 'false');
-  }, 1000);
+/** Kurzes gruenes Aufleuchten des Speichern-Knopfs bei Erfolg -- ein
+ *  Gegenstueck zum dauerhaften Rot aus data-error oben, das bestehen bleibt,
+ *  bis ein Speicherversuch tatsaechlich klappt. */
+function flashSaveOk() {
+  window.clearTimeout(saveFlashTimer);
+  setAttr($('#rs-save'), 'data-flash-ok', 'true');
+  saveFlashTimer = window.setTimeout(() => setAttr($('#rs-save'), 'data-flash-ok', 'false'), 2000);
 }
 
 function captureSaveContext() {
@@ -1141,13 +1149,13 @@ function requestGameSave(slot, kind) {
       if (ok && sequence > state.lastSequence) {
         state.lastSequence = sequence;
         state.last = { when: Date.now(), kind };
+        flashSaveOk();
       }
       if (sequence === state.sequence) {
         state.pending = false;
         state.failed = !ok;
       }
       renderSaveStatus();
-      if (ok && kind === 'auto') flashSaveButton();
     }
     return ok;
   };
@@ -1368,6 +1376,7 @@ function clearEndDialogs() {
   $('#rs-destroyed').hidden = true;
   $('#rs-tutorial-modal').hidden = true;
   app.pendingResult = null;
+  app.endPending = false;
   if (app.xenonSkip) {
     app.xenonSkip.cancelled = true;
     setText($('#rs-xenon-skip'), app.xenonSkip.before);
@@ -1399,11 +1408,49 @@ function toMenu() {
   refreshResumeList();
 }
 
+// Der Ausschlag, der zur Kernzerstoerung fuehrt, braucht nach dem
+// Erkennen (s.destroyed) noch einen Moment, um auf den Anzeigen SICHTBAR
+// zu werden (session.js beendet den Lauf im selben Rechenschritt, in dem
+// s.destroyed wahr wird -- siehe Nutzerrueckmeldung: ohne Pause friert das
+// Bild im selben Bildschirmtakt ein). 3s bei 1x (siehe triggerScram(),
+// setzt beim Druecken ohnehin auf 1x zurueck) lassen die Anlage sichtbar
+// weiterlaufen, bevor angehalten und die Auswertung gezeigt wird.
+const DESTROY_PAUSE_MS = 3000;
+
+/** Einmal angestossen, hoechstens einmal wirksam: `app.endPending` haelt
+ *  sowohl showDebrief() als auch den Renderloop-Auslöser fuer showDestroyed()
+ *  (freies Spiel) gleichzeitig zurueck, sonst zeigt einer der beiden das
+ *  Fenster trotzdem sofort, waehrend der andere noch wartet. */
+function deferEnd(fn) {
+  if (app.endShown || app.endPending) return;
+  app.endPending = true;
+  const bootId = app.bootId;
+  window.setTimeout(() => {
+    app.endPending = false;
+    // Ein Menü-/Neustart-Klick waehrend der Pause hat laengst eine neue Runde
+    // (oder keine mehr) -- ein verspaeteter Aufruf darf sich dann nicht mehr
+    // ueber deren Bild legen.
+    if (app.bootId !== bootId || !app.session || app.endShown) return;
+    fn();
+  }, DESTROY_PAUSE_MS);
+}
+
 /** Auswertung am Ende eines Szenarios. */
 function showDebrief(result, failed) {
   $('#rs-tutorial-modal').hidden = true;
   // Free play has no score: its loss screen is opened after the next render.
   if (!result && app.engine.state.destroyed) return;
+  if (app.engine.state.destroyed && !app.endShown) {
+    // Ruft NICHT showDebrief() erneut auf: das wuerde denselben Zweig hier
+    // wieder treffen (endShown ist ja noch false) und die Pause endlos
+    // neu anstossen, statt sie nach einmaligem Ablauf zu zeigen.
+    deferEnd(() => showDebriefNow(result, failed));
+    return;
+  }
+  showDebriefNow(result, failed);
+}
+
+function showDebriefNow(result, failed) {
   setSpeed(0);
   app.bgMusic.stop();
   const verdict = $('#rs-debrief-verdict');
@@ -1665,6 +1712,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
   applyStatusSelection(sanitizeStatusKeys(prefs.statusBar && prefs.statusBar[reactorId]));
 
   app.endShown = false;
+  app.endPending = false;
   app.engine = createEngine(plant, {
     burnup: saved?.state?.burnup,
     n: isColdStart ? 1e-6 : 1.0, cold: isColdStart, seed: scenarioDef ? scenarioDef.seed : 1,
@@ -1734,7 +1782,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
     // Die Engine hält bei einem unmöglichen Zustand von selbst an und legt den
     // Grund ab; hier wird er nur sichtbar gemacht.
     if (state.fault) showFault(state.fault);
-    if (state.destroyed && !app.endShown) showDestroyed();
+    if (state.destroyed && !app.endShown && !app.endPending) deferEnd(showDestroyed);
 
     // Nur im freien Spiel: ein Szenario hat eine feste Dauer und Ereignisse
     // zu festen Zeiten, ein Tagessprung wuerde beides aushebeln. X > 0,05

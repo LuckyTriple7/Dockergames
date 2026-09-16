@@ -843,7 +843,7 @@
   "tut_chernobyl_hint_recover_hold": "The band is reached. Stop pulling or inserting rods, or the hold timer resets.",
   "tut_chernobyl_hint_pumps": "Switch on both extra main circulation pumps in the primary panel.",
   "tut_chernobyl_hint_test": "Flow is now falling on its own. Watch reactivity and shutdown margin.",
-  "tut_chernobyl_hint_az5": "Trigger AZ-5 from the header when you are ready.",
+  "tut_chernobyl_hint_az5": "Trigger AZ-5 from the header when you are ready. Whether that destroys the plant depends on the exact time since the coolant runback began: measured, pressing it about 7-22 s and again 39-43 s afterward destroys the core; before, between, and after that it survives.",
   "admin_title": "Admin panel",
   "admin_add_user_heading": "Create player account",
   "admin_email_label": "Email address",

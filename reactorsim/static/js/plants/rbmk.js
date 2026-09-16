@@ -34,6 +34,7 @@ import {
   FeedwaterController, GovernorController, RodController, PowerController,
 } from '../sim/controllers.js';
 import { tsat, psat, hg, hf, hfg, rhog, averageVoid } from '../sim/steam.js';
+import { rodWorthCurve } from '../sim/reactivity.js';
 import { clamp, toK, relax, LAMBDA_I135, LAMBDA_XE } from '../sim/constants.js';
 import { stepPoisons, equilibriumPoisons } from '../sim/poisons.js';
 import { availableSteam, saturatedPressure, coverage, transferFraction } from '../sim/thermal.js';
@@ -84,7 +85,12 @@ export const spec = {
     T0: toK(600),
   },
 
-  feedbacks: ['rods', 'doppler', 'xenon', 'samarium', 'graphite', 'excess'],
+  // 'rods' fehlt bewusst hier -- die generische Stabwirksamkeitskurve setzt
+  // Absorberwirkung ab h=0 an, ohne die 1,25-m-Wassersaeule/Graphitspitze
+  // vor dem eigentlichen Absorber zu kennen. Fuer diesen Typ ersetzt
+  // hooks.reactivity() den Beitrag durch eine Kurve, die genau diese
+  // Vorlaufstrecke ausspart (siehe dort).
+  feedbacks: ['doppler', 'xenon', 'samarium', 'graphite', 'excess'],
 
   feedback: {
     // Der Doppler ist bei diesem Typ der einzige kräftige negative Beitrag im
@@ -120,6 +126,21 @@ export const spec = {
   // Zwei Gruppen stellvertretend für 211 Stäbe. Die Stabzahl je Gruppe geht in
   // die Abschaltreserve ein -- sie wird in Stabäquivalenten gezählt, nicht in
   // pcm, weil der Betrieb sie so zählt.
+  //
+  // worth UNVERAENDERT gelassen (siehe audit/ fuer den verworfenen Versuch,
+  // sie um 0.541 herunterzuskalieren): das haette die Nennbetrieb-ORM zwar
+  // auf 46 zurueckgeholt, aber gleichzeitig die Staebe insgesamt schwaecher
+  // gemacht -- beim Fahren auf Teillast (wo MEHR Einfahrtiefe noetig ist, um
+  // das aufkommende Xenon zu haltenden) rutscht die Anlage dann durch genau
+  // die Randzone knapp oberhalb von tip.span, in der die Kurve nach der
+  // Trennung von Absorber und Spitze am steilsten/empfindlichsten ist -- und
+  // kollabiert schon beim Fahren von 50% auf 30%, weit vor den historischen
+  // 7%. Die jetzt korrekte Kurve (Absorber erst ab tip.span wirksam) braucht
+  // mit UNVERAENDERTER Wirksamkeit bei Nennbetrieb rechnerisch ORM=85 statt
+  // 46 -- das ist der Preis der Korrektur, nicht rueckgaengig zu machen ohne
+  // die Teillastfahrt wieder zu zerstoeren. sp.orm.nominal bleibt bei 46:
+  // der Blasenkoeffizient klemmt oberhalb davon ohnehin auf seinem besten
+  // Wert (siehe _voidCoeff), 85 statt 46 aendert daran nichts.
   rodBanks: [
     { id: 'ctrl', worth: 2400, speed: 0.0056, initial: 0.22, rods: 120 },
     { id: 'sd', worth: 3200, speed: 0.0056, initial: 0.22, rods: 91 },
@@ -381,6 +402,10 @@ export const hooks = {
   /** Der Blasenbeitrag hängt von der Abschaltreserve ab -- deshalb ein Haken. */
   reactivity(sp) {
     return [
+      {
+        id: 'rods',
+        fn: (s) => _rodReactivity(s, sp),
+      },
       {
         id: 'void',
         fn: (s) => {
@@ -687,11 +712,22 @@ export const hooks = {
  * Der Betrieb zählt sie in Stäben, nicht in pcm -- und genau deshalb steht sie
  * hier auch so. Nominal 46 von 211, betriebliches Minimum 30. In der Nacht des
  * 26. April 1986 waren es sechs bis acht.
+ *
+ * Gezählt wird über die volle Wirksamkeitskurve (rodWorthCurve, h=0..1), NICHT
+ * über die um tip.span verschobene Absorberkurve aus _rodReactivity: die
+ * Betriebskennzahl OZR ist eine physikalisch berechnete, glatte Groesse ueber
+ * den gesamten Fahrweg -- kein Vorlauf-Nullbereich wie die Graphitspitze ihn
+ * fuer die MOMENTANE Reaktivitaet erzwingt. Mit der um tip.span verschobenen
+ * Kurve waere jede Stabstellung innerhalb der Spitzenspanne ORM=0, ganz gleich
+ * ob h=0,02 oder h=0,17 -- der Blasenkoeffizient stuende dort ausnahmslos auf
+ * seinem schlimmsten Wert, und die historische ORM=6-8 (die echte Reaktoren
+ * bei WEIT, aber nicht ganz gezogenen Staeben erreichten) waere in diesem
+ * Modell gar nicht erreichbar, ohne die Anlage sofort instabil zu machen.
  */
 function _orm(s, sp) {
   let sum = 0;
   for (let i = 0; i < sp.rodBanks.length; i++) {
-    sum += (sp.rodBanks[i].rods || 0) * clamp(s.rod[i], 0, 1);
+    sum += (sp.rodBanks[i].rods || 0) * rodWorthCurve(clamp(s.rod[i], 0, 1));
   }
   return sum;
 }
@@ -714,6 +750,36 @@ function _voidCoeff(s, sp) {
   const a0 = sp.feedback.void_pcm_per_pct_nominal;
   const a1 = sp.feedback.void_pcm_per_pct_depleted;
   return a1 + (a0 - a1) * f;
+}
+
+/**
+ * Absorberwirksamkeit der Stäbe -- anders als die generische Kurve (siehe
+ * reactivity.js: rodWorthCurve) NICHT ab h=0 wirksam.
+ *
+ * Der Absorber (Bor) sitzt hinter 4,5 m Graphitverdränger. Solange ein
+ * gezogener Stab noch im ersten Stück seines Fahrwegs steckt (0 bis
+ * `tip.span`, dieselbe Wassersäule wie in _tipReactivity), schiebt er dort
+ * NUR Graphit -- kein Absorber erreicht in dieser Phase den Kern. Erst
+ * danach beginnt die eigentliche Abschaltwirkung, und zwar über den
+ * VERBLEIBENDEN Fahrweg (span bis 1), nicht ueber die volle Strecke.
+ *
+ * Ohne diese Trennung faengt rodWorthCurve(h) schon ab h=0 an, Reaktivitaet
+ * abzuziehen (kleine, aber nicht null Steigung dort) -- das hebt einen
+ * grossen Teil dessen wieder auf, was _tipReactivity in genau diesem
+ * Fahrwegabschnitt hinzufuegt, und der positive Schnellabschalteffekt bleibt
+ * ein Rechenartefakt statt sich wie in der Literatur beschrieben (INSAG-7)
+ * als klar positiver Nettoeffekt in den ersten Sekunden zu zeigen.
+ */
+function _rodReactivity(s, sp) {
+  const span = sp.tip.span;
+  const banks = sp.rodBanks;
+  let r = 0;
+  for (let i = 0; i < banks.length; i++) {
+    const h = s.rod[i];
+    const x = h <= span ? 0 : (h - span) / (1 - span);
+    r -= banks[i].worth * 1e-5 * rodWorthCurve(x);
+  }
+  return r;
 }
 
 /** Reduced displacer worth over the initial 1.25 m of a 7 m core. */

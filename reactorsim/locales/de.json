@@ -843,7 +843,7 @@
   "tut_chernobyl_hint_recover_hold": "Der Bereich ist erreicht. Nicht mehr an den Stäben ziehen oder einfahren, sonst beginnt die Haltezeit neu.",
   "tut_chernobyl_hint_pumps": "Beide zusätzlichen Hauptumwälzpumpen im Primärpanel einschalten.",
   "tut_chernobyl_hint_test": "Der Durchsatz sinkt jetzt von selbst. Beobachte Reaktivität und Abschaltreserve.",
-  "tut_chernobyl_hint_az5": "AZ-5 über die Kopfzeile auslösen, wenn du bereit bist.",
+  "tut_chernobyl_hint_az5": "AZ-5 über die Kopfzeile auslösen, wenn du bereit bist. Ob das die Anlage zerstört, hängt vom genauen Zeitpunkt seit Beginn des Kühlmittelauslaufs ab: gemessen zerstört ein Druck etwa 7-22 s und erneut 39-43 s danach den Kern; davor, dazwischen und danach übersteht er es.",
   "admin_title": "Admin-Panel",
   "admin_add_user_heading": "Spielerkonto anlegen",
   "admin_email_label": "E-Mail-Adresse",

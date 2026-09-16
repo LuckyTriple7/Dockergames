@@ -58,14 +58,21 @@ test('neutral flat finite feed contract, including cold and low-power trim', () 
 
 test('unequipped RBMK retains exact pre-change physics and controller timing', () => {
   // SHA-256 of the entire original state, captured before implementing feed.
+  // Regenerated after the rod-worth/ORM recalibration in rbmk.js
+  // (_rodReactivity separates absorber from tip-displacer worth; _orm counts
+  // over the full, ungated rodWorthCurve -- see comments there and in
+  // game/chernobylTutorial.js) -- the criticality search at boot legitimately
+  // lands on a different rod position now, so every downstream hash shifts
+  // too. Not a regression: the old baseline was pinned to the previous,
+  // buggy rod curve.
   const baseline = {
-    0: '7a62dbc742eb390e7f3ec95f4b1e8d6dae4bfc3230f4444a5ca3c12b0135b8f0',
-    1: '90dae8c1d269c246bd55f5846f98de97340da096d09055e2afe0a6c97bda93aa',
-    4: '41c4eced7595fe7ea570b0a982c1ffb317939f5ba98924b0b0c00e699f789dc9',
-    17: '4a91ed2d5547d8ba656277ab56a1e93375632b1f7ccec7c293d01b7f2e1c197f',
-    200: '407596f89b71c584f8d0fbe0f3d56c0946e0d3d7de8c45061a746ce2143c9488',
-    600: '6ee86c0e223021d97bfbacc975ce258965d6d9131c79e57d127da48a59438e79',
-    1200: '1325f3a512a99bf36a67e8ea05aeeb6965b187c9acbb50cf8883443373d72bcc',
+    0: '7c4963dd3512622c0e456124a6050cc6185d3aeb26a35745fcde30bef33d18b0',
+    1: '008f78881a2e5443a08e79b50a0bc4e42dc5acae777f2bce732a14992434c238',
+    4: 'f140f56a1ecd4421da69ca998b571b1a1340bca0d2052a0e6d7e6fc62d3c6724',
+    17: 'da1f10b505cd815eb786e65290ec232e23b10d2db833ea5d708887032b200ab2',
+    200: '110e8ce9b3ed6c912ca3c932098782a28bda7cedf1e448b9ca6411fa3d2a6198',
+    600: 'd57536bc9786ac1cc6b1242545b801b01b5b26f84b7990171c17e76928d171bc',
+    1200: 'feb9439ad592e73668a57a6124129d3f76aa8c839fb26563487c4ed67d100e4e',
   };
   const e = createEngine(rbmk);
   for (let i = 0; i <= 1200; i++) {

@@ -48,6 +48,12 @@ function harness() {
   }
   const app = { engine: null, session: null, bootId: 0, lastReactor: null,
     scenarios: [{ id: 'test', title_key: 'scn_test' }], scenariosPromise: Promise.resolve() };
+  let timerSeq = 0;
+  const timers = new Map();
+  const win = {
+    setTimeout(fn) { const id = ++timerSeq; timers.set(id, fn); return id; },
+    clearTimeout(id) { timers.delete(id); },
+  };
   const api = {
     writeSave(slot, snapshot) {
       const request = { ...deferred(), slot, snapshot };
@@ -60,8 +66,7 @@ function harness() {
       return request.promise;
     },
   };
-  const ctx = vm.createContext({ app, api, $, Date: FakeDate,
-    window: { setTimeout: (...a) => setTimeout(...a), clearTimeout: (...a) => clearTimeout(...a) },
+  const ctx = vm.createContext({ app, api, $, Date: FakeDate, window: win,
     packSave(...args) { packs.push(args); return pack(...args); },
     t: (key, params) => params ? key + ':' + JSON.stringify(params) : key,
     setText: (node, text) => { if (node) node.textContent = text; },
@@ -89,9 +94,11 @@ function harness() {
     queueSize: () => vm.runInContext('[...saveWriteQueues.values()].reduce((n, q) => n + q.length, 0)', ctx),
     last: () => $('#rs-save-last').textContent,
     status: () => $('#rs-save-state').textContent,
-    flash: () => $('#rs-save').attrs['data-flash'],
     message: () => $('#rs-save-slots-message').textContent,
     buttons: () => $('#rs-slot-list').children.map(row => row.children[0]),
+    saveBtn: () => $('#rs-save').attrs,
+    pendingTimers: () => timers.size,
+    runTimers: () => { const fns = [...timers.values()]; timers.clear(); for (const fn of fns) fn(); },
   };
 }
 
@@ -113,6 +120,10 @@ test('success/failure/success keeps last backup and persistent error until recov
   h.writes[0].resolve({ ok: true });
   assert.equal(await first, true);
   assert.match(h.last(), /save_kind_auto/);
+  assert.equal(h.saveBtn()['data-flash-ok'], 'true', 'success flashes the button green');
+  assert.equal(h.saveBtn()['data-error'], 'false');
+  h.runTimers();
+  assert.equal(h.saveBtn()['data-flash-ok'], 'false', 'flash clears itself again');
   const last = h.last();
   const failed = h.ctx.saveManualGame('manual-pwr-slot1');
   assert.equal(h.last(), last);
@@ -124,6 +135,7 @@ test('success/failure/success keeps last backup and persistent error until recov
   assert.equal(h.last(), last);
   assert.equal(h.status(), 'save_failed');
   assert.equal(h.$('#rs-save-status').attrs['data-error'], 'true');
+  assert.equal(h.saveBtn()['data-error'], 'true', 'button stays red on failure, no timer needed');
   const recovered = h.ctx.saveManualGame('manual-pwr-slot1');
   assert.equal(h.last(), last);
   assert.match(h.status(), /save_failed/, 'failure remains explicit while retry is pending');
@@ -134,21 +146,24 @@ test('success/failure/success keeps last backup and persistent error until recov
   assert.equal(h.status(), '');
   assert.match(h.last(), /save_kind_manual/);
   assert.equal(h.$('#rs-save-status').attrs['data-error'], 'false');
+  assert.equal(h.saveBtn()['data-error'], 'false', 'recovery clears the red state');
+  assert.equal(h.saveBtn()['data-flash-ok'], 'true', 'recovery flashes green again');
 });
 
-test('autosave success flashes the Speichern button; manual success does not', async () => {
+test('rapid consecutive successes restart the green flash timer instead of stacking it', async () => {
   const h = harness();
-  assert.equal(h.flash(), undefined);
-  const auto = h.ctx.saveCurrentGame();
+  const first = h.ctx.saveCurrentGame();
   await flush();
   h.writes[0].resolve({ ok: true });
-  assert.equal(await auto, true);
-  assert.equal(h.flash(), 'true');
-  const manual = h.ctx.saveManualGame('manual-pwr-slot1');
+  await first;
+  assert.equal(h.pendingTimers(), 1);
+  const second = h.ctx.saveManualGame('manual-pwr-slot1');
   await flush();
-  h.writes[1].resolve({ ok: false });
-  assert.equal(await manual, false);
-  assert.equal(h.flash(), 'true', 'unrelated failure must not clear an active flash');
+  h.writes[1].resolve({ ok: true });
+  await second;
+  assert.equal(h.pendingTimers(), 1, 'the earlier flash timer was cancelled, not left running alongside a new one');
+  h.runTimers();
+  assert.equal(h.saveBtn()['data-flash-ok'], 'false');
 });
 
 test('reset only accepts dated save metadata; no invented save on restore', () => {

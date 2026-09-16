@@ -25,13 +25,28 @@ function operate({ engine: e, session }, i) {
   const stage = session.tutorial.index;
   if (stage === 1) c.mcp.forEach((p, j) => { if (!p.running) record(e, 'pump_toggle', j); });
   if (stage >= 2 && !c.govCtl.auto) record(e, 'gov_auto', true);
-  if (stage === 2 && s.n < 0.30 && i % 20 === 0
+  // Nur VOR dem Umschalten auf Automatik jogged -- rod_jog schaltet
+  // rodAutoCtl.auto selbst auf false (siehe coreActions.js: manuelles
+  // Eingreifen beendet die Automatik). Ein Gate ueber `stage` allein
+  // reicht nicht: sobald 'stable' erreicht ist, laesst die normale, dort
+  // dokumentierte axiale Xenon-Schwingung n auch mal wieder unter 0,30
+  // sacken -- ohne das `!c.powerCtl.auto`-Gate wuerde das hier faelschlich
+  // erneut jog ausloesen und die gerade erst eingeschaltete Automatik
+  // sofort wieder abwuergen.
+  if (stage >= 2 && !c.powerCtl.auto && s.n < 0.30 && i % 20 === 0
     && s.rod.every((v, j) => Math.abs(v - s.rodDmd[j]) < 0.005)) {
     const rho = e.derive().rho_pcm;
     if (rho < 50) record(e, 'rod_jog', -1);
     else if (rho > 100) record(e, 'rod_jog', 1);
   }
-  if ((stage === 2 && s.n >= 0.30 || stage >= 3) && !c.powerCtl.auto) record(e, 'rod_auto', true);
+  if (s.n >= 0.30 && !c.powerCtl.auto) {
+    record(e, 'rod_auto', true);
+    // rod_auto uebernimmt stossfrei das n von genau diesem Takt als
+    // Sollwert (siehe coreActions.js) -- ein Bediener trimmt danach auf die
+    // Bandmitte nach, statt auf einem Zufallswert nahe der 0,30-Schwelle
+    // stehenzubleiben.
+    c.powerCtl.setpoint = 0.30;
+  }
 }
 
 test('RBMK starts hot and subcritical with inserted rods, stopped pumps and closed turbine', () => {

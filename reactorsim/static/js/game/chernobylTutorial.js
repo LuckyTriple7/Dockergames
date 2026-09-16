@@ -1,4 +1,5 @@
 import { StartupTutorial } from './tutorial.js';
+import { clamp } from '../sim/constants.js';
 
 // "Block 4 -- die Nacht des 26. April": ein gefuehrter Nachbau der Stunden
 // vor der Explosion, nicht ein weiteres Anfahr-Tutorial. Eigene Schritte,
@@ -21,14 +22,18 @@ const STEPS = ['handover', 'dip', 'recover', 'pumps', 'test', 'az5'];
 // Zeitraffer sind das rund 19 reale Sekunden, kein zaehes Warten. Die Zahl
 // ist bewusst die historische Haltezeit vor dem Versuch, nicht abgekuerzt.
 // 'test' (Index 4) haelt nur kurz -- der Schritt gibt AZ-5 frei, sobald der
-// Auslauf sichtbar begonnen hat. WICHTIG (siehe test-rbmk-chernobyl-
-// tutorial.mjs): je laenger der Auslauf UNBEACHTET weiterlaeuft, desto
-// gefaehrlicher wird die Lage -- ab rund 27 s nach Ausloesen destabilisiert
-// die Anlage auch OHNE AZ-5 von selbst (derselbe positive Blasenkoeffizient).
-// Die Uebung zwingt AZ-5 also nicht als alleinige Ursache herbei; sie zeigt,
-// dass Zoegern in diesem Zustand so oder so gefaehrlich ist -- historisch
-// vertretbar, auch wenn es die Trennung "AZ-5 allein war schuld" aufweicht.
-const HOLD = [5, 2, 1140, 3, 5, 1];
+// Auslauf sichtbar begonnen hat. Der schmale AR-Trimm (siehe unten) haelt die
+// Leistung bis dahin nahe am Sollwert -- wie historisch (Leistung blieb ~36s
+// nahezu flach bei ~200 MWth) faellt die Anlage NICHT von selbst durch,
+// solange AZ-5 nicht gedrueckt wird; siehe test-rbmk-chernobyl-tutorial.mjs.
+// 'az5' (Index 5) haelt bewusst 15s, nicht nur 1: der promptkritische
+// Exkurs (siehe _rodReactivity/_tipReactivity in rbmk.js) braucht nach dem
+// Druecken selbst noch mehrere Sekunden, bis die Brennstoffenthalpie-Grenze
+// erreicht wird (gemessen: Scheitel bei t+1,3 s, Kriterium bei t+5-6 s) --
+// eine zu kurze Haltezeit wuerde den Schritt als "geschafft" abschliessen,
+// bevor die Physik ueberhaupt zu Ende gelaufen ist (RunState.checkFail()
+// greift zwar vor tutorial.done, aber nur wenn beide ueberhaupt noch laufen).
+const HOLD = [5, 2, 1140, 3, 5, 15];
 
 // Kuehlmittelauslauf-Naeherung fuer den Turbinenauslaufversuch (siehe
 // events.js rbmk_mcp_runback) -- geskriptet statt einer echten
@@ -36,6 +41,33 @@ const HOLD = [5, 2, 1140, 3, 5, 1];
 // aus Xenon-armer, ORM-armer Anlage UND sinkendem Durchsatz, nicht eine
 // mechanistische Rekonstruktion des Turbogenerators.
 const COASTDOWN_S = 30;
+
+// Schmale automatische Leistungsregelung waehrend des Auslaufs -- historisch
+// lief genau die weiter (Leistung blieb ~36s nahezu flach bei ~200 MWth,
+// siehe INSAG-7/Sequence-of-Events), waehrend die bereits weit gezogenen
+// Haupt-/Sicherheitsstaebe unangetastet blieben, bereit fuer AZ-5. Absichtlich
+// NICHT ueber c.powerCtl (das wuerde die Stabstellung selbst bewegen und
+// damit ORM/Spitzeneffekt verfaelschen), sondern als eigener, schwacher
+// Reaktivitaets-Trimm ueber s.rho_ext -- mit klar begrenzter Autoritaet
+// (AR_CAP_PCM), so wie eine reale automatische Regelgruppe nur einen
+// kleinen Teil der 211 Staebe stellt, nicht die ganze Anlage.
+const AR_CAP_PCM = 500;
+const AR_SPEED_PCM_S = 60;
+const AR_DEADBAND = 0.0005;
+
+// Stabstellung beim Ausloesen des Auslaufs: weit draussen, auf dem
+// ANSTEIGENDEN Ast der Graphitspitzen-Kurve (span/2 liegt beim Scheitel,
+// siehe rbmk.js: _tipReactivity) -- damit hebt eine WEITERE Einfahrt (wie
+// AZ-5 sie ausloest) die Reaktivitaet zunaechst an, genau der historisch
+// dokumentierte Ablauf. Bei ~200-237 MWth reicht die 19-Minuten-Haltung aus
+// prepare() nicht, um von selbst so tief zu stehen (siehe Machbarkeitspruefung
+// weiter oben) -- die Uebung bildet deshalb ab, was historisch ohnehin nicht
+// bestritten ist: die Mannschaft zog die Staebe unmittelbar vor dem Test
+// weiter, bis die Abschaltreserve auf die dokumentierten 6-8 Stab-Aequivalente
+// fiel. Der noetige Xenon-Ausgleich (s.X) wird dafuer live nachgezogen, nicht
+// hart hinterlegt, damit er zum jeweils aktuellen (leicht gedrifteten)
+// Zustand passt.
+const WITHDRAW_ROD = 0.02;
 
 export class RbmkChernobylTutorial extends StartupTutorial {
   get prefix() { return 'tut_chernobyl_'; }
@@ -67,8 +99,21 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     s.D[2] = 0.0007968142393641646; s.D[3] = 0.001524650577173896;
     s.D[4] = 0.0031171451536580507; s.D[5] = 0.0024607092868473377;
     s.D[6] = 0.0014993178908948082;
-    s.rod[0] = s.rod[1] = 0.1353528450681849;
-    s.rodDmd[0] = s.rodDmd[1] = 0.1353528450681849;
+    // Neu bestimmt nach der Trennung von Absorber- und Spitzenwirkung in
+    // rbmk.js (_rodReactivity/_orm/_tipReactivity): der alte Wert war unter
+    // der vorherigen, ungetrennten Stabkurve kalibriert und liegt seither
+    // nicht mehr auf rho=0. Mit der korrigierten Kurve verlangt derselbe
+    // Xenon-Stand (1.3665) keine erreichbare kritische Stabstellung mehr --
+    // die volle Kritikalitaetssuche (audit/build_chernobyl_state.mjs) haelt
+    // deshalb X etwas niedriger (0.966 statt 1.3665, weiterhin deutlich
+    // erhoeht) und findet die Stabstellung dazu neu. ORM sinkt dadurch von
+    // ~28 auf ~37 -- ein rod-Wert von 0.40-0.42 waere naeher an den
+    // historischen 6-8 gewesen, hielt aber den 19-Minuten-Haltevorgang
+    // (siehe 'recover') nicht durch: ein kurzer Anfangsausschlag drueckte n
+    // knapp unter die 5,5-%-Grenze und liess die Haltezeit neu anlaufen.
+    // 0.44 gibt genug Regelspielraum, um diesen Anfangsausschlag abzufangen.
+    s.rod[0] = s.rod[1] = 0.44;
+    s.rodDmd[0] = s.rodDmd[1] = 0.44;
     s.T_f = 585.7547959561184;
     s.T_cl = 558.7573570680994;
     s.T_ci = 556.7348461520972;
@@ -77,11 +122,12 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     s.T_gr = 590.2992690043193;
     s.alphaBar = 0.05437736108274518;
     s.I = 0.5931298469040777;
-    s.X = 1.366547661120293;
+    s.X = 1.0216242145650234;
     s.Pm = 0.9227506372313031;
     s.Sm = 1.0253115326317221;
-    s.zTop = { I: 0.5701612430885139, X: 1.3819164026422766, Pm: 0.9177148539236004, Sm: 1.026975160511478 };
-    s.zBot = { I: 0.6160984507196482, X: 1.353411736633394, Pm: 0.927786420539006, Sm: 1.0236510174987252 };
+    // Zonenwerte im selben Verhaeltnis mitskaliert wie der Gesamtwert X.
+    s.zTop = { I: 0.5701612430885139, X: 1.0342, Pm: 0.9177148539236004, Sm: 1.026975160511478 };
+    s.zBot = { I: 0.6160984507196482, X: 1.0128, Pm: 0.927786420539006, Sm: 1.0236510174987252 };
     s.ao = 0.051032455524760566;
     s.C_B = 0;
     s.P_th = 236.7584178907257;
@@ -173,13 +219,50 @@ export class RbmkChernobylTutorial extends StartupTutorial {
 
   _triggerCoastdown() {
     const { state: s, ctx: c } = this.engine;
-    // Automatik jetzt AUS: sie wuerde sonst schuetzend gegen den
-    // Leistungsanstieg aus dem sinkenden Durchsatz einfahren (im Test
-    // beobachtet: ORM stieg dabei sogar wieder von 25 auf 30) und genau die
-    // gefaehrliche Kombination verhindern, die dieser Versuch zeigen soll.
-    // Historisch war die Reaktivitaetsfuehrung ohnehin auf Hand.
+    // Der VOLLE Leistungsregler (c.powerCtl, bewegt beide Stabbaenke und
+    // damit ORM/Spitzeneffekt) bleibt aus -- er wuerde sonst genau die
+    // Staebe zurueckziehen, die fuer AZ-5 weit draussen stehen muessen.
+    // Stattdessen uebernimmt ab hier der schmale AR-Trimm (siehe step()
+    // unten) die Rolle der historischen automatischen Regelgruppe.
     c.powerCtl.auto = false;
+    this._withdrawToTipSpan();
+    c.arTrim = { rho: s.rho_ext || 0, setpoint: s.n };
     c.mcpRunback = { from: s.mcpDmd, to: 0, t0: s.t_sim, dur: COASTDOWN_S };
+  }
+
+  /**
+   * Letzter Stabzug vor dem Test (siehe WITHDRAW_ROD oben): auf den engen
+   * Bereich unterhalb der Graphitspitzen-Spanne, mit gerade so viel mehr
+   * Xenon, wie es braucht, um dort wieder kritisch zu sein -- der aktuelle
+   * (durch 19 Minuten Betrieb leicht gedriftete) Zustand bleibt sonst
+   * unangetastet.
+   */
+  _withdrawToTipSpan() {
+    const { state: s, spec: sp, reactivity } = this.engine;
+    const xenonPcm = sp.feedback.xenon_worth_pcm * 1e-5;
+    s.rod[0] = s.rod[1] = s.rodDmd[0] = s.rodDmd[1] = WITHDRAW_ROD;
+    const rho = reactivity.compute(s, sp);
+    const dX = rho / xenonPcm;
+    if (Number.isFinite(dX) && dX > 0) {
+      const scale = (s.X + dX) / s.X;
+      s.X *= scale;
+      if (s.zTop) s.zTop.X *= scale;
+      if (s.zBot) s.zBot.X *= scale;
+    }
+  }
+
+  /** Schmale automatische Regelgruppe: siehe AR_CAP_PCM oben. */
+  step(dt) {
+    super.step(dt);
+    const { state: s, ctx: c } = this.engine;
+    const trim = c.arTrim;
+    if (!trim || s.scram.active) return;
+    const err = s.n - trim.setpoint;
+    if (Math.abs(err) > AR_DEADBAND) {
+      trim.rho = clamp(trim.rho - Math.sign(err) * AR_SPEED_PCM_S * 1e-5 * dt,
+        -AR_CAP_PCM * 1e-5, AR_CAP_PCM * 1e-5);
+    }
+    s.rho_ext = trim.rho;
   }
 
   hint() {

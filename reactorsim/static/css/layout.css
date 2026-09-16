@@ -169,12 +169,16 @@
   max-width: 100%;
   overflow-wrap: anywhere;
 }
+/* Sighted feedback lives on the Speichern-Knopf itself (data-error/
+   data-flash-ok below), not here -- a visible bar that appears and
+   disappears with the save outcome pushed the workspace down by a line. */
+/* Order matters: an unresolved error must win over a momentary green blip
+   from some other, older save that happened to complete at the same time. */
+#rs-save[data-flash-ok="true"] { background: var(--rs-ok); border-color: #2ea866; color: #06180f; }
+#rs-save[data-error="true"] { background: var(--rs-alarm); border-color: #c62828; color: #200606; }
+
 /* Kept in the DOM (and announced via role=status) but not shown -- the text
-   doubles as the Speichern button's title tooltip, see renderSaveStatus().
-   #rs-save-state used to render visibly here too (pending/failed), but that
-   made a short-lived line appear/disappear on every autosave tick and shove
-   the row below down; it is sr-only now and autosave instead flashes
-   #rs-save green for a moment, see flashSaveButton() in main.js. */
+   doubles as the Speichern button's title tooltip, see renderSaveStatus(). */
 .rs-sr-only {
   position: absolute;
   width: 1px;
@@ -200,16 +204,7 @@
 
 #rs-start-message:empty,
 #rs-save-slots-message:empty,
-#rs-xenon-skip-message:empty,
-#rs-save-state:empty { display: none; }
-
-/* Autosave feedback: no layout-shifting banner, just the Speichern button
-   flashing green for a moment -- see flashSaveButton() in main.js. */
-#rs-save[data-flash="true"] {
-  background: var(--rs-ok);
-  border-color: var(--rs-ok);
-  color: #08210f;
-}
+#rs-xenon-skip-message:empty { display: none; }
 
 /* ── Reiter und Panels ────────────────────────────────────────────────────── */
 

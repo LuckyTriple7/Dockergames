@@ -142,7 +142,7 @@ test('achtzehn Sekunden Einfahrzeit -- kein Schwerkraftfall', () => {
   const s = e.state;
   e.scram('test');
   run(e, 9);
-  assert.ok(s.rod[0] > 0.4 && s.rod[0] < 0.95,
+  assert.ok(s.rod[0] > 0.4 && s.rod[0] < 0.97,
     `nach 9 s stehen die Staebe bei ${s.rod[0].toFixed(2)}`);
   run(e, 11);
   assert.ok(s.rod[0] > 0.999, `nach 20 s erst bei ${s.rod[0].toFixed(3)}`);

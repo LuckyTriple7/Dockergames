@@ -26,6 +26,12 @@ function harness(readSave = async () => ({ ok: false })) {
     return nodes.get(key);
   };
   const counters = { starts: 0, autosaves: 0, samples: 0, panels: 0 };
+  // Aufgezeichnet statt real verzoegert: deferEnd() (siehe main.js) nutzt
+  // window.setTimeout fuer die kurze Pause vor der Kernzerstoerungs-Anzeige --
+  // der Test loest sie ueber flushTimeouts() gezielt aus, statt drei echte
+  // Sekunden zu warten.
+  const timeouts = [];
+  const flushTimeouts = () => { const due = timeouts.splice(0); for (const fn of due) fn(); };
   const music = () => ({ start() {}, stop() {} });
   const app = { prefs: {}, prefsPromise: Promise.resolve({}),
     introMusic: music(), bgMusic: music(), render: { clear() {}, tick() {} } };
@@ -37,8 +43,9 @@ function harness(readSave = async () => ({ ok: false })) {
     buildStatusBar() {}, statusTiles: new Map(), applyStatusSelection() {},
     sanitizeStatusKeys: () => [], applyAudioPrefs() {}, initControls() {},
     scramLabel: () => 'SCRAM', refreshResumeList() {}, playClip() {},
-    showFault() {}, AUTOSAVE_INTERVAL_MS: 60000, XENON_SKIP_TARGET: 1,
-    window: { clearInterval() {}, setInterval() { counters.autosaves++; return 1; } },
+    showFault() {}, AUTOSAVE_INTERVAL_MS: 60000, XENON_SKIP_TARGET: 1, DESTROY_PAUSE_MS: 3000,
+    window: { clearInterval() {}, setInterval() { counters.autosaves++; return 1; },
+      setTimeout(fn) { timeouts.push(fn); return timeouts.length; }, clearTimeout() {} },
     buildPanels(engine, render, helperEnabled) {
       counters.panels++;
       counters.helperEnabled = helperEnabled;
@@ -54,12 +61,12 @@ function harness(readSave = async () => ({ ok: false })) {
     closeSaveSlots() {}, resetSaveStatus() {},
     renderGuidance(host, def) { host.hidden = !def?.guidance; },
   });
-  for (const name of ['cancelScenarioLoad', 'clearEndDialogs', 'toMenu', 'showBriefing', 'showDebrief', 'showDestroyed', 'boot']) {
+  for (const name of ['cancelScenarioLoad', 'clearEndDialogs', 'toMenu', 'showBriefing', 'deferEnd', 'showDebrief', 'showDebriefNow', 'showDestroyed', 'boot']) {
     const fn = source.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
     assert.ok(fn, name);
     vm.runInContext(fn[0], ctx);
   }
-  return { app, ctx, $, counters };
+  return { app, ctx, $, counters, flushTimeouts };
 }
 
 test('free play -> menu -> briefing offers Start and new scenario can run', async () => {
@@ -133,6 +140,11 @@ test('loss leaves only one end dialog; menu and restart clear both', async () =>
   h.app.engine.state.destroyed = true;
   h.app.session.step(0.05, [], 0);
   h.app.loop.render(h.app.engine.state, 0);
+  // deferEnd() haelt showDestroyed() kurz zurueck (siehe Kommentar beim
+  // anderen Verlust-Test unten) -- erst nach der Pause erscheint es.
+  assert.equal(h.$('#rs-debrief').hidden, true);
+  assert.equal(h.$('#rs-destroyed').hidden, true);
+  h.flushTimeouts();
   assert.equal(h.$('#rs-debrief').hidden, true);
   assert.equal(h.$('#rs-destroyed').hidden, false);
   h.ctx.toMenu();
@@ -144,13 +156,21 @@ test('loss leaves only one end dialog; menu and restart clear both', async () =>
   assert.equal(h.$('#rs-destroyed').hidden, true);
 });
 
-test('scenario loss retains score submission in a single debrief', async () => {
+test('scenario loss retains score submission in a single debrief, after the destroy pause', async () => {
   const h = harness();
   await h.ctx.boot('pwr', { id: 'test', reactor: 'pwr', duration_s: 60,
     demand: [{ t: 0, mw: 1400 }], fail: [{ type: 'fuel_damage' }] });
   h.app.engine.state.destroyed = true;
   h.app.session.step(0.05, [], 0);
   h.app.loop.render(h.app.engine.state, 0);
+  // deferEnd() (siehe main.js) haelt beide Wege -- showDebrief() UND den
+  // Renderloop-Auslöser fuer showDestroyed() -- gemeinsam zurueck, bis die
+  // kurze Pause abgelaufen ist (siehe Nutzerrueckmeldung: sonst friert das
+  // Bild im selben Bildschirmtakt ein, in dem die Zerstoerung erkannt wird).
+  assert.equal(h.$('#rs-debrief').hidden, true);
+  assert.equal(h.$('#rs-destroyed').hidden, true);
+  assert.equal(h.app.endPending, true);
+  h.flushTimeouts();
   assert.equal(h.$('#rs-debrief').hidden, false);
   assert.equal(h.$('#rs-debrief-submit').hidden, false);
   assert.ok(h.app.pendingResult);

@@ -1,14 +1,74 @@
 # Changelog
 
+## 0.2.4
+
+- 🐛 **Speicher-Rückmeldung schob das Bedienfeld kurz nach unten.** Der Text
+  „Speichern läuft …“ / „Speichern fehlgeschlagen“ neben dem Speichern-Knopf
+  (`#rs-save-state`) nahm sichtbaren Platz ein und ließ beim
+  Erscheinen/Verschwinden die Kopfzeile kurz springen -- wirkte wie ein
+  Layout-Bug. Der Text bleibt für Screenreader im DOM (`role=status`), ist
+  jetzt aber per `rs-sr-only` unsichtbar. Sichtbares Feedback kommt
+  stattdessen vom Speichern-Knopf selbst: 2 s Grün bei Erfolg
+  (`data-flash-ok`, `flashSaveOk()` in `main.js`), dauerhaft Rot bei Fehler
+  bis zum nächsten erfolgreichen Speichern (`data-error`) -- ein
+  unaufgelöster Fehler gewinnt dabei bewusst gegen ein kurzes Grün aus einem
+  anderen, gleichzeitig erfolgreichen Speichervorgang (CSS-Reihenfolge in
+  `layout.css`). Zwei neue Tests in `test-save-feedback.mjs` (alle 413 Tests
+  weiterhin grün).
+
 ## 0.2.3
 
-- 🔧 **Speicher-Statuszeile schob die Leiste nicht mehr nach unten.**
-  `save_pending`/`save_failed` standen sichtbar in `#rs-save-state` und
-  ließen die Zeile darunter bei jedem Autospeichern (alle 60 s) kurz
-  umbrechen bzw. wieder einlaufen. Text bleibt als `role=status`
-  (`rs-sr-only`) für Screenreader erhalten, ist aber nicht mehr sichtbar.
-  Erfolgreiches Autospeichern lässt stattdessen den Speichern-Button 1 s
-  grün aufleuchten (`flashSaveButton()`).
+- 🐛 **AZ-5 zerstörte den Kern unabhängig davon, ob man es drückte.** Die
+  generische Stabwirksamkeitskurve (`rodWorthCurve`) zog schon ab
+  Stabposition h=0 Absorberreaktivität ab -- ohne die 1,25-m-Wassersäule
+  vor dem Graphitverdränger zu kennen. Das hob praktisch alles wieder auf,
+  was der Spitzeneffekt (`_tipReactivity`) für dieselbe Stabbewegung
+  hinzufügte: der reale, dokumentierte Effekt ("positive scram effect",
+  INSAG-7) blieb ein Rechenartefakt statt eines echten Ausschlags. Neue
+  `_rodReactivity()` in `plants/rbmk.js` lässt den Absorber erst ab
+  `tip.span` wirken, mit auf den verbleibenden Fahrweg umskalierter Kurve.
+  Nebenwirkung, mit eigenem Hebel behoben: die Betriebskennzahl ORM
+  (`_orm()`) zählt jetzt über dieselbe volle `rodWorthCurve` (h=0…1, nicht
+  um `tip.span` verschoben) -- die um die Spitzenspanne verschobene Version
+  hätte jede Stabstellung darin auf ORM≈0 (schlechtesten Blasenkoeffizienten)
+  gezwungen, unabhängig von der genauen Tiefe, und den historischen Wert
+  (6–8 von 211) im Modell unerreichbar gemacht, ohne die Anlage sofort
+  instabil zu machen.
+- ✨ **„Block 4" reproduziert AZ-5 jetzt als echte, promptkritische
+  Exkursion** (`s.promptCritical`), nicht mehr über ein zufällig
+  zusammenfallendes weiches Kriterium. Zwei neue Mechanismen in
+  `game/chernobylTutorial.js`: ein schmaler AR-Trimm (`step()`, begrenzt auf
+  ±500 pcm über `s.rho_ext`, NICHT über die Stabstellung) bildet die
+  historische automatische Regelgruppe nach, die die Leistung ~36 s vor dem
+  Test nahezu flach hielt; `_withdrawToTipSpan()` zieht beim Auslösen des
+  Kühlmittelauslaufs die Hauptstäbe auf die dokumentierte
+  Nacht-vor-dem-Unfall-Stellung (tief in der Graphitspitzen-Spanne, mit
+  live nachgezogenem Xenon-Ausgleich statt fest hinterlegtem Wert) zurück.
+  Gemessen destruktiv: Druck auf AZ-5 etwa 7–22 s und erneut 39–43 s nach
+  Beginn des Auslaufs, dazwischen und danach übersteht die Anlage es --
+  abhängig von der axialen Schieflage im Moment des Drückens, nicht von
+  einer einfachen "je länger gewartet"-Regel. Hinweistext für Schritt 'az5'
+  nennt die gemessenen Fenster jetzt.
+- 🐛 Die Haltezeit für Schritt 'az5' (`HOLD[5]`) stand bei 1 s -- der jetzt
+  echte promptkritische Ausschlag braucht nach dem Drücken selbst mehrere
+  Sekunden bis zur Brennstoffenthalpie-Grenze (gemessen: 1,85–6 s je nach
+  Zustand). Bei 1 s galt der Schritt (und damit die Übung) schon als
+  geschafft, bevor die Physik überhaupt zu Ende gelaufen war. Jetzt 15 s.
+- 🐛 **Kernzerstörung beendete jede Runde im selben Bildschirmtakt, in dem
+  sie erkannt wurde** -- `session.js` schaltet `phase` synchron auf
+  `DEBRIEF`, `main.js` fror das Bild (`setSpeed(0)`) und zeigte den
+  Auswertungsdialog sofort darüber, bevor der Ausschlag überhaupt sichtbar
+  ablaufen konnte. Gilt für jedes Szenario, nicht nur „Block 4". Neues
+  `deferEnd()` in `main.js` lässt die Anlage nach Erkennen der Zerstörung
+  noch 3 s sichtbar weiterlaufen (bei der 1×-Geschwindigkeit, auf die
+  `triggerScram()` beim Drücken ohnehin zurückschaltet), bevor angehalten
+  und der Dialog gezeigt wird -- gilt gleichermaßen für den
+  Szenario-Auswertungsdialog wie für die Verlustanzeige im freien Spiel.
+- ✨ Beide Enddialoge (Auswertung und Kernzerstörung) haben jetzt einen
+  „Schließen"-Knopf, der nur das Fenster wegnimmt, statt (wie bisher nur
+  „Menü") die ganze Runde zu verlassen -- Trends, Meldetafel und
+  Instrumente lassen sich danach in Ruhe ansehen, „Menü" bleibt jederzeit
+  erreichbar.
 
 ## 0.2.2
 
