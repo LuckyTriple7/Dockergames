@@ -389,31 +389,21 @@ function initStart() {
 // und loeschbar, nur eben ohne Slot-Nummer in der Anzeige.
 const MANUAL_SLOT_RE = /^manual-[a-z0-9]+-slot(\d+)$/;
 
-/** Fortsetzen-Zeilen neu vom Server holen -- nicht nur beim allerersten
- *  Laden: ein Spielstand von eben (Knopf "Speichern") oder ein geloeschter
- *  muss beim naechsten Blick auf den Startbildschirm stimmen, siehe
- *  toMenu(). Der Szenariotitel braucht die einmalig geholte Szenarienliste,
- *  sonst zeigt der Hinweis nur die rohe ID.
- *
- *  Ein <details> je Reaktortyp (#rs-card-resume-<id>, siehe index.html),
- *  direkt unter dessen eigener Karte -- nicht mehr eine gemeinsame Liste
- *  unten fuer alle Typen. Wer RBMK gespielt hat und danach die DWR-Karte
- *  anschaut, soll den RBMK-Stand trotzdem noch sehen: er steht unveraendert
- *  bei der RBMK-Karte, ganz ohne von der Auswahl abzuhaengen. Collapsed per
- *  Default (die Zusammenfassung nennt nur die Anzahl) -- bei bis zu zehn
- *  Handplaetzen plus Autospeicherung waere die Karte sonst schnell voller
- *  Text als Inhalt. */
+/** Fortsetzen-Zeilen der Reaktor-Detailseite (#rs-reactor-resume, siehe
+ *  index.html) neu vom Server holen -- nicht nur beim allerersten Laden:
+ *  ein Spielstand von eben (Knopf "Speichern") oder ein geloeschter muss
+ *  beim naechsten Blick auf die Seite stimmen, siehe toMenu(). Zeigt nur
+ *  die Staende DES GERADE OFFENEN Typs (app.reactor) -- die Uebersicht
+ *  selbst listet keine Staende mehr, das war die einzige Stelle dafuer.
+ *  Collapsed per Default (die Zusammenfassung nennt nur die Anzahl) -- bei
+ *  bis zu zehn Handplaetzen plus Autospeicherung waere die Seite sonst
+ *  schnell voller Text als Inhalt. Der Szenariotitel braucht die einmalig
+ *  geholte Szenarienliste, sonst zeigt der Hinweis nur die rohe ID. */
 function refreshResumeList() {
-  const details = new Map(PLANT_IDS.map((id) => [id, $('#rs-card-resume-' + id)]));
-  const summaries = new Map(PLANT_IDS.map((id) => [id, $('#rs-card-resume-' + id + '-summary')]));
-  const bodies = new Map(PLANT_IDS.map((id) => [id, $('#rs-card-resume-' + id + '-body')]));
-  // Dieselbe Liste steht ein zweites Mal auf der Reaktor-Detailseite, aber
-  // nur fuer den dort gerade offenen Typ (siehe rs-reactor-resume* im
-  // Template) -- eigene Knopf-Instanz je Zeile statt cloneNode(), sonst
-  // fehlten dem Klon die Klick-Handler.
   const detailDetails = $('#rs-reactor-resume');
   const detailSummary = $('#rs-reactor-resume-summary');
   const detailBody = $('#rs-reactor-resume-body');
+  if (!detailBody) return;
   Promise.all([app.scenariosPromise, api.listSaves()]).then(([, r]) => {
     const saves = (r.ok && r.data && r.data.saves) || [];
     // Ein Slot je Reaktortyp ("auto-<typ>"), nicht mehr der eine gemeinsame
@@ -424,18 +414,14 @@ function refreshResumeList() {
     // nie anfasst (siehe saveSlotName()) -- beide stehen hier nebeneinander,
     // an der Beschriftung unterscheidbar. Neuester Stand zuerst statt
     // Server-Reihenfolge (die sortiert nur nach Dateiname, "slot10" liefe
-    // dabei alphabetisch VOR "slot2").
+    // dabei alphabetisch VOR "slot2"). Nur der Typ der offenen Seite -- die
+    // anderen sieht man wieder, sobald man deren Reaktor oeffnet.
     const autos = saves
-      .filter((x) => x.slot && (x.slot.startsWith('auto-') || x.slot.startsWith('manual-')))
+      .filter((x) => x.slot && x.reactor === app.reactor
+        && (x.slot.startsWith('auto-') || x.slot.startsWith('manual-')))
       .sort((a, b) => b.saved_at - a.saved_at);
-    for (const body of bodies.values()) { if (body) body.replaceChildren(); }
-    if (detailBody) detailBody.replaceChildren();
-    // Eigene Funktion statt einer Konstanten je Stand: jede Zeile braucht
-    // einen frischen Loeschen-Knopf (der haelt eigenen "armed"-Zustand, siehe
-    // makeDeleteSaveButton()) und, fuer die Detailseite, einen zweiten
-    // Fortsetzen-Knopf mit demselben Klick-Handler -- ein geteilter Knoten
-    // kann nicht an zwei Stellen im DOM stehen.
-    const buildRow = (sv) => {
+    detailBody.replaceChildren();
+    for (const sv of autos) {
       const scn = sv.scenario && app.scenarios.find((x) => x.id === sv.scenario);
       const slotMatch = sv.slot.match(MANUAL_SLOT_RE);
       const labelKey = slotMatch ? 'btn_resume_named_slot'
@@ -446,10 +432,9 @@ function refreshResumeList() {
         scenario: sv.scenario ? t(scn ? scn.title_key : 'scn_unknown') : t('scn_free'),
         when: new Date(sv.saved_at * 1000).toLocaleString(),
       })]);
-      // Reactor stimmt hier immer mit der Karte ueberein (Container-Wahl
-      // oben), disabled bleibt trotzdem als Absicherung fuer einen Typ, der
-      // spaeter aus PLANTS verschwindet, ohne dass alte Staende geloescht
-      // wurden.
+      // sv.reactor === app.reactor steht schon durch den Filter oben fest,
+      // disabled bleibt trotzdem als Absicherung fuer einen Typ, der spaeter
+      // aus PLANTS verschwindet, ohne dass alte Staende geloescht wurden.
       btn.disabled = !isAvailable(sv.reactor);
       // Ein Szenario-Stand muss beim Fortsetzen wieder MIT seiner
       // Szenario-Definition booten (Bedarfskurve, Ereignisse, Wertung) --
@@ -458,37 +443,15 @@ function refreshResumeList() {
       // kam. Derselbe Fetch wie in loadScenario() oben, nur ohne Einweisung
       // dazwischen: wer fortsetzt, hat sie schon gesehen.
       btn.addEventListener('click', () => {
-        // Diese Zeile kann auch von der Uebersichtskarte kommen (siehe
-        // #rs-card-resume-<typ> oben), ohne dass die Reaktorseite je offen
-        // war -- boot() zeigt seine Ladeanzeige/Fehlermeldung aber dort
-        // (#rs-start-message sitzt jetzt in #rs-reactor). Ohne diesen Sprung
-        // liefe ein Ladefehler beim Fortsetzen von der Uebersicht aus
-        // unsichtbar hinter #rs-start ab. `instant`, weil hier kein
-        // bewusster "Reaktor ansehen"-Klick vorliegt, den man ausblenden
-        // wollte -- nur ein technischer Bildschirmwechsel vor dem Laden.
-        if (app.reactor !== sv.reactor) openReactorScreen(sv.reactor, { push: true, instant: true });
         if (!sv.scenario) { boot(sv.reactor, null, sv.slot, false, sv); return; }
         const scn2 = app.scenarios.find((x) => x.id === sv.scenario)
           || { id: sv.scenario, reactor: sv.reactor };
         loadScenario(scn2, sv);
       });
-      return el('div.rs-resume-row', null, [btn, makeDeleteSaveButton(sv.slot)]);
-    };
-    for (const sv of autos) {
-      const body = bodies.get(sv.reactor);
-      if (!body) continue; // unbekannter/kuenftiger Typ -- keine Karte dafuer da
-      body.append(buildRow(sv));
-      if (detailBody && sv.reactor === app.reactor) detailBody.append(buildRow(sv));
-    }
-    for (const id of PLANT_IDS) {
-      const box = details.get(id);
-      const n = bodies.get(id) ? bodies.get(id).childElementCount : 0;
-      if (box) box.hidden = !n;
-      const summary = summaries.get(id);
-      if (summary) setText(summary, t('resume_summary', { n }));
+      detailBody.append(el('div.rs-resume-row', null, [btn, makeDeleteSaveButton(sv.slot)]));
     }
     if (detailDetails) {
-      const n = detailBody ? detailBody.childElementCount : 0;
+      const n = detailBody.childElementCount;
       detailDetails.hidden = !n;
       if (detailSummary) setText(detailSummary, t('resume_summary', { n }));
     }
@@ -498,7 +461,7 @@ function refreshResumeList() {
 /** Löschen mit Sicherung wie beim SCRAM: erster Klick bewaffnet nur, der
  *  zweite (binnen 4s) löscht wirklich -- kein Modal fuer eine Aktion, die
  *  sich durchs blosse Weiterspielen jederzeit neu erzeugen liesse.
- *  `onDone` faellt auf refreshResumeList() zurueck (Startbildschirm-Liste),
+ *  `onDone` faellt auf refreshResumeList() zurueck (Reaktor-Detailseite),
  *  der Speichern-Dialog (openSaveSlots()) uebergibt stattdessen sich selbst
  *  neu -- sonst zeigte er nach dem Loeschen weiter den alten Stand an, bis
  *  man ihn schliesst und neu oeffnet. */
@@ -925,15 +888,19 @@ function initControls() {
   // hier NICHT mitkommen (nur Rundinstrumente + Stellteile, keine reinen
   // Zahlenzeilen, siehe Aufgabenstellung).
   const INSTRUMENT_SECTIONS = [
-    ['rs-core-gauges', 'panel_core'],
-    ['rs-prim-gauges', 'panel_primary'],
-    ['rs-sec-gauges', 'panel_secondary'],
-    ['rs-rod-ctl', 'panel_core_rods'],
-    ['rs-pumps', 'panel_primary_pumps'],
-    ['rs-sec-ctl', 'panel_secondary_feed'],
-    ['rs-safety-ctl', 'panel_safety'],
-    ['rs-chem-ctl', 'panel_chemistry'],
-    ['rs-grid-ctl', 'panel_grid'],
+    [['rs-core-gauges'], 'panel_core'],
+    [['rs-prim-gauges'], 'panel_primary'],
+    [['rs-sec-gauges'], 'panel_secondary'],
+    // Die Stabstellung (rs-rods, dieselben Balken wie im Reiter, inklusive
+    // ihrer eigenen %-Anzeige je Bank aus bar() in gauges.js) gehoert mit in
+    // dieselbe Karte wie die Stab-Bedienung -- ohne sie liesse sich "Ziehen"/
+    // "Einfahren" nur blind bedienen.
+    [['rs-rods', 'rs-rod-ctl'], 'panel_core_rods'],
+    [['rs-pumps'], 'panel_primary_pumps'],
+    [['rs-sec-ctl'], 'panel_secondary_feed'],
+    [['rs-safety-ctl'], 'panel_safety'],
+    [['rs-chem-ctl'], 'panel_chemistry'],
+    [['rs-grid-ctl'], 'panel_grid'],
   ];
   let openInstruments = null; // Array aus { node, placeholder } waehrend das Fenster offen ist
 
@@ -954,15 +921,23 @@ function initControls() {
     if (!app.engine) return;
     if (!panelWindow.hidden) closePanelWindow();
     openInstruments = [];
-    for (const [id, labelKey] of INSTRUMENT_SECTIONS) {
-      const node = $('#' + id);
-      if (!node) continue;
-      const placeholder = document.createComment('rs-instruments-slot-' + id);
-      node.before(placeholder);
-      openInstruments.push({ node, placeholder });
+    for (const [ids, labelKey] of INSTRUMENT_SECTIONS) {
+      // Nicht jeder Typ fuellt jedes Stellteil: RBMK/SWR kennen keine Bor-
+      // dosierung (#rs-chem-ctl bleibt leer), der DWR keine Sicherheits-
+      // systeme unter #rs-safety-ctl (siehe hooks.uiControls() je Typ in
+      // plants/*.js, mount-Namen). Ein leerer Knoten kommt gar nicht erst
+      // mit -- eine Karte ganz ohne Inhalt (alle Knoten leer) faellt danach
+      // aus wie bisher.
+      const nodes = ids.map((id) => $('#' + id)).filter((n) => n && n.childElementCount);
+      if (!nodes.length) continue;
+      for (const node of nodes) {
+        const placeholder = document.createComment('rs-instruments-slot');
+        node.before(placeholder);
+        openInstruments.push({ node, placeholder });
+      }
       instrumentsGrid.append(el('div.rs-group.rs-instruments-section', null, [
         el('h3', { text: t(labelKey) }),
-        node,
+        ...nodes,
       ]));
     }
     instrumentsModal.hidden = false;

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.1
+
+- 🐛 **Instrumentenübersicht zeigte leere Karten.** RBMK/SWR kennen keine
+  Bordosierung (`#rs-chem-ctl` bleibt leer), der DWR keine Sicherheits-
+  systeme unter `#rs-safety-ctl` -- eine Karte mit Überschrift und sonst
+  nichts stand trotzdem da. `openInstrumentsWindow()` überspringt jetzt
+  Abschnitte ohne Inhalt.
+- ✨ **Stabstellung in der Instrumentenübersicht.** Die Steuerstäbe-Karte
+  bediente Automatik/Hand und Ziehen/Einfahren, zeigte aber nirgends, wie
+  weit die Stäbe stehen -- reine Blindbedienung. Die Balken aus dem Reiter
+  (samt eigener %-Anzeige je Bank) stehen jetzt mit in derselben Karte.
+- 🐛 **Spielstände standen doppelt: Übersicht und Reaktorseite.** Die
+  Übersicht behielt beim Umbau auf die neue Reaktorseite (0.3.0) ihre
+  eigene Fortsetzen-Liste je Karte -- seit die Reaktorseite dieselben
+  Stände zeigt, war das nur noch Dopplung. Die Karten der Übersicht zeigen
+  jetzt nur noch Reaktortyp und Beschreibung, Fortsetzen läuft
+  ausschließlich über die Reaktorseite.
+
 ## 0.4.0
 
 - ✨ **Instrumentenübersicht (Taste O).** Rundinstrumente (Kern/Primär/

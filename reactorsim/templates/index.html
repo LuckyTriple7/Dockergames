@@ -47,49 +47,24 @@
 
     <h2 class="rs-start-headline">{{ t.start_headline }}</h2>
     <div class="rs-start-cards">
-      <div class="rs-card-group">
-        <button class="rs-card" data-reactor="pwr" type="button">
-          <span class="rs-card-badge rs-card-badge-pwr">{{ t.reactor_pwr_short }}</span>
-          <span class="rs-card-name">{{ t.reactor_pwr }}</span>
-          <span class="rs-card-tag">{{ t.reactor_pwr_tag }}</span>
-          <span class="rs-card-desc">{{ t.reactor_pwr_desc }}</span>
-        </button>
-        <!-- Von main.js gefuellt, ein Eintrag je Spielstand DIESES Typs
-             (Slot "auto-pwr-..."/"manual-pwr-...") -- eigener Stand je
-             Karte statt einer gemeinsamen Liste unten, damit ein RBMK-Stand
-             nicht zwischen DWR/SWR untergeht. <details>/<summary> statt
-             offener Liste: bei bis zu zehn Handplaetzen plus Autospeicherung
-             waere die Karte sonst schnell voller Text als Inhalt -- collapsed
-             per Default, ein Klick auf die Zusammenfassung klappt auf. -->
-        <details class="rs-card-resume" id="rs-card-resume-pwr" hidden>
-          <summary class="rs-card-resume-summary" id="rs-card-resume-pwr-summary"></summary>
-          <div class="rs-card-resume-body" id="rs-card-resume-pwr-body"></div>
-        </details>
-      </div>
-      <div class="rs-card-group">
-        <button class="rs-card" data-reactor="bwr" type="button">
-          <span class="rs-card-badge rs-card-badge-bwr">{{ t.reactor_bwr_short }}</span>
-          <span class="rs-card-name">{{ t.reactor_bwr }}</span>
-          <span class="rs-card-tag">{{ t.reactor_bwr_tag }}</span>
-          <span class="rs-card-desc">{{ t.reactor_bwr_desc }}</span>
-        </button>
-        <details class="rs-card-resume" id="rs-card-resume-bwr" hidden>
-          <summary class="rs-card-resume-summary" id="rs-card-resume-bwr-summary"></summary>
-          <div class="rs-card-resume-body" id="rs-card-resume-bwr-body"></div>
-        </details>
-      </div>
-      <div class="rs-card-group">
-        <button class="rs-card" data-reactor="rbmk" type="button">
-          <span class="rs-card-badge rs-card-badge-rbmk">{{ t.reactor_rbmk_short }}</span>
-          <span class="rs-card-name">{{ t.reactor_rbmk }}</span>
-          <span class="rs-card-tag">{{ t.reactor_rbmk_tag }}</span>
-          <span class="rs-card-desc">{{ t.reactor_rbmk_desc }}</span>
-        </button>
-        <details class="rs-card-resume" id="rs-card-resume-rbmk" hidden>
-          <summary class="rs-card-resume-summary" id="rs-card-resume-rbmk-summary"></summary>
-          <div class="rs-card-resume-body" id="rs-card-resume-rbmk-body"></div>
-        </details>
-      </div>
+      <button class="rs-card" data-reactor="pwr" type="button">
+        <span class="rs-card-badge rs-card-badge-pwr">{{ t.reactor_pwr_short }}</span>
+        <span class="rs-card-name">{{ t.reactor_pwr }}</span>
+        <span class="rs-card-tag">{{ t.reactor_pwr_tag }}</span>
+        <span class="rs-card-desc">{{ t.reactor_pwr_desc }}</span>
+      </button>
+      <button class="rs-card" data-reactor="bwr" type="button">
+        <span class="rs-card-badge rs-card-badge-bwr">{{ t.reactor_bwr_short }}</span>
+        <span class="rs-card-name">{{ t.reactor_bwr }}</span>
+        <span class="rs-card-tag">{{ t.reactor_bwr_tag }}</span>
+        <span class="rs-card-desc">{{ t.reactor_bwr_desc }}</span>
+      </button>
+      <button class="rs-card" data-reactor="rbmk" type="button">
+        <span class="rs-card-badge rs-card-badge-rbmk">{{ t.reactor_rbmk_short }}</span>
+        <span class="rs-card-name">{{ t.reactor_rbmk }}</span>
+        <span class="rs-card-tag">{{ t.reactor_rbmk_tag }}</span>
+        <span class="rs-card-desc">{{ t.reactor_rbmk_desc }}</span>
+      </button>
     </div>
 
     <div class="rs-start-foot">
@@ -132,10 +107,9 @@
     </div>
     <p class="rs-reactor-desc" id="rs-reactor-desc"></p>
 
-    <!-- Dieselbe Fortsetzen-Liste wie auf der Uebersicht (siehe
-         rs-card-resume-<typ> dort), hier nur fuer den einen gerade
-         geoeffneten Typ -- refreshResumeList() in main.js fuellt beide
-         Stellen aus demselben Abruf. -->
+    <!-- Fortsetzen-Liste nur fuer diesen Reaktortyp -- refreshResumeList()
+         in main.js filtert die Staende nach app.reactor. Die Uebersicht
+         zeigt keine Staende mehr, das ist die einzige Stelle dafuer. -->
     <details class="rs-card-resume" id="rs-reactor-resume" hidden>
       <summary class="rs-card-resume-summary" id="rs-reactor-resume-summary"></summary>
       <div class="rs-card-resume-body" id="rs-reactor-resume-body"></div>

@@ -251,21 +251,6 @@ button {
   .rs-start-cards { grid-template-columns: repeat(3, 1fr); }
 }
 
-/* Buendelt Karte + ihre eigenen Spielstaende in EINER Grid-Spalte --
-   .rs-card bleibt selbst ein <button> (ganze Karte waehlbar), die
-   Fortsetzen-Zeilen haengen als Geschwister-Elemente darunter, nicht
-   DARIN: ein <button> darf kein zweites <button> enthalten (Fortsetzen +
-   Loeschen je Stand).
-   Subgrid statt eigenem Grid: .rs-card-group teilt sich seine zwei Zeilen
-   (Karte, Spielstaende) mit den ANDEREN Gruppen in derselben Reihe von
-   .rs-start-cards -- dadurch ist Zeile 1 (die Karte) bei DWR/SWR/RBMK
-   gleich hoch, ganz gleich wie lang die Beschreibung ist oder wie viele
-   Spielstaende darunterstehen. Ohne Subgrid sass .rs-card auf seiner
-   eigenen Inhaltshoehe fest, weil es seit den Spielstaenden-je-Karte
-   (CHANGELOG 0.0.95) nicht mehr direktes Grid-Kind von .rs-start-cards
-   ist -- drei sichtbar unterschiedlich grosse Kacheln waren die Folge. */
-.rs-card-group { display: grid; grid-row: span 2; grid-template-rows: subgrid; gap: 8px; }
-
 .rs-card {
   text-align: left;
   display: grid;
@@ -316,12 +301,12 @@ button {
 }
 .rs-start-hint { color: var(--rs-fg-mute); font-size: 12px; }
 
-/* Sitzt unter der zugehoerigen .rs-card in derselben .rs-card-group, siehe
-   dort. Jetzt <details>/<summary> statt offener Liste -- bei bis zu zehn
-   Handplaetzen plus Autospeicherung waere die Karte sonst schnell voller
-   Text als Inhalt. Collapsed per Default (kein "open"-Attribut im
-   Template), ein Klick auf die Zusammenfassung klappt auf/zu, ganz ohne
-   eigenes JS dafuer -- das kann <details> nativ. */
+/* Fortsetzen-Liste auf der Reaktor-Detailseite (#rs-reactor-resume, siehe
+   dort) -- <details>/<summary> statt offener Liste -- bei bis zu zehn
+   Handplaetzen plus Autospeicherung waere das sonst schnell voller Text als
+   Inhalt. Collapsed per Default (kein "open"-Attribut im Template), ein
+   Klick auf die Zusammenfassung klappt auf/zu, ganz ohne eigenes JS dafuer
+   -- das kann <details> nativ. */
 .rs-card-resume { font-size: 12px; }
 /* Eigenes Dreieck statt des nativen Listen-Markers: der sass bei "outside"
    im Rand der vollen Kartenbreite und damit sichtbar losgeloest vom Text
