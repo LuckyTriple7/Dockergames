@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.7
+
+- 🐛 **Chernobyl-Tutorial Schritt 6/7: "0/0.2 s" sah nach "gleich fertig"
+  aus, obwohl noch bis zu ~35 s zu warten waren.** HOLD[5]=0.2s ist ein
+  interner Entprellwert für den schnellen Übergang zu 'az5', keine echte
+  Wartezeit -- die Kopfzeile zeigte ihn trotzdem als Countdown an
+  (Nutzerrückmeldung). Zusätzlich sah "Schritt 7" identisch aus, egal ob es
+  erschien WEIL man im richtigen Zeitfenster ist, oder WEIL man (zu
+  früh/spät) schon gedrückt hat -- beides führt über denselben Übergang.
+  Schritt 6 und 7 zeigen jetzt in der Kopfzeile direkt den Live-Hinweis
+  ("warten" / "JETZT AZ-5 drücken!" / "Fenster vorbei") statt einer
+  Haltezeit-Zahl, ohne das Popup öffnen zu müssen.
+
 ## 0.5.6
 
 - 🐛 **Speichern/Laden während des Chernobyl-Turbinenauslaufversuchs killte

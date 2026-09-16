@@ -273,6 +273,42 @@ test('tutorial card shows localized task, switches mobile panel and disappears i
   assert.equal(modal.hidden, true);
 });
 
+test("chernobyl tutorial's window/az5 steps show the live hint, not a misleading hold countdown", async () => {
+  nodes.clear();
+  const { RBMK_CHERNOBYL_TUTORIAL } = await import('../static/js/game/chernobylTutorial.js');
+  const scenario = JSON.parse(readFileSync(new URL('../static/data/scenarios/rbmk_chernobyl.json', import.meta.url)));
+  const engine = createEngine(getPlant('rbmk'), { seed: scenario.seed });
+  const session = new Session(engine, { ...scenario, tutorial: RBMK_CHERNOBYL_TUTORIAL });
+  session.start();
+  const tut = session.tutorial;
+  let update;
+  buildTutorial(session, { add(group, callback) { update = callback; } });
+  const status = get('#rs-tutorial-status');
+
+  // 'window' holds internally for only HOLD[5]=0.2s (a debounce for the
+  // fast transition to 'az5', see chernobylTutorial.js), not a real wait --
+  // showing "0/0.2s" while the real wait is up to ~35s looked like "almost
+  // done" (Nutzerrueckmeldung). Force onto 'window' well before PRESS_WINDOW
+  // (39-43s since runback) and check the compact status shows the live wait
+  // hint instead of a "0/0.2" countdown.
+  tut.index = 5;
+  tut._runbackT0 = engine.state.t_sim;
+  update();
+  assert.doesNotMatch(status.textContent, /0[.,]?\/0[.,]2/);
+  assert.match(status.textContent, /warten/i);
+
+  // Move sinceRunback into PRESS_WINDOW -- status must switch to "press now".
+  engine.state.t_sim += 40;
+  update();
+  assert.match(status.textContent, /JETZT/);
+
+  // Past both windows -- status must say the window has passed, not repeat
+  // "press now" forever.
+  engine.state.t_sim += 10;
+  update();
+  assert.match(status.textContent, /vorbei/i);
+});
+
 for (const reactor of ['pwr', 'rbmk', 'bwr']) {
   test(`${reactor}: inspection dialog validates live readings and confirms through its actual click handler`, () => {
     nodes.clear();

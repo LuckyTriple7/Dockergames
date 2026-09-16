@@ -27,6 +27,14 @@ export class StartupTutorial {
   // in the three original startup tutorials; the Chernobyl replay overrides
   // this to add its narrative-only 'dip' step.
   get confirmIndices() { return [0]; }
+  // Indices whose compact status line should show hint() live instead of a
+  // held/required countdown -- for a step whose holdSeconds is a tiny
+  // internal debounce (not a real wait a player should watch tick down), a
+  // "0/0.2s" readout is actively misleading (looks like "almost done" while
+  // the real wait is tens of seconds, driven by an external condition, not
+  // by holding still). Empty by default; the Chernobyl replay overrides this
+  // for its 'window'/'az5' steps (see chernobylTutorial.js).
+  get liveStatusIndices() { return []; }
 
   prepare() {
     const { state: s, ctx: c, spec: sp, reactivity } = this.engine;

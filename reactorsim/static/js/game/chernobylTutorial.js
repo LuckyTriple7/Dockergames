@@ -202,6 +202,18 @@ export class RbmkChernobylTutorial extends StartupTutorial {
   // selbst weiterspringt, bevor er gelesen ist.
   get confirmIndices() { return [0, 1]; }
 
+  // 'window' (5) haelt intern nur HOLD[5]=0.2s (ein Entprellwert fuer den
+  // fast-instant Uebergang zu 'az5', siehe STEPS-Kommentar), keine echte
+  // Wartezeit -- "0/0.2 s" in der Kopfzeile sah aus wie "gleich fertig",
+  // waehrend tatsaechlich noch bis zu ~35s auf PRESS_WINDOW zu warten ist
+  // (Nutzerrueckmeldung). 'az5' (6) zeigt aus demselben Grund den Hinweis
+  // statt der 15s-Haltezeit: sonst blieb unklar, ob "Schritt 7" gerade
+  // WEIL man im Fenster ist erschien, oder WEIL man (zu frueh/spaet)
+  // schon gedrueckt hat (beides fuehrt ueber denselben Uebergang, siehe
+  // conditions()[5]) -- der Hinweistext unterscheidet das (window_now vs.
+  // window_after), die Haltezeit-Zahl nicht.
+  get liveStatusIndices() { return [5, 6]; }
+
   conditions() {
     const { state: s, ctx: c } = this.engine;
     const d = this.engine.derive();

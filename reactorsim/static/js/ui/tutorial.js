@@ -91,8 +91,15 @@ export function buildTutorial(session, render) {
     const title = t(prefix + v.id + '_title');
     const heading = t('tut_heading', { n: v.index + 1, total: steps.length, title });
     const held = Math.floor(v.held + 1e-8);
-    const hold = v.inspectReady ? t('tut_inspect_pending') : t('tut_hold_compact', { held, required: v.required });
     const vars = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, num(x, k === 'neutron' ? 4 : 1)]));
+    // Ein Schritt mit liveStatusIndices haelt intern nur einen kurzen
+    // Entprellwert (siehe tutorial.js/chernobylTutorial.js) -- "held/
+    // required" waere dort keine echte Wartezeit, sondern irrefuehrend
+    // ("0/0.2s" sieht nach "gleich fertig" aus). v.hint() selbst traegt hier
+    // die eigentliche Information (warten/jetzt/vorbei).
+    const hold = v.inspectReady ? t('tut_inspect_pending')
+      : tutorial.liveStatusIndices?.includes(v.index) ? t(v.hint, vars)
+      : t('tut_hold_compact', { held, required: v.required });
     const values = t(prefix + v.id + '_values', vars);
     // Two lines in one small button, see .rs-tutorial-status (white-space: pre-line).
     setText(status, `${heading} · ${hold}\n${values}`);
