@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1
+
+- 🐛 **Reaktor öffnen -> zurück -> denselben Reaktor wieder öffnen ergab ein
+  leeres, schwarzes Fenster.** `fadeScreens()` (main.js) plante bei jedem
+  Bildschirmwechsel einen `setTimeout`, der den alten Bildschirm nach der
+  Sekunde Überblendung verbirgt -- ohne den vorigen Timer zu canceln. Zwei
+  Wechsel innerhalb dieser Sekunde ließen den älteren Timer zuletzt feuern
+  und den gerade erst wieder eingeblendeten Bildschirm erneut verstecken:
+  `#rs-start` und `#rs-reactor` standen danach beide auf `hidden`, nur ein
+  Neuladen half. Jetzt genau ein aktiver Timer je Wechsel.
+
 ## 0.3.0
 
 - ✨ **Eigene Reaktorseite statt Inline-Auswahl.** Klick auf eine Karte in der
