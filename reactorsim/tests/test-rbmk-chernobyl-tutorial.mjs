@@ -98,32 +98,35 @@ test('full guided sequence: handover, dip, hand-held recovery, pumps, coastdown,
   assert.equal(c.mcp.filter(p => p.running && p.speed >= 0.9).length, 8);
 
   // 4 test -- completeStep('pumps') muss den Auslauf gestartet haben. Der
-  // Schritt selbst schliesst schnell (AZ-5 wird frei, sobald der Auslauf
-  // sichtbar begonnen hat) -- das MUSS frueh passieren, nicht erst wenn die
-  // Leistung schon sichtbar steigt: der Hinweistext von 'az5' nennt die
-  // Zerstoerungsfenster als Sekunden SEIT AUSLAUFBEGINN (7-22s, 39-43s,
-  // siehe tut_chernobyl_hint_az5/view().values.sinceRunback) und braucht
-  // dafuer den vollen Zeitraum ab Auslaufbeginn, nicht nur einen Rest davon
-  // (ein frueherer Versuch, den Schritt erst bei hoher Leistung freizugeben,
-  // hat genau das kaputtgemacht -- siehe CHANGELOG 0.5.2/0.5.3). Der schmale
-  // AR-Trimm (siehe chernobylTutorial.js) haelt die Leistung bis zum
-  // Druecken von AZ-5 nahe am Sollwert -- wie historisch (Leistung blieb
-  // ~36s nahezu flach). Ob AZ-5 dann zerstoert, haengt an der genauen
-  // axialen Schieflage im Moment des Drueckens (_tipReactivity skaliert mit
-  // s.ao) und ist NICHT einfach "je spaeter, desto schlimmer" -- gemessen:
-  // ein Fenster bei ~7-22s nach Ausloesen des Auslaufs zerstoert, dazwischen
-  // (~23-38s) nicht, danach (~39-43s) wieder. 40s (in diesem zweiten
-  // Fenster) liegt naeher an der historischen Zeitspanne (Testbeginn
-  // 01:23:04, AZ-5 01:23:40, 36s spaeter) als das erste Fenster.
+  // Schritt selbst schliesst, sobald der Durchsatz 5s ununterbrochen unter
+  // 90% liegt (HOLD[4]=5, siehe chernobylTutorial.js).
   assert.ok(c.mcpRunback, 'coastdown was not triggered when pumps step completed');
-  step({ engine, session }, Math.round(10 / DT));
+  let testGuard = 0;
+  while (tut.index === 4 && testGuard < Math.round(20 / DT)) { step({ engine, session }, 1); testGuard++; }
   assert.equal(tut.index, 5, 'test step did not complete');
-  assert.ok(tut.view().values.sinceRunback >= 9 && tut.view().values.sinceRunback <= 11,
-    `sinceRunback counter should track elapsed time, got ${tut.view().values.sinceRunback}`);
-  step({ engine, session }, Math.round(30 / DT));
 
-  // 5 az5 -- die historische Handlung. Ob das gutgeht, entscheidet die
-  // Physik (RunState.checkFail() laeuft VOR tutorial.done, siehe session.js).
+  // 5 window -- reine Anzeige, kein Fahrbefehl (siehe conditions()[5]/
+  // _inDestroyWindow in chernobylTutorial.js): schliesst erst WAEHREND eines
+  // der gemessenen Zerstoerungsfenster (7-22s, 39-43s seit Auslaufbeginn) zu
+  // 'az5' weiter, damit der Spieler nicht mehr raten muss, wann Druecken
+  // etwas bewirkt (siehe Nutzerrueckmeldung: "kein Mensch versteht wann er
+  // AZ5 druecken muss"). 'test' schliesst frueh genug (um t+8s), dass wir
+  // hier noch im ersten Fenster (7-22s) ankommen.
+  let windowGuard = 0;
+  while (tut.index === 5 && windowGuard < Math.round(20 / DT)) { step({ engine, session }, 1); windowGuard++; }
+  assert.equal(tut.index, 6, 'window step did not open into az5 during the first destroy window');
+  const since = tut.view().values.sinceRunback;
+  assert.ok(since >= 7 && since <= 22,
+    `window should only open into az5 during a destroy window, got sinceRunback=${since}`);
+
+  // 6 az5 -- warten bis ins zweite, historisch naeher liegende Fenster
+  // (Testbeginn 01:23:04, AZ-5 01:23:40, 36s spaeter) und dort druecken --
+  // die historische Handlung, jetzt zum vom Spiel selbst als "JETZT"
+  // markierten Zeitpunkt. Ob das gutgeht, entscheidet die Physik
+  // (RunState.checkFail() laeuft VOR tutorial.done, siehe session.js).
+  let waitGuard = 0;
+  while (tut.view().values.sinceRunback < 40 && waitGuard < Math.round(60 / DT)) { step({ engine, session }, 1); waitGuard++; }
+  assert.equal(tut.hint(), 'tut_chernobyl_hint_window_now', 'expected to be inside the second destroy window');
   engine.scram('az5');
   step({ engine, session }, Math.round(20 / DT));
 

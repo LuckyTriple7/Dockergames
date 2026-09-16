@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.4
+
+- ✨ **Chernobyl-Tutorial: neuer Schritt 'Auf den richtigen Moment warten'.**
+  Wann genau AZ-5 die Anlage zerstört, hängt an der exakten axialen
+  Schieflage im Moment des Drückens -- für einen Menschen ohne Anhaltspunkt
+  praktisch nicht treffbar, selbst mit dem Sekundenzähler aus 0.5.3
+  ("kein Mensch versteht wann er AZ5 drücken muss", Nutzerrückmeldung). Die
+  Zerstörungsfenster sind deterministisch und wurden nachgemessen: 7-22 s
+  und 39-43 s seit Auslaufbeginn. Ein neuer Schritt zeigt jetzt live "warte"
+  bzw. "JETZT AZ-5 drücken!" an und schaltet nur während eines dieser
+  Fenster zum letzten Schritt weiter -- der AZ-5-Knopf selbst war nie
+  gesperrt und bleibt es auch jetzt nicht (siehe 'pressing AZ-5 too early'-
+  Test).
+- 🐛 **Statuszeile sagte "Anfahren-Tutorial abgeschlossen", auch nach der
+  Chernobyl-Übung.** Der Text war für die drei echten Anfahrtutorials fest
+  verdrahtet. Ein tutorialspezifischer Schlüssel (tut_chernobyl_completed)
+  überschreibt ihn jetzt für die Chernobyl-Übung, mit Rückfall auf den
+  alten Text für die drei Anfahrtutorials.
+
 ## 0.5.3
 
 - 🐛 **0.5.2 (AZ-5-Hinweis erst bei Leistungsanstieg) zurückgenommen, echter

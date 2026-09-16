@@ -17,23 +17,42 @@ import { clamp } from '../sim/constants.js';
 // fester Zustand hinterlegt, nicht bei jedem Start neu simuliert.
 export const RBMK_CHERNOBYL_TUTORIAL = 'rbmk_chernobyl';
 
-const STEPS = ['handover', 'dip', 'recover', 'pumps', 'test', 'az5'];
+const STEPS = ['handover', 'dip', 'recover', 'pumps', 'test', 'window', 'az5'];
 // 'recover' verlangt 1140 s (19 Minuten) SIMULIERTE Zeit -- am 60-fachen
 // Zeitraffer sind das rund 19 reale Sekunden, kein zaehes Warten. Die Zahl
 // ist bewusst die historische Haltezeit vor dem Versuch, nicht abgekuerzt.
-// 'test' (Index 4) haelt nur kurz -- der Schritt gibt AZ-5 frei, sobald der
+// 'test' (Index 4) haelt nur kurz -- der Schritt schliesst, sobald der
 // Auslauf sichtbar begonnen hat. Der schmale AR-Trimm (siehe unten) haelt die
-// Leistung bis dahin nahe am Sollwert -- wie historisch (Leistung blieb ~36s
-// nahezu flach bei ~200 MWth) faellt die Anlage NICHT von selbst durch,
-// solange AZ-5 nicht gedrueckt wird; siehe test-rbmk-chernobyl-tutorial.mjs.
-// 'az5' (Index 5) haelt bewusst 15s, nicht nur 1: der promptkritische
+// Leistung bis zum Druecken von AZ-5 nahe am Sollwert -- wie historisch
+// (Leistung blieb ~36s nahezu flach bei ~200 MWth) faellt die Anlage NICHT
+// von selbst durch, solange AZ-5 nicht gedrueckt wird.
+// 'window' (Index 5) ist reine Anzeige, keine Sperre (siehe conditions()[5]
+// und der bereits vorhandene AZ-5-Knopf, der nie gesperrt war -- siehe
+// 'pressing AZ-5 too early'-Test): der Zerstoerungszeitpunkt haengt an der
+// exakten axialen Schieflage im Moment des Drueckens (_tipReactivity in
+// rbmk.js) und ist fuer einen Menschen ohne Anhaltspunkt praktisch nicht
+// treffbar (siehe Nutzerrueckmeldung: "kein Mensch versteht wann er AZ5
+// druecken muss"). Gemessen (siehe test-rbmk-chernobyl-tutorial.mjs) sind
+// die Fenster deterministisch 7-22s und 39-43s seit Auslaufbeginn -- 'window'
+// schaltet in genau diesen Sekunden auf "JETZT" (siehe _inDestroyWindow()/
+// hint()), bleibt sonst auf "warte" bzw. "Fenster vorbei" stehen und schliesst
+// (Uebergang zu 'az5') nur WAEHREND eines Fensters, mit absichtlich sehr
+// kurzer Haltezeit (siehe HOLD unten) -- eine lange Haltezeit wuerde das
+// kurze zweite Fenster (nur 4s) teilweise auffressen.
+// 'az5' (Index 6) haelt bewusst 15s, nicht nur 1: der promptkritische
 // Exkurs (siehe _rodReactivity/_tipReactivity in rbmk.js) braucht nach dem
 // Druecken selbst noch mehrere Sekunden, bis die Brennstoffenthalpie-Grenze
 // erreicht wird (gemessen: Scheitel bei t+1,3 s, Kriterium bei t+5-6 s) --
 // eine zu kurze Haltezeit wuerde den Schritt als "geschafft" abschliessen,
 // bevor die Physik ueberhaupt zu Ende gelaufen ist (RunState.checkFail()
 // greift zwar vor tutorial.done, aber nur wenn beide ueberhaupt noch laufen).
-const HOLD = [5, 2, 1140, 3, 5, 15];
+const HOLD = [5, 2, 1140, 3, 5, 0.2, 15];
+
+// Gemessene Zerstoerungsfenster seit Auslaufbeginn (siehe 'window' oben) --
+// ausserhalb dieser Fenster zerstoert AZ-5 die Anlage in diesem Modell nicht,
+// siehe test-rbmk-chernobyl-tutorial.mjs ('press AZ-5 too early') und den
+// Sweep, der diese Zahlen erzeugt hat.
+const DESTROY_WINDOWS = [[7, 22], [39, 43]];
 
 // Kuehlmittelauslauf-Naeherung fuer den Turbinenauslaufversuch (siehe
 // events.js rbmk_mcp_runback) -- geskriptet statt einer echten
@@ -199,11 +218,30 @@ export class RbmkChernobylTutorial extends StartupTutorial {
       // Rest lassen -- das war ein eigener, inzwischen zurueckgenommener
       // Fehlversuch (siehe CHANGELOG 0.5.2/0.5.3).
       intact && s.mcpDmd < 0.9,
-      // 5 az5: Schnellabschaltung ausgeloest. Ob das noch glimpflich ausgeht
+      // 5 window: reine Anzeige (siehe STEPS oben) -- schliesst waehrend
+      // eines der gemessenen Zerstoerungsfenster, damit 'az5' (naechster
+      // Schritt) genau dann erscheint, wenn Druecken tatsaechlich etwas
+      // bewirkt. ODER sobald tatsaechlich gedrueckt wurde (auch ausserhalb
+      // eines Fensters, der Knopf war nie gesperrt) -- sonst bliebe dieser
+      // Schritt fuer einen zu frueh/spaet druenckenden Spieler fuer immer
+      // "nicht geschafft" stehen, obwohl die Runde laengst vorbei ist.
+      (intact && this._inDestroyWindow(s)) || s.scram.active,
+      // 6 az5: Schnellabschaltung ausgeloest. Ob das noch glimpflich ausgeht
       // oder nicht, entscheidet danach die Physik -- nicht dieser Schritt
       // (siehe RunState.checkFail(), das immer VOR tutorial.done greift).
       s.scram.active,
     ];
+  }
+
+  /** Sekunden seit Auslaufbeginn, oder -1 vor dessen Start (siehe _runbackT0). */
+  _sinceRunback(s) {
+    return this._runbackT0 != null ? s.t_sim - this._runbackT0 : -1;
+  }
+
+  /** Innerhalb eines gemessenen Zerstoerungsfensters (siehe DESTROY_WINDOWS)? */
+  _inDestroyWindow(s) {
+    const t = this._sinceRunback(s);
+    return DESTROY_WINDOWS.some(([lo, hi]) => t >= lo && t <= hi);
   }
 
   completeStep() {
@@ -290,8 +328,23 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     }
     if (id === 'pumps') return 'tut_chernobyl_hint_pumps';
     if (id === 'test') return 'tut_chernobyl_hint_test';
-    if (id === 'az5') return 'tut_chernobyl_hint_az5';
+    if (id === 'window' || id === 'az5') return this._windowHint(s);
     return 'tut_hint_wait';
+  }
+
+  /**
+   * Vier Zustaende relativ zu DESTROY_WINDOWS, geteilt zwischen 'window'
+   * (zeigt sie an) und 'az5' (der Spieler kann dort immer noch zu frueh
+   * oder zu spaet sein, siehe STEPS-Kommentar oben).
+   */
+  _windowHint(s) {
+    const t = this._sinceRunback(s);
+    if (t < 0) return 'tut_hint_wait';
+    const [[lo1, hi1], [lo2, hi2]] = DESTROY_WINDOWS;
+    if (t < lo1) return 'tut_chernobyl_hint_window_wait';
+    if (t <= hi1 || (t >= lo2 && t <= hi2)) return 'tut_chernobyl_hint_window_now';
+    if (t < lo2) return 'tut_chernobyl_hint_window_gap';
+    return 'tut_chernobyl_hint_window_after';
   }
 
   snapshot() {
@@ -307,9 +360,10 @@ export class RbmkChernobylTutorial extends StartupTutorial {
   view() {
     const view = super.view();
     const { state: s, ctx: c } = this.engine;
-    // Sekunden seit Auslaufbeginn -- damit der Spieler den in
-    // tut_chernobyl_hint_az5 genannten Zerstoerungsfenstern (7-22s, 39-43s)
-    // tatsaechlich folgen kann, statt sie im Kopf mitzuzaehlen.
+    // Sekunden seit Auslaufbeginn -- treibt sowohl den 'window'-Schritt
+    // (siehe conditions()[5]/_inDestroyWindow) als auch die Anzeige fuer den
+    // Spieler, damit sich die Zerstoerungsfenster (7-22s, 39-43s) tatsaechlich
+    // treffen lassen, statt sie im Kopf mitzuzaehlen.
     const sinceRunback = Number.isFinite(this._runbackT0) ? Math.max(0, s.t_sim - this._runbackT0) : null;
     return { ...view, values: { ...view.values, pressure: s.p_drum,
       level: s.L_drum * 100, orm: this.engine.derive().orm,

@@ -1,5 +1,5 @@
 import { $, el, setText } from './dom.js';
-import { t, num, clock } from './i18n.js';
+import { t, has, num, clock } from './i18n.js';
 import { TUTORIAL_STEPS } from '../game/tutorial.js';
 import { PHASE } from '../game/session.js';
 
@@ -79,7 +79,15 @@ export function buildTutorial(session, render) {
     modalConfirm.hidden = !(tutorial.confirmIndices?.includes(v.index) ?? (v.index === 0));
     modalInspection.hidden = modalInspectStatus.hidden = v.index !== 0;
     modalConfirm.disabled = !v.inspectReady || session.phase !== PHASE.RUNNING;
-    if (v.done) { setText(status, t('tut_completed')); return; }
+    if (v.done) {
+      // "Anfahren-Tutorial abgeschlossen" (tut_completed) stammt aus der
+      // Zeit, als es nur die drei Anfahrtutorials gab -- fuer die
+      // Chernobyl-Uebung (kein Anfahren, siehe chernobylTutorial.js) ist das
+      // schlicht falsch. Ein eigener, per-prefix ueberschreibbarer Schluessel
+      // (siehe tut_chernobyl_completed) faellt sonst auf den alten zurueck.
+      setText(status, t(has(prefix + 'completed') ? prefix + 'completed' : 'tut_completed'));
+      return;
+    }
     const title = t(prefix + v.id + '_title');
     const heading = t('tut_heading', { n: v.index + 1, total: steps.length, title });
     const held = Math.floor(v.held + 1e-8);
