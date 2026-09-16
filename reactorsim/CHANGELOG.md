@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.5
+
+- 🐛 **0.5.4 zeigte das falsche Zerstörungsfenster: Schritt 6 war teils unter
+  einer Sekunde sichtbar, ohne Leistungsanstieg.** Es gibt technisch zwei
+  Zerstörungsfenster (7-22s und 39-43s seit Auslaufbeginn), aber 'test'
+  schließt schon um t+8s -- mitten im ERSTEN. Der neue 'window'-Schritt aus
+  0.5.4 sprang dadurch sofort weiter, und in diesem ersten Fenster ist von
+  einem Leistungsanstieg optisch noch nichts zu sehen (der beginnt real erst
+  ab ~t+33s). Jetzt zählt für 'window' nur noch das ZWEITE Fenster
+  (PRESS_WINDOW in chernobylTutorial.js): der Schritt bleibt auf "warten"
+  stehen, während die Leistung sichtbar ansteigt, und schaltet erst in den
+  39-43s auf "JETZT AZ-5 drücken!".
+
 ## 0.5.4
 
 - ✨ **Chernobyl-Tutorial: neuer Schritt 'Auf den richtigen Moment warten'.**

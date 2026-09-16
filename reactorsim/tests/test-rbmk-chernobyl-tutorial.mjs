@@ -106,27 +106,33 @@ test('full guided sequence: handover, dip, hand-held recovery, pumps, coastdown,
   assert.equal(tut.index, 5, 'test step did not complete');
 
   // 5 window -- reine Anzeige, kein Fahrbefehl (siehe conditions()[5]/
-  // _inDestroyWindow in chernobylTutorial.js): schliesst erst WAEHREND eines
-  // der gemessenen Zerstoerungsfenster (7-22s, 39-43s seit Auslaufbeginn) zu
-  // 'az5' weiter, damit der Spieler nicht mehr raten muss, wann Druecken
-  // etwas bewirkt (siehe Nutzerrueckmeldung: "kein Mensch versteht wann er
-  // AZ5 druecken muss"). 'test' schliesst frueh genug (um t+8s), dass wir
-  // hier noch im ersten Fenster (7-22s) ankommen.
-  let windowGuard = 0;
-  while (tut.index === 5 && windowGuard < Math.round(20 / DT)) { step({ engine, session }, 1); windowGuard++; }
-  assert.equal(tut.index, 6, 'window step did not open into az5 during the first destroy window');
-  const since = tut.view().values.sinceRunback;
-  assert.ok(since >= 7 && since <= 22,
-    `window should only open into az5 during a destroy window, got sinceRunback=${since}`);
+  // _inPressWindow in chernobylTutorial.js): es gibt zwei gemessene
+  // Zerstoerungsfenster (7-22s, 39-43s seit Auslaufbeginn), aber nur PRESS_
+  // WINDOW (das zweite) wird hier gezeigt -- das erste liegt so kurz nach
+  // 'test' (das um t+8s schliesst), dass 'window' darin kaum eine Sekunde
+  // sichtbar waere, UND die Leistung ist zu dem Zeitpunkt noch flach (siehe
+  // Nutzerrueckmeldung: "Leistung sollte in Schritt 6 schon ansteigen"). Bei
+  // t+20s (noch deutlich vor PRESS_WINDOW) muss 'window' also noch "warten"
+  // anzeigen, obwohl die Anlage laengst im ersten (hier ignorierten) Fenster
+  // war.
+  step({ engine, session }, Math.round(20 / DT));
+  assert.equal(tut.index, 5, 'window step should still be waiting, not yet in PRESS_WINDOW');
+  assert.equal(tut.hint(), 'tut_chernobyl_hint_window_wait');
 
-  // 6 az5 -- warten bis ins zweite, historisch naeher liegende Fenster
-  // (Testbeginn 01:23:04, AZ-5 01:23:40, 36s spaeter) und dort druecken --
-  // die historische Handlung, jetzt zum vom Spiel selbst als "JETZT"
-  // markierten Zeitpunkt. Ob das gutgeht, entscheidet die Physik
+  // Weiter bis ins gezeigte Fenster -- die Leistung muss dabei sichtbar
+  // gestiegen sein (siehe tut_chernobyl_window_why: das ist der Punkt).
+  let windowGuard = 0;
+  while (tut.index === 5 && windowGuard < Math.round(30 / DT)) { step({ engine, session }, 1); windowGuard++; }
+  assert.equal(tut.index, 6, 'window step did not open into az5 during PRESS_WINDOW');
+  const since = tut.view().values.sinceRunback;
+  assert.ok(since >= 39 && since <= 43,
+    `window should only open into az5 during PRESS_WINDOW, got sinceRunback=${since}`);
+  assert.ok(s.n > 0.15, `power should have visibly risen by PRESS_WINDOW, got n=${(s.n * 100).toFixed(1)}%`);
+
+  // 6 az5 -- die historische Handlung, gedrueckt waehrend das Spiel selbst
+  // "JETZT" anzeigt. Ob das gutgeht, entscheidet die Physik
   // (RunState.checkFail() laeuft VOR tutorial.done, siehe session.js).
-  let waitGuard = 0;
-  while (tut.view().values.sinceRunback < 40 && waitGuard < Math.round(60 / DT)) { step({ engine, session }, 1); waitGuard++; }
-  assert.equal(tut.hint(), 'tut_chernobyl_hint_window_now', 'expected to be inside the second destroy window');
+  assert.equal(tut.hint(), 'tut_chernobyl_hint_window_now');
   engine.scram('az5');
   step({ engine, session }, Math.round(20 / DT));
 
