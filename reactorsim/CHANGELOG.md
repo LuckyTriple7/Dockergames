@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.6
+
+- 🐛 **Speichern/Laden während des Chernobyl-Turbinenauslaufversuchs killte
+  die Leistungsregelung, Kern lief unkontrolliert hoch.** Der schmale
+  AR-Trimm (`ctx.arTrim`), der die Leistung nach `_triggerCoastdown()` nahe
+  am Sollwert hält (`c.powerCtl.auto` ist ab dann bereits aus, der Trimm ist
+  die EINZIGE noch aktive Gegenkopplung), ist ein Ad-hoc-Objekt auf `ctx`,
+  kein `ctx.saveable`-Regler mit eigenem `snapshot()`/`restore()` --
+  persist.js kannte ihn nicht. Nach jedem Laden während dieser Phase war die
+  Regelung komplett weg, ohne jede Fehlermeldung: die Anlage lief danach
+  ungebremst hoch, teils sekundenschnell statt wie vorgesehen über Minuten
+  (Nutzerrückmeldung: 73-80 % Leistung bei nur 22 Sekunden seit
+  Auslaufbeginn, erwartet ~6 %). `arTrim` wird jetzt genau wie das
+  bestehende `mcpRunback` im Speicherstand mitgeführt.
+
 ## 0.5.5
 
 - 🐛 **0.5.4 zeigte das falsche Zerstörungsfenster: Schritt 6 war teils unter

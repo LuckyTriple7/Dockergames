@@ -95,6 +95,15 @@ export function pack(engine, scenarioId, runState, session) {
       recircPumpStuck: engine.ctx.recircPumpStuck,
       recircRunback: engine.ctx.recircRunback,
       mcpRunback: engine.ctx.mcpRunback,
+      // Schmaler Reaktivitaets-Trimm des Chernobyl-Tutorials (siehe
+      // chernobylTutorial.js: _triggerCoastdown/step()) -- ein Ad-hoc-Objekt
+      // auf ctx, kein ctx.saveable-Regler mit eigenem snapshot()/restore().
+      // Ohne diesen Eintrag verschwand die Leistungshaltung nach jedem
+      // Laden spurlos: c.powerCtl.auto ist zu diesem Zeitpunkt schon false
+      // (siehe _triggerCoastdown), der Trimm war die EINZIGE noch aktive
+      // Gegenkopplung -- die Anlage lief nach dem Laden ungebremst hoch,
+      // Sekunden statt Minuten vor dem eigentlich vorgesehenen Anstieg.
+      arTrim: engine.ctx.arTrim,
       porvStuck: engine.ctx.porvStuck,
       sgLeak: engine.ctx.sgLeak,
       boronRunaway: engine.ctx.boronRunaway,
@@ -255,6 +264,12 @@ export function apply(blob, engine, runState, session) {
       const { from, to, t0, dur } = m.mcpRunback;
       if ([from, to, t0, dur].every((x) => typeof x === 'number' && Number.isFinite(x))) {
         engine.ctx.mcpRunback = { from, to, t0, dur };
+      }
+    }
+    if (m.arTrim && typeof m.arTrim === 'object') {
+      const { rho, setpoint } = m.arTrim;
+      if ([rho, setpoint].every((x) => typeof x === 'number' && Number.isFinite(x))) {
+        engine.ctx.arTrim = { rho, setpoint };
       }
     }
     if (m.porvStuck) engine.ctx.porvStuck = true;

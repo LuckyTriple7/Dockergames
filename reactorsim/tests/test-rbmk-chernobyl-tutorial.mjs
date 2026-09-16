@@ -12,6 +12,7 @@ import * as rbmk from '../static/js/plants/rbmk.js';
 import { Session, PHASE } from '../static/js/game/session.js';
 import { RbmkChernobylTutorial, RBMK_CHERNOBYL_TUTORIAL } from '../static/js/game/chernobylTutorial.js';
 import { stepEvents } from '../static/js/game/events.js';
+import { pack, apply } from '../static/js/net/persist.js';
 
 const DT = 0.05;
 const DEF = {
@@ -163,8 +164,7 @@ test('pressing AZ-5 too early (no coastdown) does not destroy the core -- the co
   assert.equal(s.destroyed, false, 'AZ-5 without the coastdown should NOT reproduce the excursion');
 });
 
-test('snapshot/restore round-trips through a save (own steps survive persist.js)', async () => {
-  const { pack, apply } = await import('../static/js/net/persist.js');
+test('snapshot/restore round-trips through a save (own steps survive persist.js)', () => {
   const { engine, session } = boot();
   step({ engine, session }, Math.round(6 / DT));
   session.tutorial.confirmInspect();
@@ -177,4 +177,59 @@ test('snapshot/restore round-trips through a save (own steps survive persist.js)
   assert.equal(apply(blob, restoredEngine, restored.run, restored), null);
   assert.deepEqual(restored.tutorial.snapshot(), session.tutorial.snapshot());
   assert.equal(restored.tutorial.index, session.tutorial.index);
+});
+
+test('saving and reloading mid-coastdown must not lose the narrow AR trim', () => {
+  // Nutzerrueckmeldung: nach einem Laden waehrend des Auslaufversuchs schoss
+  // die Leistung viel frueher und viel hoeher hoch als ohne Neuladen (schon
+  // 73-80% bei t+22s statt der erwarteten ~6%, siehe Screenshot). Ursache:
+  // ctx.arTrim (chernobylTutorial.js: _triggerCoastdown/step()) ist ein
+  // Ad-hoc-Objekt auf ctx, kein ctx.saveable-Regler -- persist.js kannte es
+  // nicht, ein frischer Engine/ctx nach dem Laden hatte gar keinen Trimm
+  // mehr. c.powerCtl.auto ist zu diesem Zeitpunkt schon false (der Trimm ist
+  // die EINZIGE noch aktive Gegenkopplung), die Anlage lief danach voellig
+  // ungebremst hoch.
+  const targetSince = 22.4; // exakt der Wert aus der Nutzerrueckmeldung
+
+  function runToSinceRunback(target, { reloadAfterTest } = {}) {
+    const { engine, session } = boot();
+    const s = engine.state; const c = engine.ctx; const tut = session.tutorial;
+    step({ engine, session }, Math.round(6 / DT));
+    tut.confirmInspect();
+    step({ engine, session }, Math.round(5 / DT));
+    tut.confirmInspect();
+    step({ engine, session }, Math.round(1160 / DT));
+    for (const p of c.mcp) if (!p.running) p.start();
+    let g = 0;
+    while (tut.index === 3 && g < Math.round(30 / DT)) { step({ engine, session }, 1); g++; }
+    g = 0;
+    while (tut.index === 4 && g < Math.round(20 / DT)) { step({ engine, session }, 1); g++; }
+    let curEngine = engine, curSession = session;
+    if (reloadAfterTest) {
+      const blob = JSON.parse(JSON.stringify(pack(engine, DEF.id, session.run, session)));
+      curEngine = createEngine(rbmk, { seed: DEF.seed });
+      curSession = new Session(curEngine, DEF);
+      curSession.start();
+      const err = apply(blob, curEngine, curSession.run, curSession);
+      assert.equal(err, null, `reload failed: ${err}`);
+    }
+    const cs = curEngine.state; const ctut = curSession.tutorial;
+    let guard = 0;
+    while ((cs.t_sim - (ctut._runbackT0 ?? cs.t_sim)) < target
+      && curSession.phase === PHASE.RUNNING && guard < Math.round(60 / DT)) {
+      step({ engine: curEngine, session: curSession }, 1);
+      guard++;
+    }
+    return { engine: curEngine, session: curSession };
+  }
+
+  const baseline = runToSinceRunback(targetSince, { reloadAfterTest: false });
+  const reloaded = runToSinceRunback(targetSince, { reloadAfterTest: true });
+  assert.ok(reloaded.engine.ctx.arTrim, 'arTrim must survive a save/reload mid-coastdown');
+  assert.equal(reloaded.session.phase, PHASE.RUNNING,
+    'plant must not have already run away/been destroyed by t+22.4s after a reload');
+  const diff = Math.abs(baseline.engine.state.n - reloaded.engine.state.n) * 100;
+  assert.ok(diff < 1,
+    `power after reload should track the un-reloaded run closely, got ${diff.toFixed(2)}pp difference `
+    + `(baseline n=${(baseline.engine.state.n * 100).toFixed(1)}%, reloaded n=${(reloaded.engine.state.n * 100).toFixed(1)}%)`);
 });
