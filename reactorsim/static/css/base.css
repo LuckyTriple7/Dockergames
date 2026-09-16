@@ -134,7 +134,7 @@ button {
      Foto. */
   background:
     linear-gradient(#080b10a8, #080b10e6),
-    url("/static/img/splash.png") center/cover no-repeat,
+    url("/static/img/splash.jpg") center/cover no-repeat,
     var(--rs-bg);
   cursor: pointer;
 }
@@ -193,7 +193,7 @@ button {
   /* Siehe Kommentar bei .rs-splash: fester Pfad statt Inline-Style wegen CSP. */
   background:
     linear-gradient(#080b10b8, #080b10ee),
-    url("/static/img/background.png") center/cover no-repeat,
+    url("/static/img/background.jpg") center/cover no-repeat,
     var(--rs-bg);
   padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
 }

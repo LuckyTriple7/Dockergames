@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.0
+
+- ✨ **Kernzerstörung jetzt im Fließbild sichtbar.** Bisher zeigte nur das
+  Auswertungsfenster ("Anlage verloren") die Zerstörung an -- das Fließbild
+  selbst lief unverändert weiter, als wäre nichts passiert, wer das Fenster
+  einmal wegklickte, sah am Bild keinen Unterschied mehr. Der Kern faerbt
+  sich jetzt bei `state.destroyed` dauerhaft schwarz-verkohlt mit rotem
+  Rand (`data-destroyed` auf der SVG-Wurzel, siehe `update()` in
+  `mimic.js`), unabhängig vom Auswertungsfenster.
+- ⚡ **Startseite/Splash deutlich schneller.** `splash.jpg`/`background.jpg`
+  ersetzen die alten, unkomprimierten `splash.png`/`background.png` (je
+  ~1,85 MB → ~170 KB, wie schon die Reaktorfotos in 0.3.0). Beide werden bei
+  jedem Seitenaufruf gleichzeitig geladen (Übersicht + Splash-Banner) und
+  hielten dabei bislang lange Serverthreads belegt.
+- ⚡ **Waitress-Threadpool 8 → 24 Threads.** Docker-Protokoll zeigte
+  wiederholt "Task queue depth" bis 15 -- der Pool war unter Last (mehrere
+  gleichzeitige Seitenaufrufe, je mit den grossen Hintergrundbildern von
+  oben) erschöpft. Kein CPU-Limit im `docker-compose.yml`, die Arbeit ist
+  I/O-gebunden (Netzwerk, Platte) -- mehr Threads kosten hier praktisch nur
+  Stack-Speicher, keine GIL-Konkurrenz um Rechenzeit.
+
 ## 0.4.1
 
 - 🐛 **Instrumentenübersicht zeigte leere Karten.** RBMK/SWR kennen keine

@@ -68,6 +68,16 @@
 .rs-core {
   fill: color-mix(in oklab, var(--rs-hot) calc(var(--rs-n, 0) * 72%), #142230);
 }
+/* Kernzerstoerung (data-destroyed auf der SVG-Wurzel, siehe update() in
+   mimic.js) -- schwarz-verkohlt statt gluehend, dauerhaft (kein Blinken wie
+   bei [data-alarm="3"]: das hier ist vorbei, keine Meldung, auf die noch
+   reagiert werden koennte). !important gegen die Farbmischung oben, die
+   sonst weiter an --rs-n haengt. */
+svg[data-destroyed="1"] .rs-core {
+  fill: #1a0d0d !important;
+  stroke: var(--rs-alarm);
+  stroke-width: 2;
+}
 /* Nie im Bild selbst sichtbar -- der Bauteilname kommt als Tooltip neben dem
    Mauszeiger (siehe wireHoverTooltips() in mimic.js). Der Textinhalt bleibt
    trotzdem hier im SVG stehen: der Tooltip liest ihn von hier ab, statt ihn

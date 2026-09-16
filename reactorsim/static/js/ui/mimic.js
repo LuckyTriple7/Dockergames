@@ -335,6 +335,12 @@ export function buildPwrMimic(container) {
       setVar(root, '--rs-t-hot', norm(s.T_co - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-t-cold', norm(s.T_ci - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-n', Math.max(0, Math.min(1, s.n)).toFixed(3));
+      // Kernzerstoerung sah man im Fließbild bisher gar nicht -- die Anzeige
+      // "Anlage verloren" lief nur ueber das Auswertungsfenster (main.js
+      // showDestroyed()), das Bild selbst zeigte weiter normale Werte.
+      // data-destroyed auf der Wurzel faerbt .rs-core per CSS dauerhaft um
+      // (mimic.css), unabhaengig davon, ob dieses Fenster gerade offen ist.
+      setAttr(root, 'data-destroyed', s.destroyed ? '1' : '0');
       setVar(root, '--rs-steam-l', norm(s.p_sg, 20, 80).toFixed(3));
       trackRods(s, nowMs);
       // Welches Bauteil eine anstehende Meldung betrifft, steht in der
@@ -541,6 +547,7 @@ export function buildBwrMimic(container) {
       setVar(root, '--rs-t-hot', norm(s.T_co - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-t-cold', norm(s.T_ci - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-n', Math.max(0, Math.min(1, s.n)).toFixed(3));
+      setAttr(root, 'data-destroyed', s.destroyed ? '1' : '0');
       setVar(root, '--rs-steam-l', norm(s.p_dome, 20, 85).toFixed(3));
       trackRods(s, nowMs);
       if (alarms) for (const [key, node] of comps) setAttr(node, 'data-alarm', alarms.get(key) || 0);
@@ -728,6 +735,7 @@ export function buildRbmkMimic(container) {
       setVar(root, '--rs-t-hot', norm(s.T_co - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-t-cold', norm(s.T_ci - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-n', Math.max(0, Math.min(1, s.n)).toFixed(3));
+      setAttr(root, 'data-destroyed', s.destroyed ? '1' : '0');
       setVar(root, '--rs-steam-l', norm(s.p_drum, 20, 85).toFixed(3));
       // Der Graphitblock glüht eigenständig -- er hängt an seiner eigenen,
       // sehr langen Zeitkonstante und nicht an der Leistung von eben.

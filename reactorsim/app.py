@@ -774,8 +774,15 @@ def _serve() -> None:
     das angreifbar. Nebenbei verriet er Framework und exakte Python-Version im
     Server-Header.
     """
+    # 8 Threads liefen mehrfach ueber ("Task queue depth" im Protokoll) --
+    # jede grosse Hintergrundgrafik (siehe /static/img/) haelt ihren Thread
+    # fuer die volle Uebertragungsdauer belegt, mehrere gleichzeitige
+    # Seitenaufrufe reichten dafuer schon aus. Der Container hat kein
+    # CPU-Limit (siehe docker-compose.yml), und die Arbeit hier ist I/O-
+    # gebunden (Netzwerk, Plattenzugriff) -- die GIL bremst wartende Threads
+    # nicht, mehr davon kosten praktisch nur ein paar Kilobyte Stack je Stueck.
     log.info("ReactorSim %s laeuft auf Port %d", APP_VERSION, PORT)
-    serve(app, host='0.0.0.0', port=PORT, threads=8,
+    serve(app, host='0.0.0.0', port=PORT, threads=24,
           ident=None,
           max_request_body_size=persist.MAX_SAVE_BYTES)
 
