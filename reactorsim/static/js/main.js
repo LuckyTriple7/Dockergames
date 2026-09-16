@@ -185,13 +185,32 @@ function initStart() {
     card.addEventListener('click', () => {
       if (!isAvailable(id)) return;
       for (const c of cards) c.setAttribute('aria-pressed', String(c === card));
-      app.reactor = id;
-      go.disabled = false;
-      renderScenarios(id);
       // Erste echte Nutzergeste auf dem Startbildschirm -- hier darf Musik
       // ueberhaupt zum ersten Mal loslaufen (start() ist idempotent).
       app.introMusic.start();
+      openReactorScreen(id, { push: true });
     });
+  }
+
+  $('#rs-reactor-back').addEventListener('click', () => closeReactorScreen({ push: true }));
+
+  // Browser-Zurueck/Vorwaerts auf /reaktor/<typ> <-> / (siehe openReactorScreen()/
+  // closeReactorScreen()) -- pushState dort legt genau diese beiden Zustaende
+  // an, kein tieferer Verlauf. Waehrend einer laufenden Runde (#rs-app
+  // sichtbar) bleibt die URL auf '/' stehen (siehe boot()/toMenu()), ein
+  // Zurueck landet also nie mitten in der Simulation.
+  window.addEventListener('popstate', () => {
+    const m = location.pathname.match(/^\/reaktor\/([a-z0-9]+)$/);
+    if (m && isAvailable(m[1])) openReactorScreen(m[1], { push: false });
+    else if (!$('#rs-reactor').hidden) closeReactorScreen({ push: false });
+  });
+
+  // Direktaufruf/Refresh von /reaktor/<typ> -- siehe reactor_page() in app.py
+  // und window.RS_CFG.initialReactor im Template. Ohne Ueberblendung: das ist
+  // der allererste Bildaufbau, kein Wechsel von einem sichtbaren Bildschirm.
+  if (window.RS_CFG && window.RS_CFG.initialReactor && isAvailable(window.RS_CFG.initialReactor)) {
+    $('#rs-start').hidden = true;
+    openReactorScreen(window.RS_CFG.initialReactor, { push: false, instant: true });
   }
 
   go.addEventListener('click', () => {
@@ -388,6 +407,13 @@ function refreshResumeList() {
   const details = new Map(PLANT_IDS.map((id) => [id, $('#rs-card-resume-' + id)]));
   const summaries = new Map(PLANT_IDS.map((id) => [id, $('#rs-card-resume-' + id + '-summary')]));
   const bodies = new Map(PLANT_IDS.map((id) => [id, $('#rs-card-resume-' + id + '-body')]));
+  // Dieselbe Liste steht ein zweites Mal auf der Reaktor-Detailseite, aber
+  // nur fuer den dort gerade offenen Typ (siehe rs-reactor-resume* im
+  // Template) -- eigene Knopf-Instanz je Zeile statt cloneNode(), sonst
+  // fehlten dem Klon die Klick-Handler.
+  const detailDetails = $('#rs-reactor-resume');
+  const detailSummary = $('#rs-reactor-resume-summary');
+  const detailBody = $('#rs-reactor-resume-body');
   Promise.all([app.scenariosPromise, api.listSaves()]).then(([, r]) => {
     const saves = (r.ok && r.data && r.data.saves) || [];
     // Ein Slot je Reaktortyp ("auto-<typ>"), nicht mehr der eine gemeinsame
@@ -403,9 +429,13 @@ function refreshResumeList() {
       .filter((x) => x.slot && (x.slot.startsWith('auto-') || x.slot.startsWith('manual-')))
       .sort((a, b) => b.saved_at - a.saved_at);
     for (const body of bodies.values()) { if (body) body.replaceChildren(); }
-    for (const sv of autos) {
-      const body = bodies.get(sv.reactor);
-      if (!body) continue; // unbekannter/kuenftiger Typ -- keine Karte dafuer da
+    if (detailBody) detailBody.replaceChildren();
+    // Eigene Funktion statt einer Konstanten je Stand: jede Zeile braucht
+    // einen frischen Loeschen-Knopf (der haelt eigenen "armed"-Zustand, siehe
+    // makeDeleteSaveButton()) und, fuer die Detailseite, einen zweiten
+    // Fortsetzen-Knopf mit demselben Klick-Handler -- ein geteilter Knoten
+    // kann nicht an zwei Stellen im DOM stehen.
+    const buildRow = (sv) => {
       const scn = sv.scenario && app.scenarios.find((x) => x.id === sv.scenario);
       const slotMatch = sv.slot.match(MANUAL_SLOT_RE);
       const labelKey = slotMatch ? 'btn_resume_named_slot'
@@ -428,12 +458,27 @@ function refreshResumeList() {
       // kam. Derselbe Fetch wie in loadScenario() oben, nur ohne Einweisung
       // dazwischen: wer fortsetzt, hat sie schon gesehen.
       btn.addEventListener('click', () => {
+        // Diese Zeile kann auch von der Uebersichtskarte kommen (siehe
+        // #rs-card-resume-<typ> oben), ohne dass die Reaktorseite je offen
+        // war -- boot() zeigt seine Ladeanzeige/Fehlermeldung aber dort
+        // (#rs-start-message sitzt jetzt in #rs-reactor). Ohne diesen Sprung
+        // liefe ein Ladefehler beim Fortsetzen von der Uebersicht aus
+        // unsichtbar hinter #rs-start ab. `instant`, weil hier kein
+        // bewusster "Reaktor ansehen"-Klick vorliegt, den man ausblenden
+        // wollte -- nur ein technischer Bildschirmwechsel vor dem Laden.
+        if (app.reactor !== sv.reactor) openReactorScreen(sv.reactor, { push: true, instant: true });
         if (!sv.scenario) { boot(sv.reactor, null, sv.slot, false, sv); return; }
         const scn2 = app.scenarios.find((x) => x.id === sv.scenario)
           || { id: sv.scenario, reactor: sv.reactor };
         loadScenario(scn2, sv);
       });
-      body.append(el('div.rs-resume-row', null, [btn, makeDeleteSaveButton(sv.slot)]));
+      return el('div.rs-resume-row', null, [btn, makeDeleteSaveButton(sv.slot)]);
+    };
+    for (const sv of autos) {
+      const body = bodies.get(sv.reactor);
+      if (!body) continue; // unbekannter/kuenftiger Typ -- keine Karte dafuer da
+      body.append(buildRow(sv));
+      if (detailBody && sv.reactor === app.reactor) detailBody.append(buildRow(sv));
     }
     for (const id of PLANT_IDS) {
       const box = details.get(id);
@@ -441,6 +486,11 @@ function refreshResumeList() {
       if (box) box.hidden = !n;
       const summary = summaries.get(id);
       if (summary) setText(summary, t('resume_summary', { n }));
+    }
+    if (detailDetails) {
+      const n = detailBody ? detailBody.childElementCount : 0;
+      detailDetails.hidden = !n;
+      if (detailSummary) setText(detailSummary, t('resume_summary', { n }));
     }
   });
 }
@@ -465,6 +515,66 @@ function makeDeleteSaveButton(slot, onDone = refreshResumeList) {
     api.deleteSave(slot).then(() => onDone());
   });
   return btn;
+}
+
+/** Ueberblendung zwischen Uebersicht und Reaktorseite (siehe .rs-fade in
+ *  base.css) -- eine Sekunde Opacity-Crossfade, `instant` ueberspringt sie
+ *  fuer den allerersten Bildaufbau bei Direktaufruf von /reaktor/<typ>. */
+function fadeScreens(hideEl, showEl, instant = false) {
+  if (instant) {
+    hideEl.hidden = true;
+    showEl.hidden = false;
+    return;
+  }
+  showEl.hidden = false;
+  showEl.classList.add('rs-fade');
+  // Erzwingt einen Reflow, bevor die Klasse wieder runtergeht -- sonst sieht
+  // der Browser opacity 0 und opacity 1 als eine einzige Zuweisung ohne
+  // Uebergang dazwischen (die Klasse kam gerade erst dazu, noch kein Layout
+  // seither).
+  void showEl.offsetWidth;
+  hideEl.classList.add('rs-fade');
+  showEl.classList.remove('rs-fade');
+  window.setTimeout(() => {
+    hideEl.hidden = true;
+    hideEl.classList.remove('rs-fade');
+  }, 1000);
+}
+
+/** Kopf + Hintergrund der Reaktorseite fuellen -- Kurztext (Karte) und
+ *  Langtext (Seite) sind zwei verschiedene Uebersetzungsschluessel, siehe
+ *  reactor_<typ>_desc_long in den locales. */
+function fillReactorScreen(id) {
+  const badge = $('#rs-reactor-badge');
+  badge.className = 'rs-card-badge rs-card-badge-' + id;
+  setText(badge, t('reactor_' + id + '_short'));
+  setText($('#rs-reactor-title'), t('reactor_' + id));
+  setText($('#rs-reactor-tag'), t('reactor_' + id + '_tag'));
+  setText($('#rs-reactor-desc'), t('reactor_' + id + '_desc_long'));
+  const screen = $('#rs-reactor');
+  for (const pid of PLANT_IDS) screen.classList.remove('rs-reactor-bg-' + pid);
+  screen.classList.add('rs-reactor-bg-' + id);
+}
+
+/** Klick auf eine Karte der Uebersicht UND Browser-Vor/Zurueck (siehe
+ *  popstate-Listener in initStart()) rufen dieselbe Stelle. `push` legt eine
+ *  neue Verlaufsstation an -- beim Zurueckkommen per popstate steht die URL
+ *  schon richtig, ein zweites pushState wuerde den Verlauf verdoppeln. */
+function openReactorScreen(id, { push = false, instant = false } = {}) {
+  if (!isAvailable(id)) return;
+  app.reactor = id;
+  $('#rs-start-go').disabled = false;
+  fillReactorScreen(id);
+  renderScenarios(id);
+  refreshResumeList();
+  if (push) history.pushState({ reactor: id }, '', '/reaktor/' + id);
+  fadeScreens($('#rs-start'), $('#rs-reactor'), instant);
+}
+
+/** Zurueck-Knopf UND popstate (URL wieder auf '/') rufen dieselbe Stelle. */
+function closeReactorScreen({ push = false } = {}) {
+  if (push) history.pushState({}, '', '/');
+  fadeScreens($('#rs-reactor'), $('#rs-start'));
 }
 
 /** Szenarienkarten fuer den gewaehlten Reaktortyp. */
@@ -1404,7 +1514,16 @@ function toMenu() {
   app.bgMusic.stop();
   app.introMusic.start();
   $('#rs-app').hidden = true;
+  $('#rs-reactor').hidden = true;
   $('#rs-start').hidden = false;
+  // Zurueck aus einer laufenden Runde landet immer auf der Uebersicht, auch
+  // wenn der Aufruf ueber /reaktor/<typ> hereinkam -- die URL soll das
+  // widerspiegeln, sonst zeigt ein spaeteres Neuladen wieder die
+  // Detailseite statt des Menues, das gerade sichtbar ist. `typeof` statt
+  // direktem Zugriff: die Lifecycle-Tests (test-lifecycle.mjs) fuehren
+  // toMenu()/boot() in einem vm.createContext() ohne location/history aus --
+  // ein direkter Zugriff waere dort ein ReferenceError.
+  if (typeof location !== 'undefined' && location.pathname !== '/') history.replaceState({}, '', '/');
   refreshResumeList();
 }
 
@@ -1676,13 +1795,12 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
   if (app.horn) app.horn.silence();
 
   app.session = null;
+  // Kein Bildschirmwechsel hier: boot() laeuft waehrend die Reaktorseite
+  // schon sichtbar ist (Klick auf Fortsetzen/Los/Einweisung-Los dort) -- nur
+  // die Ladeanzeige (unten auf derselben Seite) und am Ende der Sprung zu
+  // #rs-app, siehe dort.
   $('#rs-app').hidden = true;
-  $('#rs-start').hidden = false;
-  let startMessage = $('#rs-start-message');
-  if (!startMessage) {
-    startMessage = el('p', { id: 'rs-start-message', role: 'status' });
-    $('#rs-start').append(startMessage);
-  }
+  const startMessage = $('#rs-start-message');
   setText(startMessage, loadSlot ? t('loading_save') : '');
 
   // Wartet auf die einmal beim Laden gestartete Abfrage (siehe oben) --
@@ -1750,6 +1868,10 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
   }
   setText(startMessage, '');
   $('#rs-start').hidden = true;
+  $('#rs-reactor').hidden = true;
+  // Siehe Kommentar in toMenu(): dieselbe typeof-Absicherung fuer dieselben
+  // sandboxed Tests.
+  if (typeof location !== 'undefined' && location.pathname !== '/') history.replaceState({}, '', '/');
   $('#rs-app').hidden = false;
   // Nur ein Szenario hat eine Einweisung, die es wert ist, erneut
   // aufzurufen -- im freien Spiel gibt es keine, der Knopf bleibt weg.

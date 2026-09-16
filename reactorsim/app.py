@@ -697,13 +697,32 @@ def scores_add():
 # ── Seiten ────────────────────────────────────────────────────────────────────
 
 
-@app.route('/')
-def index():
+def _render_index(initial_reactor=None):
     lang = detect_language(request)
     return render_template('index.html',
                            t=load_translations(lang),
                            lang=lang,
-                           app_version=APP_VERSION)
+                           app_version=APP_VERSION,
+                           initial_reactor=initial_reactor)
+
+
+@app.route('/')
+def index():
+    return _render_index()
+
+
+# Direktaufruf/Refresh von /reaktor/<typ> (siehe fadeScreens()/history.pushState
+# in main.js) muss dieselbe Seite liefern wie '/' -- ausgeliefert wird immer
+# index.html, initial_reactor sagt main.js nur, welchen Bildschirm es beim
+# ersten Zeichnen zeigen soll (kein serverseitiges Routing der Reaktordaten
+# selbst, die kommen wie eh und je aus PLANT_IDS im JS). Ein unbekannter Typ
+# faellt auf die normale Uebersicht zurueck statt auf 404 -- ein alter/
+# falscher Link soll die App zeigen, nicht eine Fehlerseite.
+@app.route('/reaktor/<reactor_id>')
+def reactor_page(reactor_id: str):
+    if reactor_id not in REACTOR_P0:
+        return _render_index()
+    return _render_index(initial_reactor=reactor_id)
 
 
 @app.route('/health')

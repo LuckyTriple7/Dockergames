@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0
+
+- ✨ **Eigene Reaktorseite statt Inline-Auswahl.** Klick auf eine Karte in der
+  Übersicht öffnet jetzt eine eigene Zwischenseite (`#rs-reactor`) mit
+  Überschrift, Beschreibung, Hintergrundfoto des Typs, den gespeicherten
+  Ständen und der Szenarienauswahl -- vorher erschienen Szenarienliste und
+  „Los“-Knopf inline unter den Karten auf der Übersicht selbst. Übergang als
+  1s-Opacity-Crossfade (`fadeScreens()`, `.rs-fade` in `base.css`); die URL
+  wechselt per `history.pushState` auf `/reaktor/<typ>` (Browser-Zurück
+  funktioniert, Direktaufruf/Neuladen liefert dieselbe Seite dank neuer
+  Flask-Route `reactor_page()`). Hintergrundfotos (`pwr.jpg`/`bwr.jpg`/
+  `rbmk.jpg`, `static/img/`) von ~1,85 MB PNG auf ~140 KB JPEG verkleinert.
+  Zwei Lifecycle-Tests (`test-lifecycle.mjs`) prüften bisher `#rs-start` als
+  Stellvertreter für „Simulation nicht gestartet“ -- jetzt direkt `#rs-app`,
+  da die Ladeanzeige nun auf der neuen Seite sitzt. Alle 413 JS- und 196
+  Python-Tests weiterhin grün.
+
 ## 0.2.4
 
 - 🐛 **Speicher-Rückmeldung schob das Bedienfeld kurz nach unten.** Der Text

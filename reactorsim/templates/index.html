@@ -92,6 +92,55 @@
       </div>
     </div>
 
+    <div class="rs-start-foot">
+      <!-- Hauptschalter für den Ton, schon auf dem Startbildschirm. Vorher
+           lagen die Tonschalter ausschließlich im Zahnrad-Dialog INNEN im
+           Leitstand -- wer es still haben wollte, musste erst eine Schicht
+           beginnen. Zustand steckt in prefs.audio.muted und gilt für Musik
+           und Hupe zugleich. -->
+      <button type="button" class="rs-btn rs-btn-ghost rs-btn-icon rs-mute"
+              aria-pressed="false" title="{{ t.btn_mute }}"
+              aria-label="{{ t.btn_mute }}">🔊</button>
+      <span class="rs-start-lang">{{ t.start_language }}:
+        <a href="/set-lang/de"{% if lang == 'de' %} class="rs-lang-on"{% endif %}>DE</a>
+        <a href="/set-lang/en"{% if lang == 'en' %} class="rs-lang-on"{% endif %}>EN</a>
+      </span>
+      <span class="rs-start-note">{{ t.footer_note }}</span>
+      <a class="rs-start-logout" href="/logout">{{ t.btn_logout }}</a>
+      <span class="rs-start-ver">v{{ app_version }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Reaktor-Detailseite ──────────────────────────────────────────────── -->
+<!-- Zwischenstation zwischen Uebersicht (#rs-start) und Leitstand (#rs-app):
+     Klick auf eine Karte oben blendet #rs-start aus und diese Seite ein
+     (crossfade, siehe fadeScreens() in main.js), URL wechselt per
+     history.pushState auf /reaktor/<typ> (Browser-Zurueck fuehrt zurueck zur
+     Uebersicht, siehe popstate-Listener). Hintergrundbild kommt ueber die
+     Klasse rs-reactor-bg-<typ> (fillReactorScreen() setzt sie), nicht per
+     Inline-Style -- CSP verbietet style="..." ohne Nonce, siehe .rs-splash
+     in base.css. -->
+<div class="rs-reactor" id="rs-reactor" hidden>
+  <div class="rs-reactor-inner">
+    <button type="button" class="rs-btn rs-btn-ghost rs-reactor-back" id="rs-reactor-back">← {{ t.btn_back }}</button>
+
+    <div class="rs-reactor-head">
+      <span class="rs-card-badge" id="rs-reactor-badge"></span>
+      <h1 class="rs-reactor-title" id="rs-reactor-title"></h1>
+      <p class="rs-reactor-tag" id="rs-reactor-tag"></p>
+    </div>
+    <p class="rs-reactor-desc" id="rs-reactor-desc"></p>
+
+    <!-- Dieselbe Fortsetzen-Liste wie auf der Uebersicht (siehe
+         rs-card-resume-<typ> dort), hier nur fuer den einen gerade
+         geoeffneten Typ -- refreshResumeList() in main.js fuellt beide
+         Stellen aus demselben Abruf. -->
+    <details class="rs-card-resume" id="rs-reactor-resume" hidden>
+      <summary class="rs-card-resume-summary" id="rs-reactor-resume-summary"></summary>
+      <div class="rs-card-resume-body" id="rs-reactor-resume-body"></div>
+    </details>
+
     <h2 class="rs-start-headline" id="rs-scn-headline" hidden>{{ t.start_scenarios }}</h2>
     <div class="rs-scn-list" id="rs-scn-list"></div>
 
@@ -114,24 +163,6 @@
       <button class="rs-btn" id="rs-start-retry" type="button" hidden>{{ t.btn_retry }}</button>
     </div>
     <p id="rs-start-message" role="status"></p>
-
-    <div class="rs-start-foot">
-      <!-- Hauptschalter für den Ton, schon auf dem Startbildschirm. Vorher
-           lagen die Tonschalter ausschließlich im Zahnrad-Dialog INNEN im
-           Leitstand -- wer es still haben wollte, musste erst eine Schicht
-           beginnen. Zustand steckt in prefs.audio.muted und gilt für Musik
-           und Hupe zugleich. -->
-      <button type="button" class="rs-btn rs-btn-ghost rs-btn-icon rs-mute"
-              aria-pressed="false" title="{{ t.btn_mute }}"
-              aria-label="{{ t.btn_mute }}">🔊</button>
-      <span class="rs-start-lang">{{ t.start_language }}:
-        <a href="/set-lang/de"{% if lang == 'de' %} class="rs-lang-on"{% endif %}>DE</a>
-        <a href="/set-lang/en"{% if lang == 'en' %} class="rs-lang-on"{% endif %}>EN</a>
-      </span>
-      <span class="rs-start-note">{{ t.footer_note }}</span>
-      <a class="rs-start-logout" href="/logout">{{ t.btn_logout }}</a>
-      <span class="rs-start-ver">v{{ app_version }}</span>
-    </div>
   </div>
 </div>
 
@@ -603,7 +634,7 @@
   // die Simulation in einen Web Worker wandert, ist der lexikalische
   // Modul-Zugriff weg, die Eigenschaft am globalen Objekt bleibt.
   window.RS_I18N = {{ t|tojson }};
-  window.RS_CFG  = { lang: {{ lang|tojson }}, version: {{ app_version|tojson }} };
+  window.RS_CFG  = { lang: {{ lang|tojson }}, version: {{ app_version|tojson }}, initialReactor: {{ initial_reactor|tojson }} };
 </script>
 <script type="module" src="/s/{{ app_version }}/js/main.js"></script>
 </body>

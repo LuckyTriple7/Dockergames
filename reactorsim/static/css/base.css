@@ -197,6 +197,24 @@ button {
     var(--rs-bg);
   padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
 }
+
+/* Ueberblendung Uebersicht <-> Reaktorseite (siehe fadeScreens() in main.js):
+   beide Bildschirme liegen deckungsgleich (position:fixed, inset:0), ein
+   echter Crossfade also nur eine gleichzeitige Opacity-Ueberblendung ueber
+   eine Sekunde. [hidden] bleibt zusaetzlich in Kraft (display:none, siehe
+   oben) -- main.js nimmt es erst NACH der Sekunde weg, sonst liefe die
+   Transition gegen display:none ins Leere (kein Uebergang aus/nach
+   "nicht gerendert"). pointer-events:none waehrend des Ausblendens, sonst
+   faengt der verschwindende Bildschirm noch Klicks fuer den neuen ab. */
+.rs-start, .rs-reactor {
+  transition: opacity 1s ease;
+  opacity: 1;
+}
+.rs-start.rs-fade, .rs-reactor.rs-fade {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .rs-start-inner { max-width: 1100px; margin: 0 auto; }
 
 .rs-start-brand { display: flex; align-items: center; gap: 16px; }
@@ -346,6 +364,29 @@ button {
 .rs-start-lang a { margin-left: 6px; text-decoration: none; }
 .rs-lang-on { color: var(--rs-fg); font-weight: 600; text-decoration: underline; }
 .rs-start-ver { margin-left: auto; font-family: var(--rs-font-num); }
+
+/* ── Reaktor-Detailseite ──────────────────────────────────────────────────── */
+
+.rs-reactor {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+  /* Kein Bild hier direkt -- der Typ entscheidet erst zur Laufzeit, welches.
+     fillReactorScreen() (main.js) setzt eine der drei Klassen unten. */
+  background: linear-gradient(#080b10b8, #080b10ee), var(--rs-bg);
+}
+.rs-reactor-bg-pwr  { background: linear-gradient(#080b10b8, #080b10ee), url("/static/img/pwr.jpg")  center/cover no-repeat, var(--rs-bg); }
+.rs-reactor-bg-bwr  { background: linear-gradient(#080b10b8, #080b10ee), url("/static/img/bwr.jpg")  center/cover no-repeat, var(--rs-bg); }
+.rs-reactor-bg-rbmk { background: linear-gradient(#080b10b8, #080b10ee), url("/static/img/rbmk.jpg") center/cover no-repeat, var(--rs-bg); }
+
+.rs-reactor-inner { max-width: 800px; margin: 0 auto; }
+.rs-reactor-back { margin-bottom: 20px; }
+.rs-reactor-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 12px; }
+.rs-reactor-title { font-size: 30px; letter-spacing: .04em; }
+.rs-reactor-tag { flex-basis: 100%; font: 12px/1.3 var(--rs-font-num); color: var(--rs-fg-mute); margin: 0; }
+.rs-reactor-desc { color: var(--rs-fg-dim); max-width: 62ch; margin: 14px 0 24px; }
+.rs-reactor .rs-card-resume { margin-bottom: 20px; }
 
 /* ── Fehlerdialog ─────────────────────────────────────────────────────────── */
 

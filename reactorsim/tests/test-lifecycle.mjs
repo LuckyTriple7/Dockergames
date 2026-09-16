@@ -105,7 +105,10 @@ test('load error stays in menu with persistent feedback and no autosave', async 
   await h.ctx.boot('pwr', null, 'missing');
   assert.equal(h.counters.starts, 0);
   assert.equal(h.counters.autosaves, 0);
-  assert.equal(h.$('#rs-start').hidden, false);
+  // The message now lives on the reactor detail screen (#rs-reactor), not on
+  // the overview (#rs-start) -- the invariant that actually matters here is
+  // that boot() never revealed the running plant.
+  assert.equal(h.$('#rs-app').hidden, true);
   assert.equal(h.$('#rs-start-message').textContent, 'load_failed');
 });
 
@@ -120,7 +123,8 @@ test('changing selection cancels a pending save restore even before another run 
   assert.equal(h.counters.starts, 0);
   assert.equal(h.counters.autosaves, 0);
   assert.equal(h.app.session, null);
-  assert.equal(h.$('#rs-start').hidden, false);
+  // See comment above: boot() never revealed the running plant.
+  assert.equal(h.$('#rs-app').hidden, true);
 });
 
 test('loaded state is applied before panels and first simulation step', async () => {
