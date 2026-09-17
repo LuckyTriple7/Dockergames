@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.11
+
+- 🐛 **Admin-Panel zeigte bei jedem Besucher dieselbe Docker-Gateway-Adresse
+  statt der echten IP.** Waitress entfernt `X-Forwarded-*`-Header seit
+  Version 0.8.10 standardmäßig, bevor die App sie sieht
+  (`clear_untrusted_proxy_headers=True` per Default) -- hinter Reverse
+  Proxy (NPMPlus) und optional Cloudflare Tunnel kam dadurch nur noch die
+  Adresse des letzten Zwischenglieds an. `clear_untrusted_proxy_headers=False`
+  lässt die Header wieder durch. Da sie dadurch erneut fälschbar sind (wer
+  den Port direkt erreicht, kann sie setzen), vertraut die eigene Auswertung
+  (`_client_ip()`) nicht mehr blind einer festen Kettenposition wie zuvor
+  ProxyFix mit `x_for=1`, sondern nimmt die erste öffentliche Adresse aus
+  `X-Forwarded-For`/`CF-Connecting-IP`. Ändert nichts daran, dass der
+  Punktestand ohnehin serverseitig gerechnet wird.
+
 ## 0.5.10
 
 - ✨ **Neue Anzeige "Uhrzeit": das Chernobyl-Tutorial zeigt jetzt die Uhr

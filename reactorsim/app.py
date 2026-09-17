@@ -10,6 +10,7 @@ die Uebersetzungen, /health fuer den Healthcheck und spaeter eine kleine
 JSON-Schnittstelle fuer Spielstaende und Bestenliste.
 """
 
+import ipaddress
 import json
 import logging
 import os
@@ -84,12 +85,35 @@ app = Flask(__name__, template_folder=_BASE + '/templates',
             static_folder=STATIC_PATH)
 app.config['MAX_CONTENT_LENGTH'] = 256 * 1024
 
-# Hinter einem Reverse Proxy traegt jede Anfrage dieselbe Absenderadresse,
-# naemlich die des Proxys. Ohne ProxyFix teilen sich dann alle Spieler
-# dieselbe Ratenbegrenzung. Wer den Port direkt erreicht, kann
-# X-Forwarded-For faelschen -- das ist der Preis und aendert nichts daran,
-# dass der Punktestand ohnehin serverseitig gerechnet wird.
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+# Hinter Reverse Proxy (NPMPlus) und optional Cloudflare Tunnel haengen
+# mehrere Zwischenstationen in der Kette. ProxyFix mit fester x_for-Anzahl
+# vertraut blind einer Position und traf damit je nach Pfad mal den
+# Docker-Gateway, mal einen Cloudflare-Knoten -- _client_ip() unten sucht
+# stattdessen die erste oeffentliche Adresse in der Kette. Wer den Port
+# direkt erreicht, kann die Header faelschen -- das ist der Preis und
+# aendert nichts daran, dass der Punktestand ohnehin serverseitig
+# gerechnet wird.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
+
+_PROXY_IP_HEADERS = ('X-Forwarded-For', 'CF-Connecting-IP')
+
+
+def _client_ip() -> str:
+    """Erste oeffentliche Adresse aus den Proxy-Headern, sonst der TCP-Peer."""
+    for header in _PROXY_IP_HEADERS:
+        raw = request.headers.get(header, '')
+        for part in raw.split(','):
+            candidate = part.strip()
+            if not candidate:
+                continue
+            try:
+                ip = ipaddress.ip_address(candidate)
+            except ValueError:
+                continue
+            if ip.is_global:
+                return candidate
+    return request.remote_addr or '-'
+
 
 STORE = persist.Store(_DATA)
 LIMITS = persist.RateLimit()
@@ -157,7 +181,7 @@ def login():
 
     if request.method == 'POST':
         # Gegen Durchprobieren: zehn Versuche je Minute und Absenderadresse.
-        addr = request.remote_addr or '-'
+        addr = _client_ip()
         raw_user = (request.form.get('user') or '').strip()
         # Spieler melden sich mit ihrer E-Mail-Adresse an (Gross-/
         # Kleinschreibung ist dort ohnehin gleichwertig); der Admin-Name
@@ -473,7 +497,7 @@ def _security_headers(resp):
 def _limited(bucket: str, limit: int, window_s: float) -> bool:
     """Ratenbegrenzung je Konto UND je Absenderadresse."""
     acct = _account_id()
-    addr = request.remote_addr or '-'
+    addr = _client_ip()
     return not (LIMITS.hit(f'{bucket}:p:{acct}', limit, window_s)
                 and LIMITS.hit(f'{bucket}:a:{addr}', limit * 4, window_s))
 
@@ -782,8 +806,15 @@ def _serve() -> None:
     # gebunden (Netzwerk, Plattenzugriff) -- die GIL bremst wartende Threads
     # nicht, mehr davon kosten praktisch nur ein paar Kilobyte Stack je Stueck.
     log.info("ReactorSim %s laeuft auf Port %d", APP_VERSION, PORT)
+    # clear_untrusted_proxy_headers=False: Waitress entfernt X-Forwarded-*
+    # sonst standardmaessig, bevor die App sie sieht -- hinter Reverse
+    # Proxy/Cloudflare Tunnel kam dadurch bei jedem Besucher dieselbe
+    # Docker-Gateway-Adresse an. Die Header sind dadurch wieder faelschbar
+    # wie vor Waitress 0.8.10 -- deshalb wertet _client_ip() oben nicht
+    # blind die letzte Adresse aus, sondern sucht die erste oeffentliche.
     serve(app, host='0.0.0.0', port=PORT, threads=24,
           ident=None,
+          clear_untrusted_proxy_headers=False,
           max_request_body_size=persist.MAX_SAVE_BYTES)
 
 
