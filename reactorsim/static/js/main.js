@@ -4,7 +4,7 @@ import { $, $$, el, setText, setAttr } from './ui/dom.js';
 import { t, clock } from './ui/i18n.js';
 import { Render } from './ui/render.js';
 import { buildPanels } from './ui/panels.js';
-import { setControlsPaused } from './ui/controls.js';
+import { setControlsPaused, setControlsLocked, isControlsLocked } from './ui/controls.js';
 import { Loop } from './loop.js';
 import { createEngine } from './sim/engine.js';
 import { getPlant, isAvailable, PLANT_IDS } from './plants/index.js';
@@ -1536,6 +1536,12 @@ function restart() {
  *  loest sie aus -- dieselbe Stelle, die auch die Server-Nachrechnung
  *  (game/replay.js) fuer 'scram' anspringt. */
 function triggerScram() {
+  // Im Vorfuehrmodus drueckt das Drehbuch AZ-5 selbst, zu einem Zeitpunkt,
+  // an dem der Knopfdruck tatsaechlich die dokumentierte Wirkung hat (siehe
+  // game/chernobylTutorial.js: AUTO_SCRAM_S) -- ein Druck des Spielers
+  // dazwischen wuerde genau den Befund zerstoeren, den die Uebung zeigt.
+  // Hier statt nur am Knopf, weil Strg+Z dieselbe Stelle ruft.
+  if (isControlsLocked()) return;
   const skipping = cancelXenonSkip();
   if (app.horn) app.horn.scram();
   record(app.engine, 'scram', null);
@@ -1796,7 +1802,7 @@ function loadScores(reactor, scenario) {
 // Fehler wie die doppelten Rundinstrumente aus 0.0.30).
 let statusTiles = null;
 
-/** Alle 46 moeglichen Kacheln einmal bauen (verdeckt) -- einmal je
+/** Alle 47 moeglichen Kacheln einmal bauen (verdeckt) -- einmal je
  *  Rundenstart, weil buildPanels() gleich danach seine Wertebindungen aus
  *  genau diesem DOM einsammelt. */
 function buildStatusBar() {
@@ -1978,6 +1984,15 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
     if (state.fault) showFault(state.fault);
     if (state.destroyed && !app.endShown && !app.endPending) deferEnd(showDestroyed);
 
+    // Vorfuehrmodus sichtbar machen: dieselbe Abblendung wie bei angehaltener
+    // Simulation (siehe setSpeed()/panels.css) -- tote Stellteile, die
+    // unerklaert auf Klicks schweigen, sind schlimmer als gesperrte, die es
+    // zeigen. Je Bild statt einmalig, weil die Sperre mit dem letzten Schritt
+    // der Uebung von selbst faellt.
+    const locked = isControlsLocked();
+    document.body.classList.toggle('rs-ctl-locked', locked);
+    $('#rs-scram').disabled = locked;
+
     // Nur im freien Spiel: ein Szenario hat eine feste Dauer und Ereignisse
     // zu festen Zeiten, ein Tagessprung wuerde beides aushebeln. X > 0,05
     // heisst noch spuerbar ueber dem Vollastwert, keine willkuerliche Zahl --
@@ -2001,6 +2016,12 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
   };
 
   initControls();
+  // Vorfuehrmodus (siehe game/chernobylTutorial.js: `locked`) -- als
+  // Praedikat statt als Merker, damit er sich nicht am Rundenende, beim
+  // Abbruch oder nach einem Absturz verhaken kann: gesperrt ist genau,
+  // solange eine laufende Uebung es sagt.
+  setControlsLocked(() => !!app.session?.tutorial?.locked
+    && app.session.phase === PHASE.RUNNING);
   const scramBtn = $('#rs-scram');
   setText(scramBtn, scramLabel());
   setAttr(scramBtn, 'title', t((plant.spec.scram && plant.spec.scram.titleKey) || 'btn_scram'));

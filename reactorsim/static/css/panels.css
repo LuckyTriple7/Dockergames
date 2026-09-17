@@ -303,12 +303,21 @@
    mehr, also greift auch kein Griff mehr durch (siehe controls.js) -- die
    Bedienfelder sehen das, statt tot und unerklärt auf Klicks zu schweigen.
    Nur die Stellteile selbst, nicht die Anzeigefelder drumherum. */
+/* Dieselbe Abblendung im Vorführmodus (siehe main.js/ui/controls.js:
+   setControlsLocked): dort führt eine geführte Übung die Anlage selbst, und
+   ein Stabgriff des Spielers würde den nachgestellten Ablauf verschieben. */
 body.rs-ctl-paused #rs-rod-ctl,
 body.rs-ctl-paused #rs-pumps,
 body.rs-ctl-paused #rs-sec-ctl,
 body.rs-ctl-paused #rs-grid-ctl,
 body.rs-ctl-paused #rs-chem-ctl,
-body.rs-ctl-paused #rs-safety-ctl {
+body.rs-ctl-paused #rs-safety-ctl,
+body.rs-ctl-locked #rs-rod-ctl,
+body.rs-ctl-locked #rs-pumps,
+body.rs-ctl-locked #rs-sec-ctl,
+body.rs-ctl-locked #rs-grid-ctl,
+body.rs-ctl-locked #rs-chem-ctl,
+body.rs-ctl-locked #rs-safety-ctl {
   opacity: .45;
   cursor: not-allowed;
 }

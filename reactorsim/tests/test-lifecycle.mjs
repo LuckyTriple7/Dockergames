@@ -42,6 +42,13 @@ function harness(readSave = async () => ({ ok: false })) {
     setText: (node, text) => { node.textContent = text; }, setAttr() {}, el: () => ({}),
     buildStatusBar() {}, statusTiles: new Map(), applyStatusSelection() {},
     sanitizeStatusKeys: () => [], applyAudioPrefs() {}, initControls() {},
+    // Vorfuehrmodus-Sperre (ui/controls.js): boot() haengt die Abfrage ein,
+    // der Render-Takt blendet danach die Bedienkacheln ab und sperrt den
+    // AZ-5-Knopf. Hier nie gesperrt -- diese Harness prueft den Lebenszyklus,
+    // nicht die Sperre (die haengt an test-rbmk-chernobyl-tutorial.mjs und
+    // test-xenon-skip.mjs).
+    setControlsLocked(fn) { counters.lockedFn = fn; }, isControlsLocked: () => false,
+    document: { body: { classList: { toggle() {} } } },
     scramLabel: () => 'SCRAM', refreshResumeList() {}, playClip() {},
     showFault() {}, AUTOSAVE_INTERVAL_MS: 60000, XENON_SKIP_TARGET: 1, DESTROY_PAUSE_MS: 3000,
     window: { clearInterval() {}, setInterval() { counters.autosaves++; return 1; },

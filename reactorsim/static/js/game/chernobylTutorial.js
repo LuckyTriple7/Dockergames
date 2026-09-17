@@ -21,63 +21,69 @@ const STEPS = ['handover', 'dip', 'recover', 'pumps', 'test', 'window', 'az5'];
 // 'recover' verlangt 1140 s (19 Minuten) SIMULIERTE Zeit -- am 60-fachen
 // Zeitraffer sind das rund 19 reale Sekunden, kein zaehes Warten. Die Zahl
 // ist bewusst die historische Haltezeit vor dem Versuch, nicht abgekuerzt.
+// 'pumps' (Index 3) schaltet die beiden zusaetzlichen Hauptumwaelzpumpen
+// selbst zu (siehe AUTO_PUMPS_S/step() unten) -- seit dem Vorfuehrmodus ist
+// das die letzte ehemals von Hand gefahrene Handlung dieser Uebung.
 // 'test' (Index 4) haelt nur kurz -- der Schritt schliesst, sobald der
 // Auslauf sichtbar begonnen hat. Der schmale AR-Trimm (siehe unten) haelt die
 // Leistung bis zum Druecken von AZ-5 nahe am Sollwert -- wie historisch
 // (Leistung blieb ~36s nahezu flach bei ~200 MWth) faellt die Anlage NICHT
 // von selbst durch, solange AZ-5 nicht gedrueckt wird.
-// 'window' (Index 5) ist reine Anzeige, keine Sperre (siehe conditions()[5]
-// und der bereits vorhandene AZ-5-Knopf, der nie gesperrt war -- siehe
-// 'pressing AZ-5 too early'-Test): der Zerstoerungszeitpunkt haengt an der
-// exakten axialen Schieflage im Moment des Drueckens (_tipReactivity in
-// rbmk.js) und ist fuer einen Menschen ohne Anhaltspunkt praktisch nicht
-// treffbar (siehe Nutzerrueckmeldung: "kein Mensch versteht wann er AZ5
-// druecken muss"). Gemessen (siehe test-rbmk-chernobyl-tutorial.mjs) gibt es
-// technisch ZWEI Fenster (7-22s und 39-43s seit Auslaufbeginn) -- nur das
-// ZWEITE wird hier angezeigt: 'test' schliesst schon um t+8s, also MITTEN im
-// ersten Fenster (der Schritt waere kaum eine Sekunde sichtbar gewesen,
-// siehe Nutzerrueckmeldung), und waehrend des ersten Fensters ist von einem
-// Leistungsanstieg optisch noch nichts zu sehen (der beginnt real erst ab
-// ~t+33s) -- fuer einen Spieler ohne Anhaltspunkt nicht nachvollziehbar. Das
-// zweite Fenster faellt dagegen genau mit dem sichtbaren Leistungsanstieg
-// zusammen (Aufloesung: PRESS_WINDOW/_inPressWindow() unten). 'window' zeigt
-// deshalb "warte" (mit sichtbar steigender Leistung), sobald der Anstieg
-// beginnt weiterhin "warte", und erst in den 39-43s auf "JETZT" -- dann
-// schliesst der Schritt (Uebergang zu 'az5') mit absichtlich sehr kurzer
-// Haltezeit (siehe HOLD unten), damit das kurze Fenster (nur 4s) nicht
-// teilweise mit aufgefressen wird.
+// 'window' (Index 5) ist reine Anzeige und laeuft, bis das Drehbuch AZ-5
+// ausloest (siehe conditions()[5]/AUTO_SCRAM_S) -- rund sechs Sekunden, in
+// denen der Auslauf schon laeuft und die Sekundenanzeige mitzaehlt.
 // 'az5' (Index 6) haelt bewusst 15s, nicht nur 1: der promptkritische
 // Exkurs (siehe _rodReactivity/_tipReactivity in rbmk.js) braucht nach dem
 // Druecken selbst noch mehrere Sekunden, bis die Brennstoffenthalpie-Grenze
-// erreicht wird (gemessen: Scheitel bei t+1,3 s, Kriterium bei t+5-6 s) --
-// eine zu kurze Haltezeit wuerde den Schritt als "geschafft" abschliessen,
-// bevor die Physik ueberhaupt zu Ende gelaufen ist (RunState.checkFail()
-// greift zwar vor tutorial.done, aber nur wenn beide ueberhaupt noch laufen).
+// erreicht wird -- eine zu kurze Haltezeit wuerde den Schritt als
+// "geschafft" abschliessen, bevor die Physik ueberhaupt zu Ende gelaufen ist
+// (RunState.checkFail() greift zwar vor tutorial.done, aber nur wenn beide
+// ueberhaupt noch laufen).
 const HOLD = [5, 2, 1140, 3, 5, 0.2, 15];
 
-// Beide gemessenen Zerstoerungsfenster seit Auslaufbeginn -- ausserhalb
-// zerstoert AZ-5 die Anlage in diesem Modell nicht, siehe
-// test-rbmk-chernobyl-tutorial.mjs ('press AZ-5 too early') und den Sweep,
-// der diese Zahlen erzeugt hat. NICHT beide fuer 'window' verwenden, siehe
-// PRESS_WINDOW unten und den STEPS-Kommentar oben.
-const DESTROY_WINDOWS = [[7, 22], [39, 43]];
+// Sekunden seit Auslaufbeginn, in denen AZ-5 den Kern zerstoert. Sekundenweise
+// nachgemessen ueber den echten prepare()-Pfad:
+//
+//   8-21 s : AZ-5 zerstoert den Kern -- ECHTE Wirkung des Knopfes. Die
+//            Graphitspitzen schieben beim Einfahren aus weit gezogener
+//            Stellung mehr Reaktivitaet ein, als der Absorber gleich danach
+//            wegnimmt (_tipReactivity/_rodReactivity in rbmk.js).
+//   22-38 s: AZ-5 zerstoert den Kern NICHT -- die Enthalpiegrenze ist ein
+//            integrales Kriterium (siehe engine.js): eine kurze, hohe Spitze
+//            (gemessen bis 360 %) ueberlebt der Brennstoff, ein langsamerer
+//            anhaltender Anstieg nicht.
+//   39-43 s: zerstoert wieder -- hier faellt der Knopfdruck in den Scheitel
+//            des Anstiegs, den der positive Dampfblasenkoeffizient ab ~t+33s
+//            von selbst treibt. OHNE jeden Knopfdruck laeuft dieser Anstieg
+//            auf 133 % bei t+38s und bleibt knapp diesseits der Grenze -- aber
+//            nur, weil der schmale AR-Trimm mit seinen 500 pcm gegenhaelt
+//            (ohne ihn versagt der Brennstoff schon bei t+19s). So knapp ist
+//            der Abstand hier: siehe tut_chernobyl_debrief_note, das genau
+//            diesen zweiten Befund ausspricht, und den zugehoerigen Test.
+//   ab 44 s: zerstoert nicht mehr -- der Anstieg ist bereits abgeklungen.
+const DESTROY_WINDOWS = [[8, 21], [39, 43]];
 
-// Das einzige Fenster, das 'window' dem Spieler zeigt (siehe STEPS-
-// Kommentar oben): faellt mit dem sichtbaren Leistungsanstieg zusammen,
-// anders als das erste, fruehere Fenster.
-const PRESS_WINDOW = DESTROY_WINDOWS[1];
+// Das Fenster, in dem AZ-5 tatsaechlich die Ursache ist -- siehe oben.
+const PRESS_WINDOW = DESTROY_WINDOWS[0];
 
-// AZ-5 loest in DIESEM Tutorial automatisch aus, bei Sekunde 41 seit
-// Auslaufbeginn (Mitte von PRESS_WINDOW, Sicherheitsabstand zu beiden
-// Raendern) -- Nutzerbefehl, nachdem zwei Versuche hintereinander das
-// Fenster knapp verfehlten: der Doppelklick-Sicherungsmechanismus des
-// AZ-5-Knopfes (erst "scharf", dann "bestaetigen", siehe main.js
-// initControls()) frisst bei einem nur 4 Sekunden breiten Fenster die
-// Reaktionszeit zwischen den zwei Klicks praktisch komplett auf. Siehe
-// step() unten -- engine.scram() ist idempotent, ein Spieler, der selbst
-// frueher drueckt (z.B. im ersten, hier nicht angezeigten Fenster), wird
-// dadurch nicht behindert.
-const AUTO_SCRAM_S = 41;
+// AZ-5 loest in DIESEM Tutorial automatisch aus, in der Mitte von
+// PRESS_WINDOW (also mit 6,5 s Abstand zu beiden Raendern). Zwei Gruende:
+// der Zeitpunkt haengt an der axialen Schieflage im Augenblick des Drueckens
+// (_tipReactivity in rbmk.js) und ist fuer einen Menschen ohne Anhaltspunkt
+// nicht treffbar (Nutzerrueckmeldung: "kein Mensch versteht wann er AZ5
+// druecken muss"), und der Doppelklick des AZ-5-Knopfes (erst "scharf", dann
+// "bestaetigen", siehe main.js initControls()) frisst die Reaktionszeit
+// ohnehin auf. engine.scram() ist idempotent.
+const AUTO_SCRAM_S = (PRESS_WINDOW[0] + PRESS_WINDOW[1]) / 2;
+
+// Wartezeit im Schritt 'pumps', bevor das Drehbuch die beiden zusaetzlichen
+// Hauptumwaelzpumpen selbst zuschaltet. Kein physikalischer Wert -- nur
+// lang genug, dass der Schritt samt Begruendung lesbar auf dem Schirm steht,
+// bevor er sich selbst erledigt. Nachgemessen ist der Zeitpunkt unkritisch:
+// zwischen sofortigem Zuschalten und 300 s Verzoegerung aendert sich der
+// Zustand beim Auslaufbeginn praktisch nicht (n bleibt 6,3 %, ORM 76,x), der
+// Kern wird in allen Faellen zerstoert.
+const AUTO_PUMPS_S = 3;
 
 // Kuehlmittelauslauf-Naeherung fuer den Turbinenauslaufversuch (siehe
 // events.js rbmk_mcp_runback) -- geskriptet statt einer echten
@@ -112,6 +118,34 @@ const AR_DEADBAND = 0.0005;
 // hart hinterlegt, damit er zum jeweils aktuellen (leicht gedrifteten)
 // Zustand passt.
 const WITHDRAW_ROD = 0.02;
+
+// Uhrzeit der Nacht zum 26.04.1986 -- eine ZWEITE Zeitanzeige neben der
+// Betriebszeit (die weiter stur ab null zaehlt, siehe status_clock). Sie
+// beantwortet die Frage, die die Betriebszeit nicht beantworten kann: an
+// welcher Stelle der historischen Nacht steht der Ablauf gerade?
+//
+// Die Uhr laeuft 1:1 mit t_sim und macht genau EINEN Sprung -- am Ende des
+// Schritts 'dip', also dort, wo der Text ohnehin sagt, dass diese Stunde
+// NICHT nachgestellt wird (Leistungseinbruch um 00:28 plus Erholung, siehe
+// completeStep()). Vor dem Sprung zeigt sie die Schichtuebernahme kurz nach
+// Mitternacht, danach die Stunde vor der Explosion.
+//
+// WALL_DIP_S ist so gewaehlt, dass AZ-5 auf die historische Sekunde faellt:
+// vom Ende des Schritts 'dip' bis zum Knopfdruck vergehen im Drehbuch
+// 1172,5 s (1140 s Haltephase + ~18 s Pumpenhochlauf + AUTO_SCRAM_S), also
+// 01:23:40 - 1172,5 s = 01:04:07,5, aufgerundet auf die volle Sekunde. Die
+// Zerstoerung liegt damit bei ~01:23:44, ebenfalls historisch. Der Test
+// 'die Uhrzeit trifft die historischen Marken' misst das nach, statt es zu
+// behaupten -- aendert sich eine der drei Zeiten oben, faellt er um.
+//
+// Was die Uhr NICHT leisten kann: die beiden zusaetzlichen Pumpen liefen
+// historisch ab 01:07, also MITTEN in der Haltephase. Diese Uebung schaltet
+// sie der Reihe nach erst danach zu (eigener Schritt), und eine Uhr, die
+// nicht rueckwaerts laufen soll, kann diese Umstellung nicht verstecken --
+// der Schritt 'pumps' zeigt deshalb ~01:23:25 und sagt das in seinem Text
+// auch so. Nachgemessen ist der Zeitpunkt der Zuschaltung fuer den Ausgang
+// ohne Bedeutung (siehe AUTO_PUMPS_S).
+const WALL_DIP_S = 1 * 3600 + 4 * 60 + 8; // 01:04:08
 
 export class RbmkChernobylTutorial extends StartupTutorial {
   get prefix() { return 'tut_chernobyl_'; }
@@ -206,6 +240,9 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     // Staeben unaufhaltsam auf null, auch OHNE zusaetzlichen Einbruch.
     c.powerCtl.auto = true;
     c.powerCtl.setpoint = s.n;
+    // Uhr auf die Schichtuebernahme kurz nach Mitternacht -- bis zum Sprung
+    // im Schritt 'dip' laeuft sie deckungsgleich mit der Betriebszeit.
+    this._setWallOffset(0);
   }
 
   // 'handover' (0) UND 'dip' (1) brauchen beide eine explizite Bestaetigung
@@ -219,11 +256,9 @@ export class RbmkChernobylTutorial extends StartupTutorial {
   // Wartezeit -- "0/0.2 s" in der Kopfzeile sah aus wie "gleich fertig",
   // waehrend tatsaechlich noch bis zu ~35s auf PRESS_WINDOW zu warten ist
   // (Nutzerrueckmeldung). 'az5' (6) zeigt aus demselben Grund den Hinweis
-  // statt der 15s-Haltezeit: sonst blieb unklar, ob "Schritt 7" gerade
-  // WEIL man im Fenster ist erschien, oder WEIL man (zu frueh/spaet)
-  // schon gedrueckt hat (beides fuehrt ueber denselben Uebergang, siehe
-  // conditions()[5]) -- der Hinweistext unterscheidet das (window_now vs.
-  // window_after), die Haltezeit-Zahl nicht.
+  // statt der 15s-Haltezeit: waehrend der Physik-Nachlauf laeuft, ist "noch
+  // 12 von 15 s" die unwichtigste Zahl auf dem Schirm -- der Hinweistext
+  // sagt stattdessen, ob AZ-5 schon ausgeloest hat (window_wait/window_now).
   get liveStatusIndices() { return [5, 6]; }
 
   conditions() {
@@ -244,21 +279,21 @@ export class RbmkChernobylTutorial extends StartupTutorial {
       // 2 recover: von Hand zurueck auf ~200 MWth, UND dort halten -- die
       // eigentliche 19-Minuten-Phase.
       intact && pressure && s.n >= 0.055 && s.n <= 0.09,
-      // 3 pumps: die zwei zusaetzlichen Hauptumwaelzpumpen zuschalten.
+      // 3 pumps: die zwei zusaetzlichen Hauptumwaelzpumpen laufen. Das
+      // Drehbuch schaltet sie selbst zu (siehe step()/AUTO_PUMPS_S) -- die
+      // Bedingung bleibt als Pruefung stehen, nicht als Aufgabe.
       intact && pumpsRunning >= 8,
       // 4 test: der Kuehlmittelauslauf laeuft (siehe _triggerCoastdown).
       // Schliesst frueh, sobald der Durchsatz sichtbar faellt -- 'window'
       // (naechster Schritt) zeigt danach den Leistungsanstieg selbst live an.
       intact && s.mcpDmd < 0.9,
-      // 5 window: reine Anzeige (siehe STEPS oben) -- bleibt "warte" stehen,
-      // WAEHREND die Leistung sichtbar steigt, und schliesst erst zu 'az5'
-      // weiter, sobald PRESS_WINDOW erreicht ist (das Druecken dann auch
-      // tatsaechlich zerstoert). ODER sobald tatsaechlich gedrueckt wurde
-      // (auch ausserhalb des Fensters, der Knopf war nie gesperrt) -- sonst
-      // bliebe dieser Schritt fuer einen zu frueh/spaet druenckenden Spieler
-      // fuer immer "nicht geschafft" stehen, obwohl die Runde laengst vorbei
-      // ist.
-      (intact && this._inPressWindow(s)) || s.scram.active,
+      // 5 window: reine Anzeige (siehe STEPS oben) -- laeuft, bis das
+      // Drehbuch AZ-5 ausloest (step()/AUTO_SCRAM_S). Nicht an
+      // _inPressWindow() gebunden, obwohl der Schritt genau darin liegt: der
+      // Beginn des Fensters (t+7s) faellt fast mit dem Ende von 'test'
+      // zusammen, der Schritt waere dann kaum sichtbar -- so bleibt er bis
+      // zum Knopfdruck stehen.
+      s.scram.active,
       // 6 az5: Schnellabschaltung ausgeloest. Ob das noch glimpflich ausgeht
       // oder nicht, entscheidet danach die Physik -- nicht dieser Schritt
       // (siehe RunState.checkFail(), das immer VOR tutorial.done greift).
@@ -271,11 +306,19 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     return this._runbackT0 != null ? s.t_sim - this._runbackT0 : -1;
   }
 
-  /** Innerhalb des angezeigten Fensters (siehe PRESS_WINDOW)? */
+  /** Innerhalb des Fensters, in dem AZ-5 wirklich zerstoert (PRESS_WINDOW)?
+   *  Nur noch Selbstpruefung: das Drehbuch drueckt in dessen Mitte, diese
+   *  Bedingung muss dabei zutreffen (siehe Test). */
   _inPressWindow(s) {
     const t = this._sinceRunback(s);
     return t >= PRESS_WINDOW[0] && t <= PRESS_WINDOW[1];
   }
+
+  /** Vorfuehrmodus: solange die Uebung laeuft, fuehrt das Drehbuch die
+   *  Stellteile, nicht der Spieler (siehe ui/controls.js: setControlsLocked).
+   *  Anzeigen, Trends, Quittieren und Speichern bleiben frei -- gesperrt ist
+   *  nur, was den nachgestellten Ablauf verschieben wuerde. */
+  get locked() { return !this.done; }
 
   completeStep() {
     const finishedId = this.steps[this.index];
@@ -292,7 +335,31 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     // uebernimmt den bereits erholten Zustand direkt (siehe prepare()) und
     // zeigt den Einbruch nur als historische Einordnung im Anleitungstext
     // von 'dip', ohne die Simulation hindurchzufahren.
+    //
+    // Genau hier springt deshalb die Uhr (siehe WALL_DIP_S): die uebersprungene
+    // Stunde ist der Inhalt dieses Schritts, nicht ein Rechenfehler.
+    if (finishedId === 'dip') this._setWallOffset(WALL_DIP_S - this.engine.state.t_sim);
+    // Uhrzeit des Abschlusses mitschreiben -- die Schrittliste im Debrief
+    // (siehe ui/tutorial.js: renderTutorialResult) zeigt sonst nur die
+    // Betriebszeit, und gerade dort ist "AZ-5 · 01:23:40" der Punkt. Der
+    // Sprung oben steht bewusst VOR dieser Zeile: der Schritt 'dip' ist der,
+    // in dem die Stunde vergeht, also endet er auch nach ihr.
+    const entry = this.completed[this.completed.length - 1];
+    if (entry) entry.w = this._wallSeconds();
     if (finishedId === 'pumps') this._triggerCoastdown();
+  }
+
+  /** Versatz zwischen Betriebszeit und Uhrzeit -- auch fuer die Statuskachel
+   *  'wallclock' im Anlagenzustand hinterlegt (siehe ui/panels.js), die den
+   *  Tutorialzustand sonst nicht sehen kann. */
+  _setWallOffset(offset) {
+    this._wallOffset = offset;
+    this.engine.ctx.wallClock = offset;
+  }
+
+  /** Sekunden seit Mitternacht des 26.04.1986 (siehe WALL_DIP_S). */
+  _wallSeconds() {
+    return this.engine.state.t_sim + (this._wallOffset || 0);
   }
 
   _triggerCoastdown() {
@@ -335,13 +402,19 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     }
   }
 
-  /** Schmale automatische Regelgruppe: siehe AR_CAP_PCM oben. */
+  /** Drehbuch (Pumpen, AZ-5) plus schmale Regelgruppe: siehe AR_CAP_PCM oben. */
   step(dt) {
     super.step(dt);
     const { state: s, ctx: c } = this.engine;
+    // Die beiden zusaetzlichen Hauptumwaelzpumpen (siehe AUTO_PUMPS_S) --
+    // start() ist idempotent genug (siehe components.js), aber die Pruefung
+    // spart den Aufruf in jedem Takt. Eine durch ein Ereignis ausgefallene
+    // Pumpe (ctx.pumpsStuck) bliebe stehen; dieses Szenario kennt keine.
+    if (this.steps[this.index] === 'pumps' && this.elapsed >= AUTO_PUMPS_S) {
+      for (const p of c.mcp) if (!p.running) p.start();
+    }
     // AZ-5 automatisch bei AUTO_SCRAM_S (siehe dort) -- idempotent (siehe
-    // engine.scram()), tut nichts, wenn der Spieler selbst schon gedrueckt
-    // hat.
+    // engine.scram()).
     if (!s.scram.active && this._sinceRunback(s) >= AUTO_SCRAM_S) {
       this.engine.scram('az5');
     }
@@ -356,15 +429,14 @@ export class RbmkChernobylTutorial extends StartupTutorial {
   }
 
   hint() {
-    const { state: s, ctx: c } = this.engine;
+    const s = this.engine.state;
     const id = this.steps[this.index];
     if (id === 'handover') return 'tut_chernobyl_hint_handover';
     if (id === 'dip') return 'tut_chernobyl_hint_dip';
-    if (id === 'recover') {
-      if (s.n < 0.055) return 'tut_hint_pull';
-      if (s.n > 0.09) return 'tut_hint_insert';
-      return 'tut_chernobyl_hint_recover_hold';
-    }
+    // Kein 'tut_hint_pull'/'tut_hint_insert' mehr wie in den Anfahrtutorials:
+    // die Staebe sind im Vorfuehrmodus gesperrt, ein Hinweis "jetzt ziehen"
+    // waere eine Aufforderung zu etwas, das der Spieler gar nicht kann.
+    if (id === 'recover') return 'tut_chernobyl_hint_recover_hold';
     if (id === 'pumps') return 'tut_chernobyl_hint_pumps';
     if (id === 'test') return 'tut_chernobyl_hint_test';
     if (id === 'window' || id === 'az5') return this._windowHint(s);
@@ -372,36 +444,48 @@ export class RbmkChernobylTutorial extends StartupTutorial {
   }
 
   /**
-   * Drei Zustaende relativ zu PRESS_WINDOW, geteilt zwischen 'window' (zeigt
-   * sie an) und 'az5' (der Spieler kann dort immer noch zu spaet sein).
+   * Geteilt zwischen 'window' (wartet auf den Knopfdruck) und 'az5' (danach).
+   * Seit das Drehbuch selbst drueckt, gibt es kein "zu spaet" mehr -- der
+   * Zustand haengt allein daran, ob AZ-5 schon ausgeloest hat.
    */
   _windowHint(s) {
-    const t = this._sinceRunback(s);
-    if (t < 0) return 'tut_hint_wait';
-    if (t < PRESS_WINDOW[0]) return 'tut_chernobyl_hint_window_wait';
-    if (t <= PRESS_WINDOW[1]) return 'tut_chernobyl_hint_window_now';
-    return 'tut_chernobyl_hint_window_after';
+    if (this._sinceRunback(s) < 0) return 'tut_hint_wait';
+    return s.scram.active ? 'tut_chernobyl_hint_window_now'
+      : 'tut_chernobyl_hint_window_wait';
   }
 
   snapshot() {
     return { ...super.snapshot(), reactor: 'rbmk',
-      runbackT0: Number.isFinite(this._runbackT0) ? this._runbackT0 : null };
+      runbackT0: Number.isFinite(this._runbackT0) ? this._runbackT0 : null,
+      // Ohne den Versatz liefe die Uhr nach dem Laden wieder ab Mitternacht,
+      // waehrend die Schrittliste bereits 01:23 zeigt (die Uhrzeiten der
+      // erledigten Schritte stecken in completed[].w und kaemen mit).
+      wallOffset: this._wallOffset || 0 };
   }
 
   restore(data) {
     super.restore(data);
     this._runbackT0 = Number.isFinite(data?.runbackT0) ? data.runbackT0 : null;
+    // Nur uebernehmen, wenn der Schritt mit dem Sprung laut wiederhergestelltem
+    // Stand ueberhaupt schon vorbei ist -- super.restore() verwirft
+    // widerspruechliche Staende stillschweigend, und eine Uhr, die dann auf
+    // 01:23 stuende, waere die einzige Anzeige, die davon nichts mitbekommt.
+    const jumped = this.index > this.steps.indexOf('dip');
+    this._setWallOffset(jumped && Number.isFinite(data?.wallOffset) ? data.wallOffset : 0);
   }
 
   view() {
     const view = super.view();
     const { state: s, ctx: c } = this.engine;
-    // Sekunden seit Auslaufbeginn -- treibt sowohl den 'window'-Schritt
-    // (siehe conditions()[5]/_inDestroyWindow) als auch die Anzeige fuer den
-    // Spieler, damit sich die Zerstoerungsfenster (7-22s, 39-43s) tatsaechlich
-    // treffen lassen, statt sie im Kopf mitzuzaehlen.
+    // Sekunden seit Auslaufbeginn -- treibt den automatischen Knopfdruck
+    // (siehe step()/AUTO_SCRAM_S) und die Anzeige fuer den Spieler, damit der
+    // Zeitpunkt des Druckens gegen das gemessene Wirkfenster (PRESS_WINDOW,
+    // 8-21s) nachvollziehbar bleibt, statt eine Behauptung zu sein.
     const sinceRunback = Number.isFinite(this._runbackT0) ? Math.max(0, s.t_sim - this._runbackT0) : null;
-    return { ...view, values: { ...view.values, pressure: s.p_drum,
+    // `wall` steht bewusst NEBEN values, nicht darin: values geht als
+    // Zahlenbeutel durch num() in die *_values-Textbausteine (siehe
+    // ui/tutorial.js), eine Uhrzeit waere dort "5.020,0".
+    return { ...view, wall: this._wallSeconds(), values: { ...view.values, pressure: s.p_drum,
       level: s.L_drum * 100, orm: this.engine.derive().orm,
       pumps: c.mcp.filter(p => p.running && p.speed >= 0.9).length,
       mcpFlow: s.mcpDmd * 100, sinceRunback: sinceRunback ?? 0 } };

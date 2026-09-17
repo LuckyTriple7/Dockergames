@@ -25,6 +25,24 @@ let paused = false;
 export function setControlsPaused(v) { paused = v; }
 export function isControlsPaused() { return paused; }
 
+// Vorfuehrmodus: eine gefuehrte Uebung, die die Anlage SELBST bedient (siehe
+// game/chernobylTutorial.js -- dort faehrt ein Drehbuch Pumpen, Staebe und
+// AZ-5), darf dem Spieler nicht gleichzeitig dieselben Stellteile in die Hand
+// geben. Ein einziger Stabgriff verschiebt dort den Zustand so weit, dass der
+// nachgestellte Ablauf nicht mehr aufgeht.
+//
+// Als Praedikat, nicht als Merker: der Sperrgrund haengt am Sitzungszustand
+// (laeuft die Uebung noch? ist sie fertig?), und ein Merker muesste an jeder
+// Stelle nachgezogen werden, an der sich der aendert -- Rundenende, Abbruch,
+// Absturz, Neustart. Ausgewertet wird er im Augenblick des Klicks, also
+// selten genug, dass die Kosten keine Rolle spielen.
+let lockedFn = null;
+export function setControlsLocked(fn) { lockedFn = fn || null; }
+export function isControlsLocked() { return !!(lockedFn && lockedFn()); }
+
+/** Greift ein Bediengriff gerade durch? Angehalten ODER Vorfuehrmodus. */
+export function controlsBlocked() { return paused || isControlsLocked(); }
+
 /**
  * Umschalter Automatik / Hand.
  *
@@ -40,7 +58,7 @@ export function autoSwitch(labelKey, initial, onChange) {
   const mk = (key, target) => {
     const b = el('button.rs-seg', { type: 'button' }, [t(key)]);
     b.addEventListener('click', () => {
-      if (paused || value === target) return;
+      if (controlsBlocked() || value === target) return;
       click();
       value = target;
       paint();
@@ -100,7 +118,7 @@ export function station({ labelKey, min = 0, max = 100, step = 1, digits = 0,
   const mk = (key, target) => {
     const b = el('button.rs-seg', { type: 'button' }, [t(key)]);
     b.addEventListener('click', () => {
-      if (paused || auto === target) return;
+      if (controlsBlocked() || auto === target) return;
       click();
       // Stoßfreie Übernahme: erst den Ist-Wert als Sollwert setzen, dann
       // umschalten. Andersherum regelt die Station eine Sekunde lang gegen
@@ -125,7 +143,7 @@ export function station({ labelKey, min = 0, max = 100, step = 1, digits = 0,
   };
 
   input.addEventListener('input', () => {
-    if (paused) { input.value = String(Math.round(read() / step) * step); return; }
+    if (controlsBlocked()) { input.value = String(Math.round(read() / step) * step); return; }
     paint(input.value);
     if (!auto) write(Number(input.value));
   });
@@ -166,7 +184,7 @@ export function slider({ labelKey, min, max, step, value, digits = 0, unitKey, o
   const paint = (v) => setText(read, num(Number(v), digits) + (unitKey ? ' ' + t(unitKey) : ''));
   let last = value;
   input.addEventListener('input', () => {
-    if (paused) { input.value = String(last); return; }
+    if (controlsBlocked()) { input.value = String(last); return; }
     last = input.value;
     paint(input.value);
     onInput(Number(input.value));
@@ -204,7 +222,7 @@ export function buttonGroup(labelKey, options, initial, onChange) {
   };
   for (const b of btns) {
     b.addEventListener('click', () => {
-      if (paused) return;
+      if (controlsBlocked()) return;
       click();
       value = b.dataset.v; paint(); onChange(value);
     });
@@ -226,7 +244,7 @@ export function jogButtons(labelKey, onJog) {
     let timer = 0;
     const start = (ev) => {
       ev.preventDefault();
-      if (paused) return;
+      if (controlsBlocked()) return;
       // Capture: sonst bekommt der Knopf kein pointerup, wenn der Zeiger beim
       // Loslassen schon daneben steht -- der Timer liefe sonst unbemerkt
       // weiter und führe, egal was der nächste Klick will.
@@ -235,7 +253,7 @@ export function jogButtons(labelKey, onJog) {
       // Wiederholung: der Stabantrieb faehrt, solange die Taste gehalten wird.
       // Pausiert waehrend des Haltens jemand die Simulation (Leertaste), soll
       // die Fahrt sofort stehen bleiben statt bis zum Loslassen weiterzulaufen.
-      timer = window.setInterval(() => { if (paused) return; onJog(dir); }, 100);
+      timer = window.setInterval(() => { if (controlsBlocked()) return; onJog(dir); }, 100);
       b.classList.add('rs-on');
     };
     const stop = () => {
@@ -254,7 +272,7 @@ export function jogButtons(labelKey, onJog) {
     b.addEventListener('keydown', (ev) => {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
       ev.preventDefault();
-      if (paused) return;
+      if (controlsBlocked()) return;
       onJog(dir);
       b.classList.add('rs-on');
     });
@@ -284,7 +302,7 @@ export function pumpRow(count, onToggle) {
   for (let i = 0; i < count; i++) {
     const b = el('button.rs-pump', { type: 'button', 'data-state': 'run' },
       [t('ctl_pump', { n: i + 1 })]);
-    b.addEventListener('click', () => { if (paused) return; click(); onToggle(i); });
+    b.addEventListener('click', () => { if (controlsBlocked()) return; click(); onToggle(i); });
     btns.push(b);
   }
   return {

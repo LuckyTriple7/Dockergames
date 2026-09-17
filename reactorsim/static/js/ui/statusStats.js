@@ -38,6 +38,9 @@ export const STATUS_STATS = [
   { key: 'period', labelKey: 'status_period' },
   { key: 'freq', labelKey: 'val_frequency' },
   { key: 'clock', labelKey: 'status_clock' },
+  // Tageszeit des nachgestellten Ablaufs -- nur in Szenarien belegt, die eine
+  // echte Uhr haben (siehe panels.js: ctx.wallClock), sonst "—".
+  { key: 'wallclock', labelKey: 'status_wallclock' },
   { key: 'subcool', labelKey: 'val_subcooling' },
   { key: 'dnbr', labelKey: 'status_margin' },
   { key: 'p_sg', labelKey: 'val_sg_press' },

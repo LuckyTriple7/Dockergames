@@ -85,13 +85,21 @@ Offen:
 ### Chernobyl-Tutorial „Block 4 – Die Nacht des 26. April“
 
 Umgesetzt: geführter RBMK-Nachbau der Nacht vom 26. April 1986 ab
-Schichtübergabe bis AZ-5, sechs Schritte (`handover`, `dip`, `recover`,
-`pumps`, `test`, `az5`), eigene Klasse `RbmkChernobylTutorial`
+Schichtübergabe bis AZ-5, sieben Schritte (`handover`, `dip`, `recover`,
+`pumps`, `test`, `window`, `az5`), eigene Klasse `RbmkChernobylTutorial`
 (`game/chernobylTutorial.js`). Machbarkeit vorab geprüft (Node-Experimente,
 siehe CHANGELOG): AZ-5 kombiniert mit geskriptetem Kühlmittelauslauf
 (`ev_rbmk_mcp_runback`) führt aus dem validierten Ausgangszustand (ORM≈28,
 zweistufige Vorgeschichte 100%→50%→9h halten→7%) zuverlässig zu echter
 Brennstoffzerstörung, mit der bestehenden Physik, ohne Kalibrierungsänderung.
+
+Seit 0.5.9 ist die Übung ein **Vorführmodus**: Ab der Schichtübergabe fährt
+das Drehbuch die Anlage selbst (Pumpen bei `AUTO_PUMPS_S`, AZ-5 bei
+`AUTO_SCRAM_S`), gesperrt sind Stäbe, Leistungsregler, Pumpen und AZ-5
+(`tutorial.locked` → `ui/controls.js: setControlsLocked`). Grund: Der Ablauf
+ließ sich nicht sauber nachspielen, es gab aber gar keine Sperre -- jeder
+Klick konnte ihn verschieben, während 5 der 7 Schritte ohnehin automatisch
+liefen.
 
 Offen/bekannte Einschränkungen:
 
@@ -99,13 +107,40 @@ Offen/bekannte Einschränkungen:
   einbruch reißt in diesem vereinfachten Modell mehr Xenon auf, als sich mit
   den verbleibenden Steuerstäben je zurückholen lässt (auch voll gezogen) --
   im Text offen benannt, nicht stillschweigend vereinfacht.
-- **Enges Zeitfenster für AZ-5.** Die Kombination aus niedriger ORM und
-  Durchsatzverlust wird erst nach ca. 27s Auslaufzeit gefährlich; davor
-  bleibt AZ-5 folgenlos. Zusätzlich: laesst man den Auslauf ohne AZ-5 zu
-  lange laufen (>~27s), destabilisiert die Anlage auch OHNE AZ-5 von selbst
-  (derselbe positive Blasenkoeffizient) -- die Trennung "AZ-5 allein war die
-  Ursache" ist dadurch physikalisch nicht ganz sauber, aber historisch
-  vertretbar (siehe Anleitungstext).
+- **AZ-5 ist die Ursache, aber nicht die einzige scharfe.** Nachgemessen
+  über den echten `prepare()`-Pfad: Ein Druck zwischen 8 und 21s nach
+  Auslaufbeginn zerstört den Kern (dort drückt das Drehbuch, bei 14,5s),
+  zwischen 22 und 38s übersteht er ihn (die Enthalpiegrenze ist integral --
+  eine kurze Spitze bis 360 % reicht nicht), zwischen 39 und 43s zerstört er
+  wieder. Ohne jeden Knopfdruck läuft die Leistung allein durch den positiven
+  Blasenkoeffizienten auf 133 % bei 38s und bleibt knapp diesseits der Grenze
+  -- aber nur, weil der schmale AR-Trimm mit 500 pcm gegenhält (ohne ihn:
+  Zerstörung bei 19s). Diese Randlage ist im Debrief ausgesprochen
+  (`tut_chernobyl_debrief_note`) und durch Tests festgehalten, statt sie
+  wegzurunden. Bis 0.5.8 drückte das Tutorial bei 41s und schrieb die
+  ohnehin laufende Selbstzerstörung dem Knopf zu.
+- **ORM-Anzeige passt nicht zur Historie.** Während `recover` ~77, in der
+  Endphase 0,0 Stabäquivalente; dokumentiert sind für diese Nacht 6-8. Der
+  Zustand ist über die Physik validiert, die Zahl selbst also eine Skalen-,
+  keine Zustandsfrage.
+- **Historische Zeitverhältnisse gerafft.** Zwischen Pumpenzuschaltung
+  (01:07) und Testbeginn (01:23:04) liegen real 16 Minuten, hier ~3 s; die
+  historischen 36 s zwischen Testbeginn und AZ-5 sind nicht darstellbar (das
+  Wirkfenster endet bei 21 s). Nicht nachgebildet: Speisewasserschwall um
+  01:19, blockierte Turbinenschnellabschaltung, ORM-Ausdruck um 01:22:30.
+- **Uhrzeit-Anzeige: ein Sprung, eine bewusst sichtbare Abweichung** (seit
+  0.5.10, `WALL_DIP_S` in `chernobylTutorial.js`, Anzeige über `view().wall`,
+  `ctx.wallClock` und die Statuskachel `wallclock`). Die Uhr läuft 1:1 mit
+  `t_sim` und springt einmalig am Ende von `dip` auf 01:04:08 -- genau über
+  die Stunde, die die Übung ohnehin nicht nachstellt. Danach treffen
+  Haltephasenende (~01:23:07, historisch Testbeginn 01:23:04), AZ-5
+  (01:23:40) und Zerstörung (~01:23:45) die dokumentierten Zeiten; ein Test
+  misst das nach. Was eine monotone Uhr bei dieser Schrittfolge nicht kann:
+  die Pumpenzuschaltung auf 01:07 legen -- sie lief historisch mitten in der
+  Haltephase, hier folgt sie ihr als eigener Schritt und zeigt ~01:23:25.
+  Im Schritttext offen benannt; nachgemessen ist der Zeitpunkt für den
+  Ausgang ohne Bedeutung. Eine zweite Anzeige "Betriebszeit" bleibt
+  unverändert daneben stehen.
 - **Turbinenauslauf geskriptet**, keine echte Rotordrehzahl-Zustandsgröße
   (bewusste Vereinfachung, siehe frühere Analyse).
 - Keine Zeitlupe für die letzten Sekunden vor der Exkursion (Zeitraffer bis

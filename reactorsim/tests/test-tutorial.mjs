@@ -287,29 +287,43 @@ test("chernobyl tutorial's window/az5 steps show the live hint, not a misleading
 
   // 'window' holds internally for only HOLD[5]=0.2s (a debounce for the
   // fast transition to 'az5', see chernobylTutorial.js), not a real wait --
-  // showing "0/0.2s" while the real wait is up to ~35s looked like "almost
-  // done" (Nutzerrueckmeldung). Force onto 'window' well before PRESS_WINDOW
-  // (39-43s since runback) and check the compact status shows the live wait
-  // hint instead of a "0/0.2" countdown.
+  // showing "0/0.2s" while the script is still counting down to AZ-5 looked
+  // like "almost done" (Nutzerrueckmeldung). Force onto 'window' and check
+  // the compact status shows the live hint instead of a "0/0.2" countdown.
   tut.index = 5;
   tut._runbackT0 = engine.state.t_sim;
   update();
   assert.doesNotMatch(status.textContent, /0[.,]?\/0[.,]2/);
-  assert.match(status.textContent, /warten/i);
+  assert.match(status.textContent, /beobachten/i);
 
-  // Move sinceRunback into PRESS_WINDOW -- status must switch to "about to
-  // trigger" (AZ-5 fires automatically in this tutorial, see AUTO_SCRAM_S
-  // in chernobylTutorial.js -- the double-click SCRAM confirmation ate the
-  // whole 4s window's worth of human reaction time, see user feedback).
-  engine.state.t_sim += 40;
+  // Nach dem (vom Drehbuch ausgeloesten) AZ-5 haengt der Hinweis allein am
+  // Scram-Zustand, nicht mehr an einem Zeitfenster -- es gibt seither kein
+  // "zu spaet" mehr, das der Spieler verpassen koennte.
+  engine.scram('az5');
   update();
-  assert.match(status.textContent, /von selbst/i);
+  assert.match(status.textContent, /ausgelöst/i);
+  assert.doesNotMatch(status.textContent, /0[.,]?\/0[.,]2/);
 
-  // Past both windows -- status must say the window has passed, not repeat
-  // "press now" forever.
-  engine.state.t_sim += 10;
+  // Die Uhr der Nacht haengt an der Wertezeile, nicht in den *_values-Texten
+  // der einzelnen Schritte (siehe ui/tutorial.js) -- sie darf deshalb in
+  // JEDEM Schritt erscheinen, ohne dass einer davon sie nennen muss.
+  tut._setWallOffset(3848 - engine.state.t_sim); // 01:04:08
   update();
-  assert.match(status.textContent, /vorbei/i);
+  assert.match(status.textContent, /Uhrzeit 01:04:08/);
+
+  // Schlussbefund im Debrief: Dass der Kern auch ohne AZ-5 am Durchgehen war,
+  // steht in keinem einzelnen Schritt und nur dieses Tutorial hat den
+  // Schluessel dafuer -- die drei Anfahrtutorials duerfen davon nichts sehen.
+  // Dasselbe gilt fuer die Uhrzeiten der erledigten Schritte (entry.w).
+  const chernobylResult = new Node();
+  renderTutorialResult(chernobylResult, { tutorial: { prefix: 'tut_chernobyl_',
+    steps: tut.steps, completed: [{ id: 'handover', t: 5, w: 5 }, { id: 'az5', t: 1183, w: 5020 }] } });
+  assert.match(text(chernobylResult), /Schlussbefund/);
+  assert.match(text(chernobylResult), /Erreicht 00:19:43 · Uhrzeit 01:23:40/);
+  const startupResult = new Node();
+  renderTutorialResult(startupResult, { tutorial: { completed: [{ id: 'inspect', t: 5 }] } });
+  assert.doesNotMatch(text(startupResult), /Schlussbefund/);
+  assert.doesNotMatch(text(startupResult), /Uhrzeit/);
 });
 
 for (const reactor of ['pwr', 'rbmk', 'bwr']) {

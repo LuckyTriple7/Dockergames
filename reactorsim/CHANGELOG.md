@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.5.10
+
+- ✨ **Neue Anzeige "Uhrzeit": das Chernobyl-Tutorial zeigt jetzt die Uhr
+  jener Nacht.** Bisher gab es nur die Betriebszeit, die stur ab null läuft
+  -- AZ-5 fiel dort auf 00:19:43, während der Text von 01:23:40 sprach
+  (Nutzerrückfrage). Die neue Anzeige läuft mit der Betriebszeit mit und
+  macht genau einen Sprung: am Ende des Schritts "Historische Einordnung",
+  also dort, wo die Übung ohnehin offenlegt, dass sie den Leistungseinbruch
+  um 00:28 samt Erholung nicht nachstellt. Danach stimmt sie auf die
+  Sekunde -- Haltephase ab 01:04:08, AZ-5 um 01:23:40, Zerstörung um
+  01:23:45. Sie steht neben der Schrittzeile, im Schritt-Fenster und in der
+  Schrittliste des Debriefs, und ist zusätzlich als Statuskachel wählbar
+  (in anderen Szenarien bleibt sie auf "—"). Einzige offen benannte
+  Abweichung: Die beiden zusätzlichen Pumpen liefen historisch ab 01:07,
+  also mitten in der Haltephase -- die Übung geht ihre Schritte der Reihe
+  nach durch und schaltet sie erst an deren Ende zu, die Uhr zeigt dort
+  deshalb 01:23. Ein Test misst die drei historischen Marken nach.
+
+## 0.5.9
+
+- ✨ **Chernobyl-Tutorial läuft jetzt als Vorführung ab -- und AZ-5 drückt
+  endlich im richtigen Fenster.** Der Ablauf ließ sich nicht sauber
+  nachspielen: Es gab keine einzige Sperre, jeder Klick auf irgendein
+  Stellteil konnte den nachgestellten Ablauf verschieben, und die Übung war
+  ohnehin schon zu weiten Teilen automatisch (5 von 7 Schritten). Ab der
+  Schichtübergabe fährt das Drehbuch die Anlage jetzt komplett selbst: Es
+  schaltet die beiden zusätzlichen Hauptumwälzpumpen zu (der Zeitpunkt ist
+  nachgemessen unkritisch -- zwischen sofort und 5 Minuten Verzögerung
+  ändert sich der Zustand beim Auslaufbeginn praktisch nicht) und löst AZ-5
+  aus. Gesperrt sind dabei nur die kritischen Stellteile: Stäbe,
+  Leistungsregler, Pumpen und AZ-5 (Knopf wie Strg+Z) -- Trends, Panels,
+  Quittieren und Speichern bleiben bedienbar. Die gesperrten Kacheln werden
+  sichtbar abgeblendet, wie schon bei der Pause.
+- 🐛 **Der Knopfdruck war gar nicht die Ursache der Zerstörung -- die
+  gezeigten Zeitfenster stimmten nicht.** AZ-5 löste bei Sekunde 41 aus, im
+  vermeintlich "zweiten Zerstörungsfenster" (39-43s). Nachgemessen war der
+  Kern zu diesem Zeitpunkt aber ohnehin am Durchgehen: Der positive
+  Dampfblasenkoeffizient treibt die Leistung ab ~33s von selbst hoch. Das
+  Tutorial verkaufte damit eine Selbstzerstörung als Folge des Knopfdrucks
+  -- und der Hinweistext nannte dem Spieler dazu Fenstergrenzen, die bei
+  einer Neumessung über den echten `prepare()`-Pfad nicht reproduzierbar
+  waren. AZ-5 fällt jetzt auf Sekunde 14,5, mitten in das nachgemessene
+  Fenster (8-21s), in dem der Knopf tatsächlich die Ursache ist.
+- ✨ **Neuer Schlussbefund im Debrief.** Der zweite Messbefund geht dabei
+  nicht verloren: Das Ergebnis benennt jetzt ausdrücklich, dass der Ausbruch
+  schon vor dem Knopfdruck läuft (ohne AZ-5: 133 % bei 38s, gehalten allein
+  vom schmalen AR-Trimm mit seinen 500 pcm -- ohne diese Autorität versagt
+  der Brennstoff schon bei 19s). Beide Zahlen hängen an eigenen Tests, damit
+  der Text nicht stillschweigend veraltet.
+
 ## 0.5.8
 
 - ✨ **Chernobyl-Tutorial: AZ-5 löst jetzt automatisch aus.** Das

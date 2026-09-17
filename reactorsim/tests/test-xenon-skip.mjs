@@ -23,7 +23,7 @@ function harness(cap) {
   const buttons = [0, 1, 4, 16, 60].map(speed => ({ dataset: { speed: String(speed) }, classList: classes() }));
   const timers = [];
   const calls = { steps: 0, sessions: 0, samples: 0, renders: 0, destroyed: 0,
-    speeds: [], dt: [], faults: [], records: [], marks: [], paused: false };
+    speeds: [], dt: [], faults: [], records: [], marks: [], paused: false, locked: false };
   const s = { t_sim: 42, X: 2, scram: { active: true }, destroyed: false, fault: null };
   const engine = { state: s, ctx: { log: [], trends: { mark(e) { calls.marks.push(e); } } },
     trips: { tiles: () => [], unacknowledgedSeconds: () => 7 },
@@ -43,6 +43,11 @@ function harness(cap) {
   const ctx = vm.createContext({ app, $, $$: () => buttons, PHASE, document: { body },
     performance: { now: () => 123 },
     setControlsPaused(v) { calls.paused = v; },
+    // Vorfuehrmodus (ui/controls.js): triggerScram() ist der einzige Weg zu
+    // AZ-5 (Knopf wie Strg+Z) und muss im gesperrten Zustand nichts tun --
+    // sonst koennte ein Tastendruck den nachgestellten Chernobyl-Ablauf
+    // vorzeitig abschalten. Umschaltbar ueber calls.locked.
+    isControlsLocked: () => calls.locked,
     setText(node, text) { if (node) node.textContent = text; },
     setAttr(node, key, value) { if (node) node.attrs[key] = value; },
     t: (key, params) => key + (params ? ':' + JSON.stringify(params) : ''),
@@ -165,6 +170,22 @@ test('SCRAM records the action but cancels and never resumes an active skip', as
   cleaned(h, 'xenon_skip_cancelled');
   h.ctx.triggerScram();
   assert.equal(h.app.loop.speed, 1, 'ordinary SCRAM retains existing behavior');
+});
+
+test('a locked demonstration run swallows SCRAM entirely -- no record, no speed change', () => {
+  // Der Chernobyl-Nachbau fuehrt die Anlage selbst und drueckt AZ-5 zum
+  // gemessenen Zeitpunkt (siehe chernobylTutorial.js). Ein Spieler, der
+  // vorher Strg+Z haelt, wuerde den ganzen Ablauf entwerten -- deshalb endet
+  // triggerScram() im gesperrten Zustand sofort, vor jeder Wirkung.
+  const h = harness();
+  h.calls.locked = true;
+  h.app.loop.speed = 4;
+  h.ctx.triggerScram();
+  assert.equal(h.calls.records.length, 0, 'a blocked SCRAM must not be recorded as an action');
+  assert.equal(h.app.loop.speed, 4, 'a blocked SCRAM must not touch the time factor');
+  h.calls.locked = false;
+  h.ctx.triggerScram();
+  assert.equal(h.calls.records.length, 1, 'unlocking restores the ordinary path');
 });
 
 test('invalid starts and reentrant calls are no-ops', async () => {

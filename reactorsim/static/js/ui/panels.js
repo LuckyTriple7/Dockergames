@@ -5,13 +5,13 @@
 // neuer Reaktortyp die Anzeige erweitern kann, ohne dass main.js wächst.
 
 import { $, el, setText, setAttr } from './dom.js';
-import { t, num, clock, has } from './i18n.js';
+import { t, num, clock, clockOfDay, has } from './i18n.js';
 import { gauge, bar, reactivityBars } from './gauges.js';
 import { buildTrends } from './trend.js';
 import { Annunciator, Horn } from './annunciator.js';
 import { PulseLoop } from './music.js';
 import {
-  autoSwitch, station, slider, buttonGroup, indicator, jogButtons, pumpRow, isControlsPaused,
+  autoSwitch, station, slider, buttonGroup, indicator, jogButtons, pumpRow, controlsBlocked,
 } from './controls.js';
 import { MIMICS } from './mimic.js';
 import { runHelper } from '../game/helper.js';
@@ -210,12 +210,12 @@ export function buildPanels(engine, render, helperEnabled) {
   const rodSound = new PulseLoop('game_rods_move.mp3', 0.5);
   // Eigene Funktion statt Inline-Callback: der Tastaturkurzbefehl (Strg+Pfeil
   // hoch/runter, siehe main.js) fährt dieselben Stäbe, ohne über die Knöpfe zu
-  // gehen -- isControlsPaused() sperrt hier direkt, weil dieser Weg an
-  // jogButtons' eigener Pause-Sperre vorbei ruft. Die eigentliche Stabbewegung
+  // gehen -- controlsBlocked() sperrt hier direkt, weil dieser Weg an
+  // jogButtons' eigener Sperre vorbei ruft. Die eigentliche Stabbewegung
   // steht in coreActions.js CORE_ACTIONS.rod_jog; record() zeichnet die
   // Handlung auf (siehe game/recorder.js) UND fuehrt sie aus.
   const jogRod = (dir) => {
-    if (isControlsPaused()) return;
+    if (controlsBlocked()) return;
     rodSound.pulse();
     record(engine, 'rod_jog', dir);
     // Sofortige Sichtsynchronisierung -- render.add('text', ...) holt den
@@ -267,7 +267,7 @@ export function buildPanels(engine, render, helperEnabled) {
   // immer da, aber erst nach einem Trip wirklich etwas zu drücken.
   const turbineResume = el('button.rs-btn.rs-btn-primary', { type: 'button', disabled: true },
     [t('btn_turbine_resume')]);
-  turbineResume.addEventListener('click', () => { if (!isControlsPaused()) record(engine, 'turbine_resume', null); });
+  turbineResume.addEventListener('click', () => { if (!controlsBlocked()) record(engine, 'turbine_resume', null); });
   $('#rs-grid-ctl').replaceChildren(demand.node, turbineResume);
 
   // Typspezifische Bedienung. Ein Druckwasserreaktor braucht Bor und einen
@@ -534,6 +534,12 @@ export function buildPanels(engine, render, helperEnabled) {
     put('period', fmtPeriod(d.period), periodDanger ? 3 : (periodWarn ? 1 : 0));
     put('freq', num(s.f_grid, 2) + U('unit_hz'));
     put('clock', clock(s.t_sim));
+    // Tageszeit statt Betriebszeit -- nur dort belegt, wo ein Szenario seinen
+    // Ablauf auf eine echte Uhr legt (bisher allein die Nacht zum 26.04.,
+    // siehe chernobylTutorial.js: ctx.wallClock ist der Versatz zu t_sim).
+    // Ueberall sonst bleibt die Kachel auf "—", wie orm beim DWR.
+    put('wallclock', Number.isFinite(ctx.wallClock)
+      ? clockOfDay(s.t_sim + ctx.wallClock) : t('state_none'));
     put('subcool', num(d.subcooling, 1) + U('unit_kelvin'), d.subcooling < 8 ? 3 : (d.subcooling < 15 ? 1 : 0));
     put('dnbr', num(d.dnbr, 2), d.dnbr < 1.3 ? 3 : (d.dnbr < 1.8 ? 1 : 0));
     // Gesamtreaktivitaet als reine Zahl -- dieselben Baender wie das

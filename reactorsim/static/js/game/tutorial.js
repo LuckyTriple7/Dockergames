@@ -35,6 +35,11 @@ export class StartupTutorial {
   // by holding still). Empty by default; the Chernobyl replay overrides this
   // for its 'window'/'az5' steps (see chernobylTutorial.js).
   get liveStatusIndices() { return []; }
+  // Vorfuehrmodus: true heisst, die Uebung fuehrt die Anlage selbst und die
+  // Stellteile bleiben gesperrt (siehe ui/controls.js: setControlsLocked).
+  // Die drei Anfahrtutorials sind das Gegenteil davon -- dort IST das
+  // Bedienen die Uebung; nur der Chernobyl-Nachbau ueberschreibt das.
+  get locked() { return false; }
 
   prepare() {
     const { state: s, ctx: c, spec: sp, reactivity } = this.engine;

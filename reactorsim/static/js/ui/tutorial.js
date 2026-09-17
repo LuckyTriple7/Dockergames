@@ -1,5 +1,5 @@
 import { $, el, setText } from './dom.js';
-import { t, has, num, clock } from './i18n.js';
+import { t, has, num, clock, clockOfDay } from './i18n.js';
 import { TUTORIAL_STEPS } from '../game/tutorial.js';
 import { PHASE } from '../game/session.js';
 
@@ -101,11 +101,17 @@ export function buildTutorial(session, render) {
       : tutorial.liveStatusIndices?.includes(v.index) ? t(v.hint, vars)
       : t('tut_hold_compact', { held, required: v.required });
     const values = t(prefix + v.id + '_values', vars);
+    // Uhrzeit des nachgestellten Ablaufs, falls das Tutorial eine fuehrt
+    // (bisher nur die Nacht zum 26.04., siehe chernobylTutorial.js). Bewusst
+    // an der Wertezeile und nicht in den *_values-Bausteinen: sonst muesste
+    // jeder Schritt sie einzeln wiederholen, und ein vergessener Schluessel
+    // liesse sie mitten im Ablauf verschwinden.
+    const wall = Number.isFinite(v.wall) ? ' · ' + t('tut_wallclock', { time: clockOfDay(v.wall) }) : '';
     // Two lines in one small button, see .rs-tutorial-status (white-space: pre-line).
-    setText(status, `${heading} · ${hold}\n${values}`);
+    setText(status, `${heading} · ${hold}\n${values}${wall}`);
     setText(modalTitle, heading);
     setText(modalInstruction, t(prefix + v.id + '_instruction'));
-    setText(modalHold, t('tut_hold', { held, required: v.required }));
+    setText(modalHold, t('tut_hold', { held, required: v.required }) + wall);
     if (v.index === 0) {
       const lines = t(prefix + 'inspect_checks', { ...vars,
         integrity: t(v.inspectIntact ? 'tut_inspect_intact' : 'tut_inspect_not_intact') }).split('\n');
@@ -136,6 +142,19 @@ export function renderTutorialResult(parent, result) {
   parent.append(el('h3', { text: t('tut_steps') }), el('p', { text: t('tut_unranked') }),
     el('ol', null, steps.map(id => {
       const entry = result.tutorial.completed.find(e => e.id === id);
-      return el('li', { text: `${t(prefix + id + '_title')} · ${entry ? t('tut_done') + ' ' + clock(entry.t) : t('tut_pending')}` });
+      // entry.w: Uhrzeit des nachgestellten Ablaufs, nur wo ein Tutorial eine
+      // fuehrt (siehe chernobylTutorial.js completeStep) -- neben, nicht
+      // statt der Betriebszeit: beide Zahlen zusammen zeigen genau den
+      // Zeitsprung, den die Uebung offen auslaesst.
+      const wall = entry && Number.isFinite(entry.w)
+        ? ' · ' + t('tut_wallclock', { time: clockOfDay(entry.w) }) : '';
+      return el('li', { text: `${t(prefix + id + '_title')} · ${entry ? t('tut_done') + ' ' + clock(entry.t) + wall : t('tut_pending')}` });
     })));
+  // Schlussbefund, den die Schrittliste nicht hergibt -- optional je Praefix
+  // (nur der Chernobyl-Nachbau hat einen, siehe tut_chernobyl_debrief_note:
+  // dass der Kern auch OHNE AZ-5 verloren gewesen waere, steht in keinem
+  // Schritt und gehoert trotzdem zum Ergebnis).
+  if (has(prefix + 'debrief_note')) {
+    parent.append(el('p.rs-tutorial-hint', { text: t(prefix + 'debrief_note') }));
+  }
 }
