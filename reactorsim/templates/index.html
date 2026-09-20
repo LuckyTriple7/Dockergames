@@ -81,6 +81,12 @@
         <a href="/set-lang/en"{% if lang == 'en' %} class="rs-lang-on"{% endif %}>EN</a>
       </span>
       <span class="rs-start-note">{{ t.footer_note }}</span>
+      <!-- Eigenes Konto: bis 0.6.0 gab es im Spiel gar keinen Weg, das
+           Passwort zu wechseln -- entweder der Admin setzte es zurueck, oder
+           man ging ueber "Passwort vergessen" und wartete auf eine Mail. Der
+           Knopf steht neben "Abmelden", weil beides dasselbe betrifft. -->
+      <button type="button" class="rs-btn rs-btn-ghost rs-start-account"
+              id="rs-account-btn">{{ t.btn_account }}</button>
       <a class="rs-start-logout" href="/logout">{{ t.btn_logout }}</a>
       <span class="rs-start-ver">v{{ app_version }}</span>
     </div>
@@ -158,6 +164,13 @@
     <div class="rs-status-controls">
       <div class="rs-speed" role="group" aria-label="{{ t.status_speed }}">
         <button type="button" class="rs-speed-b" data-speed="0">II</button>
+        <!-- Zeitlupe: dieselbe feste Schrittweite wie sonst (DT in loop.js),
+             nur weniger Schritte je Realsekunde -- 0,25x rechnet also genauso
+             genau wie 60x. Gebraucht wird sie dort, wo Sekunden zaehlen: der
+             promptkritische Ausschlag im Chernobyl-Vorfuehrmodus ist bei 1x
+             in drei Sekunden vorbei. -->
+        <button type="button" class="rs-speed-b rs-speed-slow" data-speed="0.25">¼×</button>
+        <button type="button" class="rs-speed-b rs-speed-slow" data-speed="0.5">½×</button>
         <button type="button" class="rs-speed-b rs-on" data-speed="1">1×</button>
         <button type="button" class="rs-speed-b" data-speed="4">4×</button>
         <button type="button" class="rs-speed-b" data-speed="16">16×</button>
@@ -488,6 +501,35 @@
 </div>
 
 <!-- ── Tastenkuerzel ────────────────────────────────────────────────────── -->
+<!-- ── Eigenes Konto ────────────────────────────────────────────────────── -->
+<!-- Nur der Passwortwechsel: die Adresse ist zugleich der Benutzername und
+     gehoert damit dem Admin, nicht dem Spieler (siehe users.py). Das ALTE
+     Passwort muss mit -- die Sitzung laeuft 30 Tage, ohne diese Abfrage
+     genuegte ein kurz unbeaufsichtigter Browser. -->
+<div class="rs-modal" id="rs-account-modal" role="dialog" aria-modal="true"
+     aria-labelledby="rs-account-title" hidden>
+  <div class="rs-modal-box">
+    <h2 id="rs-account-title">{{ t.account_title }}</h2>
+    <p class="rs-ctl-hint" id="rs-account-who"></p>
+    <form class="rs-account-form" id="rs-account-form" autocomplete="off">
+      <label class="rs-account-field">{{ t.account_current }}
+        <input type="password" id="rs-account-current" autocomplete="current-password" required>
+      </label>
+      <label class="rs-account-field">{{ t.account_new }}
+        <input type="password" id="rs-account-new" autocomplete="new-password" required>
+      </label>
+      <label class="rs-account-field">{{ t.account_repeat }}
+        <input type="password" id="rs-account-repeat" autocomplete="new-password" required>
+      </label>
+      <p class="rs-account-msg" id="rs-account-msg" hidden></p>
+      <div class="rs-modal-actions">
+        <button type="submit" class="rs-btn rs-btn-primary" id="rs-account-save">{{ t.account_submit }}</button>
+        <button type="button" class="rs-btn" id="rs-account-close">{{ t.btn_close }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="rs-modal" id="rs-shortcuts-modal" hidden>
   <div class="rs-modal-box rs-modal-wide">
     <h2>{{ t.shortcuts_title }}</h2>

@@ -26,8 +26,10 @@ function harness(readSave = async () => ({ ok: false })) {
     return nodes.get(key);
   };
   // `runs` sammelt, was main.js an /api/runs melden wuerde -- Grundlage der
-  // Spielhistorie im Admin-Panel (siehe reportRun()).
-  const counters = { starts: 0, autosaves: 0, samples: 0, panels: 0, runs: [] };
+  // Spielhistorie im Admin-Panel (siehe reportRun()). `runStarts` dasselbe
+  // fuer /api/runs/start, mit dem der Server die Dauer selbst misst.
+  const counters = { starts: 0, autosaves: 0, samples: 0, panels: 0,
+    runs: [], runStarts: [] };
   // Aufgezeichnet statt real verzoegert: deferEnd() (siehe main.js) nutzt
   // window.setTimeout fuer die kurze Pause vor der Kernzerstoerungs-Anzeige --
   // der Test loest sie ueber flushTimeouts() gezielt aus, statt drei echte
@@ -39,7 +41,14 @@ function harness(readSave = async () => ({ ok: false })) {
     introMusic: music(), bgMusic: music(), render: { clear() {}, tick() {} } };
   const ctx = vm.createContext({ app, $, PHASE, getPlant, createEngine, Session,
     gridDeviationTrips, attachRecorder, applySave: apply,
-    api: { readSave, recordRun: (run) => { counters.runs.push(run); return Promise.resolve({ ok: true }); } },
+    api: {
+      readSave,
+      recordRun: (run) => { counters.runs.push(run); return Promise.resolve({ ok: true }); },
+      startRun: (run) => {
+        counters.runStarts.push(run);
+        return Promise.resolve({ ok: true, data: { run: `token-${counters.runStarts.length}` } });
+      },
+    },
     t: (key) => key, clock: String,
     setText: (node, text) => { node.textContent = text; }, setAttr() {}, el: () => ({}),
     buildStatusBar() {}, statusTiles: new Map(), applyStatusSelection() {},
@@ -364,10 +373,18 @@ test('every finished run is reported exactly once, free play included', async ()
   // freies Spiel und jeder Abbruch fehlten damit ganz.
   const h = harness();
   await h.ctx.boot('pwr', { id: 'test', reactor: 'pwr', duration_s: 60 });
+  // Der Rundenstart meldet sich beim Server an, damit der die Dauer selbst
+  // messen kann (siehe app.py /api/runs/start) -- sonst bliebe sie eine
+  // reine Klientenangabe.
+  assert.deepEqual(plain(h.counters.runStarts), [
+    { reactor: 'pwr', scenario: 'test', slot: null },
+  ]);
   h.app.engine.state.t_sim = 1800;
   h.ctx.showDebrief(null, 'aborted');
   assert.deepEqual(plain(h.counters.runs), [{
     reactor: 'pwr', scenario: 'test', duration_s: 1800, outcome: 'aborted',
+    // Schliesst genau die Messung, die boot() eroeffnet hat.
+    run: 'token-1',
   }]);
 
   // Ein zweiter Durchlauf desselben Laufs meldet nicht noch einmal.
@@ -380,7 +397,22 @@ test('every finished run is reported exactly once, free play included', async ()
   h.ctx.leaveToMenu();
   assert.deepEqual(plain(h.counters.runs[1]), {
     reactor: 'bwr', scenario: null, duration_s: 900, outcome: 'aborted',
+    run: 'token-2',
   });
+});
+
+test('a run whose start was never acknowledged is still reported, just unmeasured', async () => {
+  // Offline, alter Server, Neustart des Containers: /api/runs/start kommt
+  // nicht durch. Der Lauf selbst darf deshalb nicht verloren gehen -- er
+  // landet nur ohne Messung in der Historie (app.py faellt dann auf den
+  // harten 24-h-Deckel zurueck).
+  const h = harness();
+  h.ctx.api.startRun = () => Promise.resolve({ ok: false, status: 0, data: null });
+  await h.ctx.boot('pwr', { id: 'test', reactor: 'pwr', duration_s: 60 });
+  h.app.engine.state.t_sim = 1800;
+  h.ctx.showDebrief(null, 'aborted');
+  assert.equal(h.counters.runs.length, 1);
+  assert.equal(h.counters.runs[0].run, undefined);
 });
 
 test('the reported outcome distinguishes loss, abort and destruction', async () => {
@@ -413,5 +445,6 @@ test('a destroyed core is reported even where free play shows no debrief', async
   h.ctx.showDebrief(null, 'event_fuel_dispersal');
   assert.deepEqual(plain(h.counters.runs), [{
     reactor: 'rbmk', scenario: null, duration_s: 600, outcome: 'destroyed',
+    run: 'token-1',
   }]);
 });

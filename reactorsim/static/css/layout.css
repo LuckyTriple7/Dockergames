@@ -119,6 +119,11 @@
 }
 .rs-speed-b:last-child { border-right: 0; }
 .rs-speed-b.rs-on { background: #1d4b66; color: #dff1ff; }
+/* Zeitlupe ist der Ausnahmefall, nicht der Normalbetrieb -- etwas
+   zurueckgenommen, damit die Leiste weiterhin bei 1x anfaengt zu lesen. Die
+   Kennfarbe beim Einschalten bleibt dieselbe wie bei jeder anderen Stufe. */
+.rs-speed-b.rs-speed-slow { color: var(--rs-fg-mute); }
+.rs-speed-b.rs-speed-slow.rs-on { color: #dff1ff; }
 
 .rs-status-controls #rs-menu { margin-left: auto; }
 

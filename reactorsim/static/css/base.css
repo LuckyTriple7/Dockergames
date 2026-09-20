@@ -601,3 +601,25 @@ button {
 .rs-score-v { color: var(--rs-value); font-weight: 600; }
 
 .rs-start-logout { text-decoration: none; }
+/* Kontoknopf in der Fusszeile: sieht aus wie der Abmelde-Link daneben, ist
+   aber ein Knopf -- er oeffnet einen Dialog statt einer Seite. */
+.rs-start-account { font-size: 12px; padding: 3px 9px; min-height: 0; }
+
+/* ── Eigenes Konto ────────────────────────────────────────────────────────── */
+
+.rs-account-form { display: grid; gap: 12px; margin-top: 4px; }
+.rs-account-field { display: grid; gap: 4px; font-size: 12px; color: var(--rs-fg-mute); }
+.rs-account-field input {
+  background: var(--rs-bg-2);
+  border: 1px solid var(--rs-line);
+  border-radius: 5px;
+  color: var(--rs-fg);
+  padding: 8px 10px;
+  font: inherit;
+  min-height: 38px;
+}
+.rs-account-field input:focus { outline: none; border-color: var(--rs-value); }
+/* Erfolg und Fehlschlag im selben Absatz, nur andere Farbe -- zwei Elemente,
+   von denen immer eines leer ist, waeren ein Sprung im Layout. */
+.rs-account-msg { margin: 0; font-size: 12px; color: var(--rs-alarm); }
+.rs-account-msg[data-ok="1"] { color: var(--rs-ok); }

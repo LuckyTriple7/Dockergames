@@ -195,6 +195,31 @@ class Store:
         except (OSError, ValueError):
             return False
 
+    def delete_account(self, pid: str) -> bool:
+        """Den ganzen Ordner eines Kontos wegraeumen -- Spielstaende UND
+        Einstellungen. Gerufen, wenn das Konto selbst geloescht wird (app.py,
+        /admin/users/<id>/delete): ohne das blieben bis zu sechzig
+        Spielstanddateien unter einer Kennung liegen, zu der es kein Konto
+        mehr gibt, und niemand kaeme je wieder an sie heran.
+
+        @return True, wenn danach nichts mehr da ist -- auch dann, wenn es
+        vorher schon nichts gab (ein Konto, das nie gespielt hat, hat keinen
+        Ordner; das ist kein Fehlschlag).
+        """
+        try:
+            player_dir = self._player_dir(pid)
+        except ValueError:
+            return False
+        try:
+            shutil.rmtree(player_dir)
+        except FileNotFoundError:
+            return True
+        except OSError as exc:
+            log.error("Spielstaende des geloeschten Kontos nicht entfernt (%s)",
+                      exc.__class__.__name__)
+            return False
+        return True
+
     # ── Einstellungen ─────────────────────────────────────────────────────────
     #
     # Kleine, fuer den Server ebenso undurchsichtige Ablage wie ein Spielstand

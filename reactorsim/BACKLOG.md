@@ -98,83 +98,142 @@ gleichzeitig, eigene Spielstände je Konto (`persist.Store.account_key`).
   Eintrag als Nebenwirkung von "Eintragen" im Debrief, weshalb "Spielzeit
   gesamt" nur einen Bruchteil zeigte.
 
+**Seit 0.6.1 zusätzlich umgesetzt -- damit ist der frühere offene Rest
+abgearbeitet:**
+
+- **Self-Service-Passwortwechsel im Spiel** (`/api/account/password`, Knopf
+  „Konto" in der Fußzeile des Startbildschirms). Das alte Passwort muss mit --
+  die Sitzung läuft 30 Tage, ohne diese Abfrage genügte ein kurz
+  unbeaufsichtigter Browser. Der Wechsel wirft jedes andere angemeldete Gerät
+  hinaus, die eigene Sitzung bekommt ein frisches Token als Cookie zurück.
+- **Konten löschen** (`/admin/users/<id>/delete`), nur von der Kontoseite aus
+  und nur nach Abtippen der E-Mail-Adresse. Mitgelöscht werden Spielhistorie,
+  Anmeldeprotokoll, offene Reset-Vorgänge und sämtliche Spielstände als
+  Dateien; die laufende Sitzung wird entwertet. Bestenlisten-Einträge bleiben:
+  sie tragen einen frei gewählten Namen, keine Kontokennung.
+- **Seitenblätterung** in beiden Ansichten (`?runs=N`, `?logins=N`). Jede
+  Liste sagt jetzt auch, wie viele Einträge es insgesamt gibt.
+- **Die Dauer misst der Server selbst.** `/api/runs/start` eröffnet beim
+  Rundenstart eine Messung (`OpenRuns` in `app.py`), `/api/runs` schließt sie.
+  Daraus fällt zweierlei ab: eine Spalte „Am Schirm" mit der tatsächlich
+  verbrachten Zeit, die gar nicht aus der Anfrage stammt -- und eine
+  Obergrenze für die gemeldete SIMULIERTE Zeit, denn schneller als 60× kann
+  kein Browser rechnen. Bei einem fortgesetzten Lauf kommt auch der
+  Startpunkt nicht mehr aus der Anfrage, sondern aus dem `t_sim` des
+  gespeicherten Standes auf der eigenen Platte.
+
 Offen:
 
-- **Self-Service:** ein Spieler kann sein Passwort im laufenden Betrieb nicht
-  selbst ändern. Über "Passwort vergessen" geht es inzwischen indirekt (Link
-  ins eigene Postfach), ein eigener Dialog im Spiel fehlt aber.
-- Kein Löschen von Spielerkonten im Panel, nur Sperren. Mit der jetzt
-  deutlich längeren Historie je Konto wird das eher wichtiger als vorher.
-- **Keine Seitenblätterung im Panel.** Die Übersicht zeigt die letzten 50
-  Einträge, die Kontoseite die letzten 200; darüber hinaus ist nichts
-  erreichbar, außer direkt in `users.db`.
-- **Die gemeldete Dauer kommt vom Client** und ist nur gedeckelt (24 h),
-  nicht nachgerechnet. Für die Bestenliste gilt das ausdrücklich nicht, die
-  rechnet weiterhin selbst nach (`verify_run.mjs`).
+- **Das freie Spiel bleibt von der 60×-Grenze ausgenommen.** Der
+  Xenon-Zeitraffer (`main.js fastForwardXenon()`) rechnet in einer engen
+  Schleife statt im Bildtakt und erzeugt binnen Sekunden bis zu 48 h
+  simulierte Zeit -- für diesen Modus ist die Grenze deshalb wirkungslos und
+  wird in `app.py` ausdrücklich so benannt, statt sie zu behaupten. Für
+  Szenarien und Tutorials greift sie. Ein sauberer Weg wäre, den Sprung selbst
+  beim Server anzumelden.
+- **Ohne Messung greift weiterhin nur der 24-h-Deckel** -- nach einem Neustart
+  des Containers (die Messungen liegen nur im Speicher) oder bei einem
+  Client, der `/api/runs/start` nicht kennt. Solche Läufe stehen mit leerer
+  Spalte „Am Schirm" in der Historie, nicht mit einer geschätzten Zahl.
 
 ### Chernobyl-Tutorial „Block 4 – Die Nacht des 26. April“
 
 Umgesetzt: geführter RBMK-Nachbau der Nacht vom 26. April 1986 ab
-Schichtübergabe bis AZ-5, sieben Schritte (`handover`, `dip`, `recover`,
-`pumps`, `test`, `window`, `az5`), eigene Klasse `RbmkChernobylTutorial`
-(`game/chernobylTutorial.js`). Machbarkeit vorab geprüft (Node-Experimente,
-siehe CHANGELOG): AZ-5 kombiniert mit geskriptetem Kühlmittelauslauf
-(`ev_rbmk_mcp_runback`) führt aus dem validierten Ausgangszustand (ORM≈28,
-zweistufige Vorgeschichte 100%→50%→9h halten→7%) zuverlässig zu echter
-Brennstoffzerstörung, mit der bestehenden Physik, ohne Kalibrierungsänderung.
+Schichtübergabe bis AZ-5, seit 0.6.1 acht Schritte (`handover`, `dip`,
+`recover`, `pumps`, `hold`, `test`, `window`, `az5`), eigene Klasse
+`RbmkChernobylTutorial` (`game/chernobylTutorial.js`). AZ-5 führt aus dem
+validierten Ausgangszustand (zweistufige Vorgeschichte
+100%→50%→9h halten→7%) zusammen mit dem Kühlmittelauslauf zuverlässig zu
+echter Brennstoffzerstörung, mit der bestehenden Physik, ohne
+Kalibrierungsänderung.
 
 Seit 0.5.9 ist die Übung ein **Vorführmodus**: Ab der Schichtübergabe fährt
-das Drehbuch die Anlage selbst (Pumpen bei `AUTO_PUMPS_S`, AZ-5 bei
-`AUTO_SCRAM_S`), gesperrt sind Stäbe, Leistungsregler, Pumpen und AZ-5
-(`tutorial.locked` → `ui/controls.js: setControlsLocked`). Grund: Der Ablauf
-ließ sich nicht sauber nachspielen, es gab aber gar keine Sperre -- jeder
-Klick konnte ihn verschieben, während 5 der 7 Schritte ohnehin automatisch
-liefen.
+das Drehbuch die Anlage selbst, gesperrt sind Stäbe, Leistungsregler, Pumpen
+und AZ-5 (`tutorial.locked` → `ui/controls.js: setControlsLocked`). Grund: Der
+Ablauf ließ sich nicht sauber nachspielen, es gab aber gar keine Sperre --
+jeder Klick konnte ihn verschieben.
+
+**0.6.1 hat die Übung von Grund auf ehrlicher gemacht.** Auslöser war der
+Turbinenauslauf: Er war bis dahin ein Drehbuch, das den *Pumpen-Sollwert*
+linear auf null fuhr. Beides war falsch -- es bewegte einen Schieber, den
+niemand angefasst hatte, und historisch hingen nur **vier der acht**
+Hauptumwälzpumpen am auslaufenden Generator. Jetzt ist die Drehzahl eine
+echte Zustandsgröße (`s.tgSpeed`, `rbmk.js: sp.turbogen`): der Rotor bremst
+gegen die Pumpenlast, und weil eine Kreiselpumpe Leistung mit der dritten
+Potenz der Drehzahl zieht, folgt daraus `w(t) = w0/(1 + t/τ)` -- der
+Rechenschritt dafür ist exakt, nicht genähert. Vier Pumpen bleiben am Netz,
+der Kernstrom fällt also auf etwa die Hälfte statt auf null.
+
+Das hat drei weitere Punkte mit umgeworfen, die vorher als unlösbar galten:
+
+- **Das Wirkfenster ist breit geworden.** Neu vermessen
+  ([`tests/tools/chernobyl_press_window.mjs`](tests/tools/chernobyl_press_window.mjs)):
+  In den ersten zwölf Sekunden nach Auslaufbeginn übersteht der Kern AZ-5, ab
+  etwa 15 s zerstört derselbe Knopf ihn, und das bis mindestens 105 s. Vorher
+  waren es 8-21 s mit einem Überlebensstreifen dahinter -- eine Eigenschaft
+  der alten Rampe auf null, nicht der Anlage.
+- **Die historischen Zeiten treffen jetzt alle.** Weil 36 s im Fenster liegen,
+  kann AZ-5 im dokumentierten Abstand zum Testbeginn drücken. Die Übung zeigt
+  damit Schichtübernahme 00:27, Einbruch ab 00:28, Pumpen 01:07:00, Testbeginn
+  01:23:04, AZ-5 01:23:40, Zerstörung 01:23:45 -- jede davon nachgemessen, nicht
+  behauptet. Vorher war nur *eine* der beiden Testzeiten erreichbar, und die
+  Pumpen zeigten 01:23:25 statt 01:07 (die Haltephase ist dafür in `recover`
+  und `hold` geteilt, mit einem Schritt dazwischen, dessen Dauer auf die Uhr
+  zielt statt fest zu stehen).
+- **AZ-5 ist jetzt die alleinige Ursache.** Ohne Knopfdruck bleibt die Leistung
+  bei rund 7 % -- vier Pumpen kühlen weiter. Vorher trieb die Rampe die Anlage
+  schon ohne jeden Knopfdruck auf 133 %, und der Abschlusstext musste das
+  einräumen. Geblieben ist der zweite Befund: nimmt man der schmalen
+  automatischen Regelung ihre 500 pcm, zerstört sich dieselbe Anlage nach rund
+  22 s von selbst.
+
+**Ebenfalls in 0.6.1 umgesetzt:**
+
+- **Der Leistungseinbruch wird gefahren, nicht mehr erzählt.** Bis 0.6.0 stand
+  hier, ein echter Einbruch reiße mehr Xenon auf, als sich je zurückholen
+  lasse. Das galt für die damalige, ungetrennte Stabkurve und stimmt seit der
+  Korrektur in `rbmk.js` nicht mehr: nachgemessen
+  ([`tests/tools/chernobyl_dip.mjs`](tests/tools/chernobyl_dip.mjs)) kommt die
+  Anlage aus Einbrüchen bis hinunter zu 0,05 % zuverlässig wieder auf 7,3 %,
+  mit ORM ~76 und rho ~0 pcm -- praktisch auf den Zustand, den `prepare()`
+  vorher fest hinterlegt hat. Xenon spielt dabei kaum eine Rolle, ein Einbruch
+  von Minuten ist gegen die Jod-Halbwertszeit zu kurz. Der Schritt `dip` fährt
+  die Regelung jetzt auf Hand, die Stäbe ein, hält, und lässt dieselbe Regelung
+  die Leistung zurückholen. Die Uhr springt danach nur noch über den Rest der
+  Erholung, die real bis kurz nach 01:00 dauerte.
+- **Zeitlupe.** `loop.js` konnte Faktoren unter 1 immer schon, es gab nur keine
+  Bedienung dafür. Neu sind ¼×- und ½×-Knöpfe in der Statusleiste sowie `-`
+  und `+`, die die ganze Leiter von ¼× bis 60× entlanggehen. Die Chernobyl-
+  Übung fordert von sich aus ¼× an, vier Sekunden vor AZ-5
+  (`tutorial.speedHint`) -- im Vorführmodus könnte der Spieler den Moment sonst
+  nicht sehen, und die Stellteile sind gesperrt.
 
 Offen/bekannte Einschränkungen:
 
-- **Leistungseinbruch nicht mechanisch simuliert.** Ein echter Reaktivitäts-
-  einbruch reißt in diesem vereinfachten Modell mehr Xenon auf, als sich mit
-  den verbleibenden Steuerstäben je zurückholen lässt (auch voll gezogen) --
-  im Text offen benannt, nicht stillschweigend vereinfacht.
-- **AZ-5 ist die Ursache, aber nicht die einzige scharfe.** Nachgemessen
-  über den echten `prepare()`-Pfad: Ein Druck zwischen 8 und 21s nach
-  Auslaufbeginn zerstört den Kern (dort drückt das Drehbuch, bei 14,5s),
-  zwischen 22 und 38s übersteht er ihn (die Enthalpiegrenze ist integral --
-  eine kurze Spitze bis 360 % reicht nicht), zwischen 39 und 43s zerstört er
-  wieder. Ohne jeden Knopfdruck läuft die Leistung allein durch den positiven
-  Blasenkoeffizienten auf 133 % bei 38s und bleibt knapp diesseits der Grenze
-  -- aber nur, weil der schmale AR-Trimm mit 500 pcm gegenhält (ohne ihn:
-  Zerstörung bei 19s). Diese Randlage ist im Debrief ausgesprochen
-  (`tut_chernobyl_debrief_note`) und durch Tests festgehalten, statt sie
-  wegzurunden. Bis 0.5.8 drückte das Tutorial bei 41s und schrieb die
-  ohnehin laufende Selbstzerstörung dem Knopf zu.
-- **ORM-Anzeige passt nicht zur Historie.** Während `recover` ~77, in der
-  Endphase 0,0 Stabäquivalente; dokumentiert sind für diese Nacht 6-8. Der
-  Zustand ist über die Physik validiert, die Zahl selbst also eine Skalen-,
-  keine Zustandsfrage.
-- **Historische Zeitverhältnisse gerafft.** Zwischen Pumpenzuschaltung
-  (01:07) und Testbeginn (01:23:04) liegen real 16 Minuten, hier ~3 s; die
-  historischen 36 s zwischen Testbeginn und AZ-5 sind nicht darstellbar (das
-  Wirkfenster endet bei 21 s). Nicht nachgebildet: Speisewasserschwall um
-  01:19, blockierte Turbinenschnellabschaltung, ORM-Ausdruck um 01:22:30.
-- **Uhrzeit-Anzeige: ein Sprung, eine bewusst sichtbare Abweichung** (seit
-  0.5.10, `WALL_DIP_S` in `chernobylTutorial.js`, Anzeige über `view().wall`,
-  `ctx.wallClock` und die Statuskachel `wallclock`). Die Uhr läuft 1:1 mit
-  `t_sim` und springt einmalig am Ende von `dip` auf 01:04:08 -- genau über
-  die Stunde, die die Übung ohnehin nicht nachstellt. Danach treffen
-  Haltephasenende (~01:23:07, historisch Testbeginn 01:23:04), AZ-5
-  (01:23:40) und Zerstörung (~01:23:45) die dokumentierten Zeiten; ein Test
-  misst das nach. Was eine monotone Uhr bei dieser Schrittfolge nicht kann:
-  die Pumpenzuschaltung auf 01:07 legen -- sie lief historisch mitten in der
-  Haltephase, hier folgt sie ihr als eigener Schritt und zeigt ~01:23:25.
-  Im Schritttext offen benannt; nachgemessen ist der Zeitpunkt für den
-  Ausgang ohne Bedeutung. Eine zweite Anzeige "Betriebszeit" bleibt
-  unverändert daneben stehen.
-- **Turbinenauslauf geskriptet**, keine echte Rotordrehzahl-Zustandsgröße
-  (bewusste Vereinfachung, siehe frühere Analyse).
-- Keine Zeitlupe für die letzten Sekunden vor der Exkursion (Zeitraffer bis
-  60× existiert bereits generisch in `loop.js`, Zeitlupe <1× fehlt).
+- **Die Abschaltreserve zeigt weniger an als die dokumentierten 6-8
+  Stabäquivalente** -- vor dem Test 0,0. Das ist, anders als hier bis 0.6.0
+  vermutet, **keine Skalenfrage**. Nachgemessen
+  ([`tests/tools/chernobyl_rod_sweep.mjs`](tests/tools/chernobyl_rod_sweep.mjs)):
+  Bei der historischen Einfahrtiefe von 1,25 m -- also `h = tip.span = 0,179`,
+  wo die Anzeige exakt 7,4 zeigt -- zerstört AZ-5 den Kern gar nicht mehr, die
+  Spitze bleibt bei 40 %. Von allen geprüften Stellungen zwischen 0,02 und 0,22
+  trägt nur 0,02 den Mechanismus, weil `sin(π·h/span)` bei `h = span` null ist
+  und der früher greifende Absorber den Spitzeneffekt dazwischen auffrisst.
+  Dieses Zwei-Bank-Modell braucht die Stäbe also weiter draußen, als sie
+  historisch standen. Statt die Zahl zurechtzubiegen steht jetzt die
+  Einfahrtiefe in Metern daneben, und der Schritttext sagt den Unterschied
+  ausdrücklich. Eine echte Lösung bräuchte mehr Bänke oder eine axial
+  aufgelöste Stabkurve -- ein Umbau am Kern des RBMK-Modells, nicht an dieser
+  Übung.
+- **Die Rotorzeitkonstante ist gesetzt, nicht hergeleitet.** τ = 15 s bildet den
+  dokumentierten Auslauf ab (Durchsatz spürbar weg nach einer halben Minute),
+  ohne eine Schwungmasse zu erfinden, für die es keine nachschlagbare Zahl
+  gibt. Welche vier der acht Pumpen am Generator hängen, ist ebenfalls gesetzt.
+- **Der zeitliche Maßstab des Einbruchs bleibt gerafft.** Real dauerte die
+  Erholung auf ~200 MWth über eine halbe Stunde, hier sind es Minuten; der
+  Rest steckt weiterhin im einen Uhrensprung am Ende von `dip`.
+- **Nicht nachgebildet:** Speisewasserschwall um 01:19, blockierte
+  Turbinenschnellabschaltung, ORM-Ausdruck um 01:22:30.
 
 ## Weitere Störszenarien
 

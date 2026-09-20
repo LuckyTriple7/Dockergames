@@ -91,7 +91,13 @@ export function buildTutorial(session, render) {
     const title = t(prefix + v.id + '_title');
     const heading = t('tut_heading', { n: v.index + 1, total: steps.length, title });
     const held = Math.floor(v.held + 1e-8);
-    const vars = Object.fromEntries(Object.entries(v.values).map(([k, x]) => [k, num(x, k === 'neutron' ? 4 : 1)]));
+    // Eine Nachkommastelle reicht fuer alles -- ausser fuer die
+    // Neutronenleistung (die bewegt sich im Promillebereich) und die
+    // Einfahrtiefe der Staebe (0,1 m waere dort die halbe Aussage, siehe
+    // chernobylTutorial.js: rodDepth).
+    const digits = { neutron: 4, rodDepth: 2 };
+    const vars = Object.fromEntries(Object.entries(v.values)
+      .map(([k, x]) => [k, num(x, Object.hasOwn(digits, k) ? digits[k] : 1)]));
     // Ein Schritt mit liveStatusIndices haelt intern nur einen kurzen
     // Entprellwert (siehe tutorial.js/chernobylTutorial.js) -- "held/
     // required" waere dort keine echte Wartezeit, sondern irrefuehrend

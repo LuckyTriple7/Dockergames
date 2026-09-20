@@ -17,6 +17,8 @@ import os
 import secrets
 import signal
 import subprocess
+import threading
+import time
 
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -123,8 +125,82 @@ def _client_ip() -> str:
     return request.remote_addr or '-'
 
 
+class OpenRuns:
+    """Serverseitige Zeitmessung eines laufenden Spiels.
+
+    Bis 0.6.0 war die Dauer in der Historie reine Klientenangabe: der Browser
+    schickte am Ende `duration_s`, und der Server deckelte sie bei 24 h --
+    mehr konnte er nicht tun, weil er vom Lauf selbst nichts wusste. Mit
+    diesem Verzeichnis weiss er es: der Client meldet den BEGINN (/api/runs/
+    start), der Server merkt sich seine eigene Uhr dazu, und am Ende steht
+    ihm eine Zahl zur Verfuegung, die gar nicht aus der Anfrage stammt.
+
+    Zwei Dinge fallen dabei ab:
+
+    * `wall_s` -- die tatsaechlich am Schirm verbrachte Zeit. Sie ist die
+      ehrlichere Antwort auf "wie lange hat der gespielt?" als die simulierte
+      Zeit, die bei 60-fachem Zeitraffer das Sechzigfache betraegt.
+    * eine OBERGRENZE fuer die gemeldete simulierte Zeit: schneller als 60x
+      (der hoechste Zeitraffer, siehe loop.js) kann kein Browser rechnen, mehr
+      als `Startzeit + wall_s * 60` kann ein ehrlicher Lauf also nicht erreicht
+      haben.
+
+    Nur im Speicher, ohne Persistenz: geht der Container neu hoch, ist die
+    Messung des gerade laufenden Spiels weg und die Dauer faellt auf den alten
+    24-h-Deckel zurueck -- ein fehlender Messwert ist kein Grund, einen Lauf
+    gar nicht erst aufzuzeichnen.
+    """
+
+    # Ein Lauf, der laenger offen steht als das laengste moegliche Spiel
+    # (24 h simuliert, bei 1x also 24 h real) plus Puffer, ist keiner mehr --
+    # der Browser ist weg, ohne sich abzumelden.
+    TTL_S = 26 * 3600
+    # Obergrenze gegen ein Verzeichnis, das nur waechst. Erreicht sie jemand
+    # trotz TTL, fliegt der aelteste Eintrag -- das kostet hoechstens EINE
+    # Zeitmessung, nie einen Lauf.
+    MAX_OPEN = 2048
+
+    def __init__(self):
+        self._runs: dict[tuple[str, str], dict] = {}
+        self._lock = threading.Lock()
+
+    def _sweep(self, now: float) -> None:
+        for key in [k for k, v in self._runs.items() if v['t0'] <= now - self.TTL_S]:
+            self._runs.pop(key, None)
+        while len(self._runs) > self.MAX_OPEN:
+            self._runs.pop(min(self._runs, key=lambda k: self._runs[k]['t0']), None)
+
+    def open(self, account: str, reactor: str, scenario, start_sim: float) -> str:
+        """@return die Kennung, die der Client beim Beenden zurueckgibt."""
+        token = secrets.token_urlsafe(12)
+        now = time.monotonic()
+        with self._lock:
+            self._sweep(now)
+            self._runs[(account, token)] = {
+                't0': now, 'reactor': reactor, 'scenario': scenario,
+                'start_sim': float(start_sim)}
+        return token
+
+    def close(self, account: str, token) -> dict | None:
+        """@return {'wall_s', 'reactor', 'scenario', 'start_sim'} oder None.
+
+        Das Konto gehoert mit in den Schluessel: sonst koennte eine fremde
+        Kennung die Messung eines anderen Spielers einsammeln.
+        """
+        if not isinstance(token, str) or not token:
+            return None
+        with self._lock:
+            entry = self._runs.pop((account, token), None)
+        if entry is None:
+            return None
+        return {'wall_s': max(0.0, time.monotonic() - entry['t0']),
+                'reactor': entry['reactor'], 'scenario': entry['scenario'],
+                'start_sim': entry['start_sim']}
+
+
 STORE = persist.Store(_DATA)
 LIMITS = persist.RateLimit()
+RUNS = OpenRuns()
 USERS = usersmod.UserStore(_DATA)
 AUTH = authmod.Auth(_DATA, REACTORSIM_USER, REACTORSIM_PASSWORD, USERS)
 # Konfiguration aus der Umgebung, also aus Dockge -- genau wie das
@@ -153,7 +229,7 @@ _PUBLIC_ENDPOINTS = frozenset({'health', 'login', 'set_lang', 'forgot', 'reset'}
 _ADMIN_ENDPOINTS = frozenset({
     'admin_panel', 'admin_create_user', 'admin_lock_user',
     'admin_unlock_user', 'admin_reset_password', 'admin_user_detail',
-    'admin_test_mail',
+    'admin_test_mail', 'admin_delete_user',
 })
 
 
@@ -515,10 +591,32 @@ def _current_player_row() -> dict | None:
 # gespielt hat.
 
 _ADMIN_LIST_LIMIT = 50
-# Die Kontoseite zeigt die Historie eines einzelnen Spielers -- da darf es
-# mehr sein als in der Uebersicht, aber nicht unbegrenzt: die Seite wird am
+# Die Kontoseite zeigt die Historie eines einzelnen Spielers -- da darf eine
+# Seite mehr fassen als in der Uebersicht, aber nicht unbegrenzt: sie wird am
 # Stueck gerendert und soll auch nach tausend Laeufen noch aufgehen.
 _ADMIN_DETAIL_LIMIT = 200
+
+
+# Weit hinter jedem denkbaren Bestand, und weit vor der Grenze, die SQLite
+# fuer einen OFFSET noch annimmt.
+_MAX_PAGE = 1_000_000
+
+
+def _page_offset(param: str, limit: int) -> int:
+    """Seitennummer aus der Adresse in einen Zeilenversatz umrechnen.
+
+    Alles Unsinnige faellt auf Seite 1 zurueck -- ein Tippfehler in der Adresse
+    soll eine Seite zeigen, keinen Fehler. Eine Seitennummer hinter dem Ende
+    ergibt eine leere Seite, und die Blaetterleiste zeigt, wo es wirklich
+    aufhoert; nach oben gedeckelt wird trotzdem, weil SQLite einen OFFSET
+    jenseits von 64 Bit nicht annimmt und eine absurd grosse Zahl in der
+    Adresse sonst eine Ausnahme statt einer leeren Seite ergaebe.
+    """
+    try:
+        page = int(request.args.get(param, 1))
+    except (TypeError, ValueError):
+        page = 1
+    return max(0, (min(max(1, page), _MAX_PAGE) - 1) * limit)
 
 
 def _render_admin(status: int = 200, **extra):
@@ -526,11 +624,20 @@ def _render_admin(status: int = 200, **extra):
     ctx = {
         't': load_translations(lang), 'lang': lang, 'app_version': APP_VERSION,
         'users': USERS.list_users(),
-        'logins': USERS.recent_login_events(_ADMIN_LIST_LIMIT),
-        'sessions': USERS.recent_play_sessions(_ADMIN_LIST_LIMIT),
+        'logins': USERS.recent_login_events(
+            _ADMIN_LIST_LIMIT, _page_offset('logins', _ADMIN_LIST_LIMIT)),
+        'sessions': USERS.recent_play_sessions(
+            _ADMIN_LIST_LIMIT, _page_offset('runs', _ADMIN_LIST_LIMIT)),
+        # Die Blaetterleiste haengt an der Adresse, und nach einer Aktion
+        # (anlegen, sperren, loeschen) antwortet dieselbe Ansicht auf ein
+        # POST -- dann steht in der Adresse keine Seitennummer, und beide
+        # Listen stehen wieder auf Seite 1. Genau richtig: nach einer
+        # Aenderung ist die neueste Zeile die interessante.
+        'logins_param': 'logins', 'runs_param': 'runs', 'page_base': '/admin',
         'csrf': AUTH.csrf_token('admin'),
         'mail': MAIL.status(),
-        'created': None, 'reset_password': None, 'error': None, 'mail_result': None,
+        'created': None, 'reset_password': None, 'error': None,
+        'mail_result': None, 'deleted': None,
     }
     ctx.update(extra)
     resp = make_response(render_template('admin.html', **ctx), status)
@@ -604,9 +711,12 @@ def admin_user_detail(user_id: str):
         app_version=APP_VERSION, csrf=AUTH.csrf_token('admin'), account=row,
         stats=USERS.user_stats(user_id),
         breakdown=USERS.scenario_breakdown(user_id),
-        sessions=USERS.user_play_sessions(user_id, _ADMIN_DETAIL_LIMIT),
-        logins=USERS.user_login_events(user_id, _ADMIN_DETAIL_LIMIT),
-        detail_limit=_ADMIN_DETAIL_LIMIT))
+        sessions=USERS.user_play_sessions(
+            user_id, _ADMIN_DETAIL_LIMIT, _page_offset('runs', _ADMIN_DETAIL_LIMIT)),
+        logins=USERS.user_login_events(
+            user_id, _ADMIN_DETAIL_LIMIT, _page_offset('logins', _ADMIN_DETAIL_LIMIT)),
+        logins_param='logins', runs_param='runs',
+        page_base='/admin/users/' + quote(user_id, safe='')))
     resp.headers['Cache-Control'] = 'no-store'
     return resp
 
@@ -643,6 +753,46 @@ def admin_unlock_user(user_id: str):
         return _render_admin(400, error='csrf_expired')
     ok = USERS.set_status(user_id, usersmod.STATUS_ACTIVE)
     return _render_admin() if ok else _render_admin(404, error='not_found')
+
+
+@app.route('/admin/users/<user_id>/delete', methods=['POST'])
+def admin_delete_user(user_id: str):
+    """Konto endgueltig entfernen -- Gegenstueck zum Sperren, nicht dessen
+    Steigerung.
+
+    Sperren ist das Mittel der Wahl: reversibel, Historie bleibt. Loeschen ist
+    fuer den anderen Fall da, in dem jemand aus der Datei verschwinden soll --
+    und weil die Historie je Konto seit 0.6.0 deutlich laenger ist, ist das
+    kein Randfall mehr.
+
+    Zwei Sicherungen, weil es keinen Rueckweg gibt:
+
+    * Die E-Mail-Adresse muss abgetippt werden. Ein Klick daneben in einer
+      Kontoliste ist zu leicht, und beide Knoepfe stehen in derselben Zeile.
+    * Es geht nur von der Kontoseite aus (dort steht ein Konto allein auf dem
+      Schirm), nicht aus der Zeile in der Uebersicht.
+
+    Mitgeloescht wird alles, was an dem Konto haengt: Historie und Protokolle
+    (users.py delete_user), die Spielstaende als Dateien, und die laufende
+    Sitzung -- sonst spielte ein noch offener Browser munter weiter und
+    schriebe Spielstaende in einen Ordner, zu dem es kein Konto mehr gibt.
+    """
+    if not _admin_csrf_ok():
+        return _render_admin(400, error='csrf_expired')
+    row = USERS.get_by_id(user_id)
+    if row is None:
+        return _render_admin(404, error='not_found')
+    typed = usersmod.normalize_email(request.form.get('confirm_email', ''))
+    if typed != row['email']:
+        return _render_admin(400, error='delete_not_confirmed')
+    email = row['email']
+    AUTH.revoke(email)
+    STORE.delete_account(STORE.account_key(email))
+    deleted = USERS.delete_user(user_id)
+    if deleted is None:
+        return _render_admin(404, error='not_found')
+    log.info('Spielerkonto geloescht, samt Historie und Spielstaenden')
+    return _render_admin(deleted={'email': email})
 
 
 @app.route('/admin/users/<user_id>/reset-password', methods=['POST'])
@@ -816,6 +966,71 @@ def prefs_write():
     return jsonify({'ok': True})
 
 
+# ── Eigenes Konto ─────────────────────────────────────────────────────────────
+#
+# Bis 0.6.0 konnte ein Spieler sein Passwort im laufenden Betrieb nicht selbst
+# aendern: entweder setzte der Admin es im Panel zurueck, oder man ging ueber
+# "Passwort vergessen" und wartete auf eine Mail -- fuer etwas, das man
+# gerade mit beiden Haenden am Schirm tun will, ein Umweg ueber das eigene
+# Postfach. Und ohne Mailserver gab es gar keinen Weg.
+#
+# Drei Dinge unterscheiden diesen Weg vom Reset-Link:
+#
+# * Das ALTE Passwort muss mit (users.py change_password). Die Sitzung laeuft
+#   30 Tage; ohne diese Pruefung reicht ein kurz unbeaufsichtigter Browser,
+#   um ein Konto zu uebernehmen.
+# * Die eigene Sitzung bleibt bestehen. Ein Passwortwechsel entwertet jede
+#   andere Sitzung des Kontos (auth.py issue()) -- genau das ist erwuenscht,
+#   aber sich dabei selbst auszusperren waere absurd. Deshalb wird gleich hier
+#   ein frisches Sitzungstoken ausgegeben und als Cookie mitgeschickt.
+# * Der Admin kommt hier nicht an: er hat kein Konto in users.db (sein
+#   Passwort steht in der Dockge-Konfiguration), und _require_login leitet
+#   ihn ohnehin nach /admin um.
+
+_PASSWORD_TRIES = 10       # je Stunde -- Durchprobieren des alten Passworts
+
+
+@app.route('/api/account', methods=['GET'])
+def account_read():
+    """Was das Spiel ueber das eigene Konto anzeigen darf."""
+    player = _current_player_row()
+    if not player:
+        return jsonify({'error': 'no_account'}), 403
+    return jsonify({'email': player['email'],
+                    'min_password_chars': usersmod.MIN_PASSWORD_CHARS})
+
+
+@app.route('/api/account/password', methods=['POST'])
+def account_change_password():
+    if _limited('password', _PASSWORD_TRIES, 3600):
+        return jsonify({'error': 'rate_limited'}), 429
+    player = _current_player_row()
+    if not player:
+        return jsonify({'error': 'no_account'}), 403
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({'error': 'bad_body'}), 400
+    current = body.get('current')
+    new_password = body.get('new')
+    if not isinstance(current, str) or not isinstance(new_password, str):
+        return jsonify({'error': 'bad_body'}), 400
+
+    why = USERS.change_password(player['id'], current, new_password)
+    if why:
+        return jsonify({'error': why}), 429 if why == 'rate_limited' else 400
+
+    # Jede andere Sitzung dieses Kontos faellt damit (auth.py issue() vergibt
+    # eine neue Kennung und entwertet die vorherige) -- die eigene bekommt das
+    # frische Token gleich als Cookie zurueck.
+    log.info('Passwort durch den Spieler selbst geaendert')
+    resp = jsonify({'ok': True})
+    resp.set_cookie(authmod.SESSION_COOKIE, AUTH.issue(g.user),
+                    max_age=authmod.SESSION_MAX_AGE, httponly=True,
+                    samesite='Lax', secure=request.is_secure)
+    return resp
+
+
 # ── Spielhistorie ─────────────────────────────────────────────────────────────
 #
 # Bis 0.5.11 entstand der einzige Eintrag der Historie als Nebenwirkung von
@@ -832,15 +1047,101 @@ def prefs_write():
 _RUN_MODES = frozenset(usersmod.MODES)
 _RUN_OUTCOMES = frozenset(usersmod.OUTCOMES)
 
-# Obergrenze fuer die gemeldete Dauer. Sie ist SIMULIERTE Zeit und kommt vom
-# Client -- wer will, kann eine Fantasiezahl schicken. Das faellt nicht ins
-# Gewicht (die Historie ist Buchhaltung, keine Wertung; die Bestenliste
-# rechnet weiterhin selbst nach, siehe scores_add), aber eine offene Grenze
-# wuerde die Spalte "Spielzeit gesamt" fuer alle anderen unlesbar machen.
+# Harte Obergrenze fuer die gemeldete SIMULIERTE Dauer. Sie greift, wenn zu
+# einem Lauf keine eigene Messung vorliegt (siehe OpenRuns) -- nach einem
+# Neustart des Containers etwa, oder bei einem aelteren Client.
 _RUN_MAX_DURATION_S = 24 * 3600
 # Darunter war es kein Lauf, sondern ein Blick hinein. Derselbe Wert steht in
 # main.js -- geprueft wird er hier, weil nur der Server ihn durchsetzen kann.
 _RUN_MIN_DURATION_S = 30
+
+# Schneller als das kann kein Browser simulierte Zeit erzeugen: 60x ist die
+# hoechste Zeitrafferstufe (siehe loop.js, static/js/main.js setSpeed()).
+_RUN_MAX_RATE = 60
+# Zuschlag auf die gemessene Zeit. Deckt den Abstand zwischen dem Melden des
+# Beginns und dem ersten Rechenschritt, Uhrenaufloesung und den Fall, dass
+# jemand die Runde eine Sekunde vor Ablauf der Messung beendet. Grosszuegig,
+# weil eine zu enge Grenze einen ehrlichen Lauf kuerzen wuerde -- und eine
+# gekuerzte ehrliche Angabe ist schlimmer als eine ungekuerzte falsche.
+_RUN_RATE_GRACE_S = 120
+# Das freie Spiel kennt zusaetzlich den Xenon-Zeitraffer (main.js
+# fastForwardXenon(), XENON_SKIP_CAP_S): der rechnet in einer engen Schleife,
+# nicht im Bildtakt, und erzeugt binnen Sekunden bis zu 48 h simulierte Zeit.
+# Fuer diesen Modus ist die 60x-Grenze deshalb wirkungslos -- das steht hier
+# offen, statt eine Grenze zu behaupten, die der eigene Vorspulknopf bricht.
+# Fuer Szenarien und Tutorials (die gewerteten und die gefuehrten Laeufe)
+# gibt es den Knopf nicht, dort greift sie.
+_RUN_XENON_SKIP_S = 48 * 3600
+
+
+def _run_duration_cap(measured: dict | None, mode: str) -> float:
+    """Wie viel simulierte Zeit dieser Lauf hoechstens erreicht haben kann."""
+    if measured is None:
+        return float(_RUN_MAX_DURATION_S)
+    cap = (measured['start_sim'] + measured['wall_s'] * _RUN_MAX_RATE
+           + _RUN_RATE_GRACE_S)
+    if mode == usersmod.MODE_FREE:
+        cap += _RUN_XENON_SKIP_S
+    return min(float(_RUN_MAX_DURATION_S), cap)
+
+
+def _run_mode(scenario: str | None) -> str:
+    """Der Modus kommt aus dem KATALOG, nicht aus der Anfrage -- derselbe
+    Grundsatz wie beim Schwierigkeitsgrad in scores_add(). Ohne Szenario ist
+    es freies Spiel, und ob ein Szenario ein Tutorial ist, steht in seiner
+    Datei."""
+    if scenario is None:
+        return usersmod.MODE_FREE
+    if SCENARIO_BY_ID[scenario].get('tutorial'):
+        return usersmod.MODE_TUTORIAL
+    return usersmod.MODE_SCENARIO
+
+
+@app.route('/api/runs/start', methods=['POST'])
+def run_start():
+    """Den Beginn eines Laufs melden, damit der Server seine Dauer selbst
+    messen kann (siehe OpenRuns). Antwortet mit einer Kennung, die der Client
+    beim Beenden zurueckgibt.
+
+    Der Startpunkt eines FORTGESETZTEN Laufs kommt nicht aus der Anfrage,
+    sondern aus dem gespeicherten Stand selbst: der liegt auf diesem Server,
+    und sein `t_sim` steht als eigenes Feld darin (siehe net/persist.js
+    pack()). Damit ist auch diese Zahl keine Behauptung des Browsers mehr.
+    """
+    if _limited('run_start', 30, 60):
+        return jsonify({'error': 'rate_limited'}), 429
+    player = _current_player_row()
+    if not player:
+        return jsonify({'error': 'no_account'}), 403
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({'error': 'bad_body'}), 400
+
+    reactor = body.get('reactor')
+    if not isinstance(reactor, str) or reactor not in REACTOR_P0:
+        return jsonify({'error': 'bad_reactor'}), 400
+
+    scenario = body.get('scenario')
+    if scenario is not None and (not isinstance(scenario, str) or scenario not in SCENARIO_IDS):
+        return jsonify({'error': 'bad_scenario'}), 400
+
+    start_sim = 0.0
+    slot = body.get('slot')
+    if isinstance(slot, str) and persist.SLOT_RE.match(slot):
+        blob = STORE.read_save(_account_id(), slot)
+        # Der Spielstand bleibt undurchsichtig (siehe persist.py) -- gelesen
+        # wird genau das eine Feld, das die Zeitmessung braucht, so wie
+        # list_saves() es fuer die Anzeige ohnehin schon tut.
+        if isinstance(blob, dict):
+            try:
+                value = float(blob.get('t_sim') or 0.0)
+            except (TypeError, ValueError):
+                value = 0.0
+            if value == value and 0 <= value <= _RUN_MAX_DURATION_S:
+                start_sim = value
+
+    return jsonify({'run': RUNS.open(_account_id(), reactor, scenario, start_sim)})
 
 
 @app.route('/api/runs', methods=['POST'])
@@ -881,23 +1182,26 @@ def run_record():
         return jsonify({'error': 'bad_duration'}), 400
     if not (duration == duration) or duration < _RUN_MIN_DURATION_S:   # NaN faellt mit durch
         return jsonify({'error': 'too_short'}), 400
-    duration = min(duration, _RUN_MAX_DURATION_S)
 
-    # Der Modus kommt aus dem KATALOG, nicht aus der Anfrage -- derselbe
-    # Grundsatz wie beim Schwierigkeitsgrad in scores_add(). Ohne Szenario ist
-    # es freies Spiel, und ob ein Szenario ein Tutorial ist, steht in seiner
-    # Datei.
-    if scenario is None:
-        mode = usersmod.MODE_FREE
-    elif SCENARIO_BY_ID[scenario].get('tutorial'):
-        mode = usersmod.MODE_TUTORIAL
-    else:
-        mode = usersmod.MODE_SCENARIO
+    mode = _run_mode(scenario)
+
+    # Die eigene Messung dieses Laufs, falls der Client seinen Beginn gemeldet
+    # hat (siehe /api/runs/start). Sie liefert die tatsaechlich verbrachte
+    # Zeit UND die Obergrenze fuer die gemeldete simulierte -- beides ohne
+    # eine Zahl aus dieser Anfrage.
+    measured = RUNS.close(_account_id(), body.get('run'))
+    # Eine Kennung, die zu einem anderen Reaktor oder Szenario gehoert, misst
+    # einen anderen Lauf: dann lieber gar nicht messen als falsch messen.
+    if measured is not None and (measured['reactor'] != reactor
+                                 or measured['scenario'] != scenario):
+        measured = None
+    duration = min(duration, _run_duration_cap(measured, mode))
 
     USERS.record_play_session(
         player['id'], reactor, scenario, duration,
         completed=(outcome == usersmod.OUTCOME_COMPLETED),
-        mode=mode, outcome=outcome)
+        mode=mode, outcome=outcome,
+        wall_s=(measured['wall_s'] if measured else None))
     return jsonify({'ok': True})
 
 

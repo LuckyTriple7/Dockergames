@@ -191,7 +191,7 @@ def test_login_event_is_recorded_with_ip(admin):
     player.post('/login', data={'user': 'log@example.test', 'password': 'log-passwort-1',
                                 'csrf': _csrf(player), 'next': '/'},
                 environ_overrides={'REMOTE_ADDR': '203.0.113.7'})
-    events = mod.USERS.recent_login_events()
+    events = mod.USERS.recent_login_events()['rows']
     assert any(e['email'] == 'log@example.test' and e['ip'] == '203.0.113.7' for e in events)
 
     html = c.get('/admin').get_data(as_text=True)
@@ -229,7 +229,7 @@ def test_a_scored_run_lands_in_the_history_with_its_score(admin):
     r = player.post('/api/highscores', json={'name': 'Play', 'summary': summary})
     assert r.status_code == 200, r.get_json()
 
-    sessions = mod.USERS.recent_play_sessions()
+    sessions = mod.USERS.recent_play_sessions()['rows']
     assert len(sessions) == 1
     entry = sessions[0]
     assert entry['email'] == 'play@example.test'
@@ -263,7 +263,7 @@ def test_every_finished_run_is_recorded_not_only_scored_ones(admin):
     ):
         assert player.post('/api/runs', json=body).status_code == 200, body
 
-    sessions = mod.USERS.recent_play_sessions()
+    sessions = mod.USERS.recent_play_sessions()['rows']
     assert len(sessions) == 4
     by_mode = {s['mode'] for s in sessions}
     assert by_mode == {'tutorial', 'free', 'scenario'}
@@ -282,7 +282,7 @@ def test_the_mode_comes_from_the_catalog_not_from_the_request(admin):
         'reactor': 'pwr', 'scenario': 'pwr_startup_tutorial', 'duration_s': 900.0,
         'outcome': 'completed', 'mode': 'scenario'})
     assert ok.status_code == 200
-    assert mod.USERS.recent_play_sessions()[0]['mode'] == 'tutorial'
+    assert mod.USERS.recent_play_sessions()['rows'][0]['mode'] == 'tutorial'
 
 
 @pytest.mark.parametrize('body', [
@@ -296,19 +296,295 @@ def test_implausible_runs_are_refused(admin, body):
     mod, _c = admin
     player = _player(mod)
     assert player.post('/api/runs', json=body).status_code == 400
-    assert mod.USERS.recent_play_sessions() == []
+    assert mod.USERS.recent_play_sessions()['rows'] == []
 
 
 def test_an_absurd_duration_is_capped(admin):
-    """Die Dauer kommt vom Client. Sie ist Buchhaltung, keine Wertung -- aber
-    ohne Deckel macht eine Fantasiezahl die Spalte "Spielzeit gesamt" fuer
-    alle anderen unlesbar."""
+    """Ohne eigene Messung bleibt der harte 24-h-Deckel. Er greift, wenn der
+    Client den Beginn nie gemeldet hat -- nach einem Neustart des Containers
+    etwa, oder bei einem aelteren Client."""
     mod, _c = admin
     player = _player(mod)
     r = player.post('/api/runs', json={'reactor': 'pwr', 'scenario': None,
                                        'duration_s': 9e12, 'outcome': 'aborted'})
     assert r.status_code == 200
-    assert mod.USERS.recent_play_sessions()[0]['duration_s'] == mod._RUN_MAX_DURATION_S
+    row = mod.USERS.recent_play_sessions()['rows'][0]
+    assert row['duration_s'] == mod._RUN_MAX_DURATION_S
+    # Ohne Messung steht dort NICHTS -- eine geschaetzte Zahl waere eine
+    # erfundene Angabe.
+    assert row['wall_s'] is None
+
+
+def test_a_measured_run_caps_the_reported_duration_at_what_60x_allows(admin):
+    """Der Kern des Ganzen: der Server misst selbst, statt zu glauben.
+
+    Ein Szenariolauf, der Sekundenbruchteile nach dem Start gemeldet wird,
+    kann hoechstens ein paar Dutzend Sekunden simulierte Zeit erzeugt haben
+    (60x plus Zuschlag) -- keine vier Stunden.
+    """
+    mod, _c = admin
+    player = _player(mod)
+    start = player.post('/api/runs/start',
+                        json={'reactor': 'pwr', 'scenario': 'pwr_load_follow'})
+    assert start.status_code == 200
+    token = start.get_json()['run']
+
+    r = player.post('/api/runs', json={
+        'reactor': 'pwr', 'scenario': 'pwr_load_follow', 'duration_s': 14400.0,
+        'outcome': 'completed', 'run': token})
+    assert r.status_code == 200
+    row = mod.USERS.recent_play_sessions()['rows'][0]
+    # Der Test laeuft in Bruchteilen einer Sekunde: die Grenze ist praktisch
+    # der Zuschlag allein.
+    assert row['duration_s'] <= mod._RUN_RATE_GRACE_S + 60
+    assert row['duration_s'] < 14400.0
+    # Und die tatsaechlich verbrachte Zeit steht jetzt daneben.
+    assert row['wall_s'] is not None and row['wall_s'] >= 0
+
+
+def test_a_measured_run_leaves_an_honest_duration_alone(admin):
+    """Der Deckel darf eine ehrliche Angabe nicht kuerzen: 45 simulierte
+    Sekunden liegen weit unter dem, was der Zuschlag ohnehin zulaesst."""
+    mod, _c = admin
+    player = _player(mod)
+    token = player.post('/api/runs/start',
+                        json={'reactor': 'pwr', 'scenario': 'pwr_load_follow'}
+                        ).get_json()['run']
+    player.post('/api/runs', json={
+        'reactor': 'pwr', 'scenario': 'pwr_load_follow', 'duration_s': 45.0,
+        'outcome': 'failed', 'run': token})
+    assert mod.USERS.recent_play_sessions()['rows'][0]['duration_s'] == 45.0
+
+
+def test_a_run_token_belongs_to_one_account_and_one_scenario(admin):
+    """Eine fremde oder unpassende Kennung misst einen anderen Lauf -- dann
+    lieber gar nicht messen als falsch messen."""
+    mod, _c = admin
+    one = _player(mod, 'eins@example.test', 'eins-passwort-1')
+    two = _player(mod, 'zwei@example.test', 'zwei-passwort-1')
+    token = one.post('/api/runs/start',
+                     json={'reactor': 'pwr', 'scenario': 'pwr_load_follow'}
+                     ).get_json()['run']
+
+    # Fremdes Konto: die Kennung greift nicht, der Lauf wird trotzdem
+    # aufgezeichnet -- nur ungemessen und mit dem harten Deckel.
+    two.post('/api/runs', json={'reactor': 'pwr', 'scenario': 'pwr_load_follow',
+                                'duration_s': 9e12, 'outcome': 'aborted', 'run': token})
+    stolen = mod.USERS.recent_play_sessions()['rows'][0]
+    assert stolen['email'] == 'zwei@example.test'
+    assert stolen['wall_s'] is None
+    assert stolen['duration_s'] == mod._RUN_MAX_DURATION_S
+
+    # Eigenes Konto, aber anderes Szenario als beim Start gemeldet.
+    one.post('/api/runs', json={'reactor': 'bwr', 'scenario': 'bwr_msiv',
+                                'duration_s': 9e12, 'outcome': 'aborted', 'run': token})
+    assert mod.USERS.recent_play_sessions()['rows'][0]['wall_s'] is None
+
+
+def test_a_resumed_run_starts_from_the_saved_state_not_from_a_claim(admin):
+    """Ein fortgesetzter Lauf beginnt nicht bei null -- und woher, weiss der
+    Server aus dem gespeicherten Stand, der auf seiner eigenen Platte liegt,
+    nicht aus der Anfrage."""
+    mod, _c = admin
+    player = _player(mod)
+    assert player.put('/api/saves/auto-pwr', json={
+        'v': 1, 'reactor': 'pwr', 'scenario': 'pwr_load_follow',
+        't_sim': 7200.0, 'state': {}}).status_code == 200
+
+    token = player.post('/api/runs/start', json={
+        'reactor': 'pwr', 'scenario': 'pwr_load_follow',
+        'slot': 'auto-pwr'}).get_json()['run']
+    player.post('/api/runs', json={
+        'reactor': 'pwr', 'scenario': 'pwr_load_follow', 'duration_s': 7260.0,
+        'outcome': 'completed', 'run': token})
+    # 7260 s liegen weit ueber dem, was die Messung allein erlauben wuerde,
+    # aber innerhalb von "Stand 7200 s + Zuschlag".
+    assert mod.USERS.recent_play_sessions()['rows'][0]['duration_s'] == 7260.0
+
+    # Ohne den Stand als Ausgangspunkt waere genau dieselbe Angabe gekuerzt.
+    bare = player.post('/api/runs/start', json={
+        'reactor': 'pwr', 'scenario': 'pwr_load_follow'}).get_json()['run']
+    player.post('/api/runs', json={
+        'reactor': 'pwr', 'scenario': 'pwr_load_follow', 'duration_s': 7260.0,
+        'outcome': 'completed', 'run': bare})
+    assert mod.USERS.recent_play_sessions()['rows'][0]['duration_s'] < 7260.0
+
+
+# -- Blaetterung --------------------------------------------------------------
+
+
+def test_the_overview_pages_through_more_entries_than_one_screen(admin):
+    """Vor 0.6.1 zeigte die Uebersicht die letzten 50 Eintraege und schwieg
+    ueber den Rest -- der war nur noch direkt in users.db zu sehen."""
+    mod, c = admin
+    _player(mod, 'viel@example.test', 'viel-passwort-1')
+    uid = mod.USERS.find_for_login('viel@example.test')['id']
+    for i in range(mod._ADMIN_LIST_LIMIT + 5):
+        mod.USERS.record_play_session(uid, 'pwr', None, 60.0 + i, False,
+                                      mode='free', outcome='aborted')
+
+    first = mod.USERS.recent_play_sessions(mod._ADMIN_LIST_LIMIT, 0)
+    assert first['total'] == mod._ADMIN_LIST_LIMIT + 5
+    assert len(first['rows']) == mod._ADMIN_LIST_LIMIT
+    second = mod.USERS.recent_play_sessions(mod._ADMIN_LIST_LIMIT,
+                                            mod._ADMIN_LIST_LIMIT)
+    assert len(second['rows']) == 5
+    # Keine Zeile doppelt, keine verloren.
+    first_ids = set(r['duration_s'] for r in first['rows'])
+    second_ids = set(r['duration_s'] for r in second['rows'])
+    assert not first_ids.intersection(second_ids)
+
+    html = c.get('/admin?runs=2').get_data(as_text=True)
+    assert 'Seite 2' in html or 'Page 2' in html
+    # Die erste Seite ist von hier aus erreichbar.
+    assert 'runs=1' in html
+
+
+def test_page_numbers_that_make_no_sense_fall_back_to_the_first_page(admin):
+    mod, c = admin
+    _player(mod, 'egal@example.test', 'egal-passwort-1')
+    for query in ('?runs=0', '?runs=-5', '?runs=abc', '?logins=99999999999999999999'):
+        assert c.get('/admin' + query).status_code == 200
+
+
+def test_the_account_page_pages_its_history(admin):
+    mod, c = admin
+    _player(mod, 'lang@example.test', 'lang-passwort-1')
+    uid = mod.USERS.find_for_login('lang@example.test')['id']
+    for i in range(mod._ADMIN_DETAIL_LIMIT + 3):
+        mod.USERS.record_play_session(uid, 'bwr', None, 100.0 + i, False,
+                                      mode='free', outcome='aborted')
+    page = mod.USERS.user_play_sessions(uid, mod._ADMIN_DETAIL_LIMIT,
+                                        mod._ADMIN_DETAIL_LIMIT)
+    assert page['total'] == mod._ADMIN_DETAIL_LIMIT + 3
+    assert len(page['rows']) == 3
+    assert c.get('/admin/users/' + uid + '?runs=2').status_code == 200
+
+
+# -- Konto loeschen -----------------------------------------------------------
+
+
+def test_deleting_an_account_takes_its_history_and_saves_with_it(admin):
+    mod, c = admin
+    player = _player(mod, 'weg@example.test', 'weg-passwort-1')
+    uid = mod.USERS.find_for_login('weg@example.test')['id']
+    player.post('/api/runs', json={'reactor': 'pwr', 'scenario': None,
+                                   'duration_s': 900.0, 'outcome': 'aborted'})
+    assert player.put('/api/saves/auto-pwr', json={'reactor': 'pwr'}).status_code == 200
+    account_dir = os.path.join(mod.STORE.players,
+                               mod.STORE.account_key('weg@example.test'))
+    assert os.path.isdir(account_dir)
+
+    r = c.post('/admin/users/' + uid + '/delete',
+               data={'csrf': _admin_csrf(c), 'confirm_email': 'Weg@Example.TEST'})
+    assert r.status_code == 200
+    assert mod.USERS.find_for_login('weg@example.test') is None
+    assert mod.USERS.recent_play_sessions()['rows'] == []
+    assert mod.USERS.recent_login_events()['rows'] == []
+    assert not os.path.exists(account_dir)
+    # Die laufende Sitzung ist damit ebenfalls tot.
+    assert player.get('/api/meta').status_code in (302, 401)
+
+
+def test_deleting_needs_the_typed_address_and_a_fresh_form(admin):
+    mod, c = admin
+    _player(mod, 'bleibt@example.test', 'bleibt-passwort-1')
+    uid = mod.USERS.find_for_login('bleibt@example.test')['id']
+
+    wrong = c.post('/admin/users/' + uid + '/delete',
+                   data={'csrf': _admin_csrf(c),
+                         'confirm_email': 'tippfehler@example.test'})
+    assert wrong.status_code == 400
+    assert mod.USERS.find_for_login('bleibt@example.test') is not None
+
+    blank = c.post('/admin/users/' + uid + '/delete', data={'csrf': _admin_csrf(c)})
+    assert blank.status_code == 400
+
+    stale = c.post('/admin/users/' + uid + '/delete',
+                   data={'csrf': 'abgelaufen', 'confirm_email': 'bleibt@example.test'})
+    assert stale.status_code == 400
+    assert mod.USERS.find_for_login('bleibt@example.test') is not None
+
+
+def test_a_player_cannot_delete_accounts(admin):
+    mod, _c = admin
+    player = _player(mod, 'nixadmin@example.test', 'nixadmin-passwort-1')
+    uid = mod.USERS.find_for_login('nixadmin@example.test')['id']
+    assert player.post('/admin/users/' + uid + '/delete',
+                       data={'confirm_email': 'nixadmin@example.test'}).status_code == 403
+    assert mod.USERS.find_for_login('nixadmin@example.test') is not None
+
+
+# -- Passwort selbst aendern --------------------------------------------------
+
+
+def test_a_player_changes_their_own_password_and_stays_signed_in(admin):
+    """Der Backlog-Punkt: bis 0.6.0 ging das nur ueber den Admin oder ueber
+    einen Link ins eigene Postfach."""
+    mod, _c = admin
+    player = _player(mod, 'selbst@example.test', 'selbst-passwort-1')
+    r = player.post('/api/account/password',
+                    json={'current': 'selbst-passwort-1', 'new': 'neues-passwort-2'})
+    assert r.status_code == 200, r.get_json()
+
+    # Dieselbe Sitzung laeuft weiter -- das frische Token kam als Cookie mit.
+    assert player.get('/api/meta').status_code == 200
+    # Das neue Passwort gilt, das alte nicht mehr.
+    assert mod.AUTH.check('selbst@example.test', 'neues-passwort-2')
+    assert not mod.AUTH.check('selbst@example.test', 'selbst-passwort-1')
+
+
+def test_changing_the_password_signs_out_every_other_device(admin):
+    mod, _c = admin
+    first = _player(mod, 'zwei-geraete@example.test', 'geraet-passwort-1')
+    # Zweites Geraet: meldet sich an und entwertet dabei die erste Sitzung
+    # (eine aktive Sitzung je Konto, siehe auth.py). Der Wechsel dort darf
+    # die eigene, neuere Sitzung nicht mit umbringen.
+    second = mod.app.test_client()
+    second.post('/login', data={'user': 'zwei-geraete@example.test',
+                                'password': 'geraet-passwort-1',
+                                'csrf': _csrf(second), 'next': '/'})
+    assert second.post('/api/account/password',
+                       json={'current': 'geraet-passwort-1',
+                             'new': 'geraet-passwort-2'}).status_code == 200
+    assert second.get('/api/meta').status_code == 200
+    assert first.get('/api/meta').status_code in (302, 401)
+
+
+@pytest.mark.parametrize('body, error', [
+    ({'current': 'falsch-falsch-1', 'new': 'neues-passwort-2'}, 'wrong_password'),
+    ({'current': 'selbst-passwort-1', 'new': 'kurz'}, 'password_too_short'),
+    ({'current': 'selbst-passwort-1', 'new': 'selbst-passwort-1'}, 'password_unchanged'),
+    ({'current': 'selbst-passwort-1'}, 'bad_body'),
+])
+def test_a_password_change_that_should_not_happen(admin, body, error):
+    mod, _c = admin
+    player = _player(mod, 'selbst@example.test', 'selbst-passwort-1')
+    r = player.post('/api/account/password', json=body)
+    assert r.status_code == 400
+    assert r.get_json()['error'] == error
+    # In jedem Fall gilt weiterhin das alte Passwort.
+    assert mod.AUTH.check('selbst@example.test', 'selbst-passwort-1')
+
+
+def test_guessing_the_old_password_runs_into_the_rate_limit(admin):
+    mod, _c = admin
+    player = _player(mod, 'raten@example.test', 'raten-passwort-1')
+    codes = [player.post('/api/account/password',
+                         json={'current': 'daneben-' + str(i),
+                               'new': 'egal-egal-egal-1'}).status_code
+             for i in range(mod._PASSWORD_TRIES + 2)]
+    assert 429 in codes
+    assert mod.AUTH.check('raten@example.test', 'raten-passwort-1')
+
+
+def test_the_admin_has_no_self_service_account(admin):
+    """Sein Passwort steht in der Dockge-Konfiguration, nicht in users.db --
+    hier kaeme er ohnehin nicht an (_require_login leitet ihn nach /admin)."""
+    _mod, c = admin
+    assert c.post('/api/account/password',
+                  json={'current': ADMIN_PASSWORD, 'new': 'was-anderes-1'}
+                  ).status_code in (302, 403)
 
 
 def test_a_score_attaches_to_the_reported_run_instead_of_doubling_it(admin):
@@ -331,7 +607,7 @@ def test_a_score_attaches_to_the_reported_run_instead_of_doubling_it(admin):
     r = player.post('/api/highscores', json={'name': 'Play', 'summary': summary})
     assert r.status_code == 200, r.get_json()
 
-    sessions = mod.USERS.recent_play_sessions()
+    sessions = mod.USERS.recent_play_sessions()['rows']
     assert len(sessions) == 1, 'der Lauf steht doppelt in der Historie'
     assert sessions[0]['score'] == r.get_json()['score']
     assert mod.USERS.user_stats(sessions[0]['user_id'])['total_playtime_s'] == 14400.0
@@ -371,7 +647,7 @@ def test_a_player_run_needs_an_account(admin):
     r = c.post('/api/runs', json={'reactor': 'pwr', 'scenario': None,
                                   'duration_s': 900, 'outcome': 'aborted'})
     assert r.status_code in (302, 403)
-    assert mod.USERS.recent_play_sessions() == []
+    assert mod.USERS.recent_play_sessions()['rows'] == []
 
 
 def test_player_cannot_reach_admin_routes(admin):

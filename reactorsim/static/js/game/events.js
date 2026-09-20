@@ -206,9 +206,12 @@ const EVENTS = {
       // Hauptumwaelzpumpen langsam auslaufen liess. Keine eigene
       // Rotordrehzahl-Zustandsgroesse, bewusst geskriptet (siehe BACKLOG).
       if (e.state.reactor !== 'rbmk' || e.state.mcpDmd === undefined) return;
-      const to = (args && Number.isFinite(args.to)) ? args.to : 0;
-      const dur = (args && Number.isFinite(args.over_s) && args.over_s > 0) ? args.over_s : 30;
-      e.ctx.mcpRunback = { from: e.state.mcpDmd, to, t0: e.state.t_sim, dur };
+      // Seit 0.6.1 kein Drehbuch mehr: das Ereignis trennt den Generator vom
+      // Netz, alles Weitere macht die Physik (rbmk.js stepLoop, sp.turbogen).
+      // Der Pumpen-Sollwert des Spielers bleibt dabei unangetastet -- vorher
+      // schob ihn das Ereignis selbst auf null, was auf dem Schirm aussah wie
+      // eine Bedienhandlung, die niemand vorgenommen hatte.
+      e.state.tgCoasting = true;
     },
   },
 
@@ -304,17 +307,4 @@ export function stepEvents(e, dt) {
     s.boronFlow = -1;
   }
 
-  // Kuehlmittel-Auslauf (siehe rbmk_mcp_runback oben): laeuft ueber
-  // mehrere Sekunden statt in einem Schritt, danach behaelt der Spieler die
-  // volle Handregelung -- genau wie recircRunback beim SWR.
-  if (ctx.mcpRunback && s.mcpDmd !== undefined) {
-    const rb = ctx.mcpRunback;
-    const frac = (s.t_sim - rb.t0) / rb.dur;
-    if (frac >= 1) {
-      s.mcpDmd = rb.to;
-      ctx.mcpRunback = null;
-    } else if (frac > 0) {
-      s.mcpDmd = rb.from + (rb.to - rb.from) * frac;
-    }
-  }
 }

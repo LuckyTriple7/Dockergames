@@ -54,6 +54,15 @@ export const api = {
   // reportRun(), app.py /api/runs). Scheitert der Aufruf, geht der Lauf
   // verloren und sonst nichts: das Spiel selbst haengt nicht daran.
   recordRun: (run) => request('POST', '/api/runs', run),
+  // Den BEGINN eines Laufs melden, damit der Server seine Dauer selbst misst
+  // statt der gemeldeten zu glauben (siehe app.py /api/runs/start, OpenRuns).
+  // Die Antwort traegt eine Kennung, die recordRun() als `run` zurueckgibt.
+  // Scheitert der Aufruf, laeuft alles wie vorher -- ohne Messung, mit dem
+  // alten Deckel; das Spiel haengt daran nicht.
+  startRun: (run) => request('POST', '/api/runs/start', run),
+  readAccount: () => request('GET', '/api/account'),
+  changePassword: (current, next) =>
+    request('POST', '/api/account/password', { current, new: next }),
   readPrefs: () => request('GET', '/api/prefs'),
   writePrefs: (blob) => request('PUT', '/api/prefs', blob),
 };

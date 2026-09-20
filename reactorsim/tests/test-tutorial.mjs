@@ -285,12 +285,14 @@ test("chernobyl tutorial's window/az5 steps show the live hint, not a misleading
   buildTutorial(session, { add(group, callback) { update = callback; } });
   const status = get('#rs-tutorial-status');
 
-  // 'window' holds internally for only HOLD[5]=0.2s (a debounce for the
-  // fast transition to 'az5', see chernobylTutorial.js), not a real wait --
+  // 'window' holds internally for only 0.2s (a debounce for the fast
+  // transition to 'az5', see chernobylTutorial.js), not a real wait --
   // showing "0/0.2s" while the script is still counting down to AZ-5 looked
   // like "almost done" (Nutzerrueckmeldung). Force onto 'window' and check
   // the compact status shows the live hint instead of a "0/0.2" countdown.
-  tut.index = 5;
+  // Index statt Zahl: die Schrittliste ist seit 0.6.1 um 'hold' laenger
+  // (Pumpen auf 01:07, siehe chernobylTutorial.js).
+  tut.index = tut.steps.indexOf('window');
   tut._runbackT0 = engine.state.t_sim;
   update();
   assert.doesNotMatch(status.textContent, /0[.,]?\/0[.,]2/);
@@ -307,9 +309,9 @@ test("chernobyl tutorial's window/az5 steps show the live hint, not a misleading
   // Die Uhr der Nacht haengt an der Wertezeile, nicht in den *_values-Texten
   // der einzelnen Schritte (siehe ui/tutorial.js) -- sie darf deshalb in
   // JEDEM Schritt erscheinen, ohne dass einer davon sie nennen muss.
-  tut._setWallOffset(3848 - engine.state.t_sim); // 01:04:08
+  tut._setWallOffset(3845 - engine.state.t_sim); // 01:04:05
   update();
-  assert.match(status.textContent, /Uhrzeit 01:04:08/);
+  assert.match(status.textContent, /Uhrzeit 01:04:05/);
 
   // Schlussbefund im Debrief: Dass der Kern auch ohne AZ-5 am Durchgehen war,
   // steht in keinem einzelnen Schritt und nur dieses Tutorial hat den

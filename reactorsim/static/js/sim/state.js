@@ -41,6 +41,10 @@ export const RANGES = {
   auxFeedDmd: [0, 1],
   auxWaterKg: [0, 1e9],
   coolantHeatMW: [-1e12, 1e12],
+  // Drehzahl des Turbogenerators als Bruchteil der Nenndrehzahl (nur RBMK,
+  // siehe rbmk.js sp.turbogen). Ueber 1 kann sie nicht: am Netz haelt die
+  // Frequenz sie fest, davon geloest bremst sie nur.
+  tgSpeed: [0, 1],
   p_prim: [0.01, 300],
   I: [0, 100],
   X: [0, 100],
@@ -179,7 +183,7 @@ export function numbers(s) {
   for (let i = 0; i < s.rod.length; i++) out.push(s.rod[i]);
   for (let i = 0; i < s.rodDmd.length; i++) out.push(s.rodDmd[i]);
   for (const key of ['W_fwDemand', 'W_fwMain', 'W_fwAux', 'fwSupplyMax',
-    'auxFeedDmd', 'auxWaterKg', 'coolantHeatMW']) {
+    'auxFeedDmd', 'auxWaterKg', 'coolantHeatMW', 'tgSpeed']) {
     if (s[key] !== undefined) out.push(s[key]);
   }
   return out;

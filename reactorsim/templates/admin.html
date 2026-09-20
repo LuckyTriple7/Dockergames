@@ -76,9 +76,23 @@
   .outcome-completed { color: #7ee0a0; }
   .outcome-failed, .outcome-destroyed { color: #ffb3bd; }
   .outcome-aborted { color: #d2b36a; }
+  /* Blaetterleiste (siehe _pager.html). Zaehlzeile links, Pfeile rechts --
+     auf schmalen Schirmen untereinander statt abgeschnitten. */
+  .pager { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; }
+  .pagecount { color: #7e8fa0; }
+  .pagelinks { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .pagelinks a, .pagelinks .off {
+    display: inline-block; min-width: 30px; text-align: center; padding: 4px 6px;
+    border: 1px solid #223040; border-radius: 5px; text-decoration: none;
+  }
+  .pagelinks a { color: #64d8ff; }
+  .pagelinks a:hover { background: #17537b; }
+  .pagelinks .off { color: #34404b; border-color: #17202a; }
+  .pagenum { margin-left: 6px; color: #7e8fa0; font-family: ui-monospace, monospace; }
 </style>
 </head>
 <body>
+{% from '_pager.html' import pager %}
 <div class="wrap">
   <div class="top">
     <h1>{{ t.app_title }}<span>{{ t.admin_title }}</span></h1>
@@ -99,6 +113,9 @@
         {{ t.admin_created_banner_set.format(email=created.email) }}
       {% endif %}
     </p>
+  {% endif %}
+  {% if deleted %}
+    <p class="ok">{{ t.admin_deleted_banner.format(email=deleted.email) }}</p>
   {% endif %}
   {% if reset_password %}
     <p class="ok">{{ t.admin_reset_banner.format(email=reset_password.email, password=reset_password.password) }}</p>
@@ -179,6 +196,7 @@ REACTORSIM_PUBLIC_URL=https://reactorsim.example.net</code></pre>
         <th>{{ t.admin_col_last_login }}</th>
         <th>{{ t.admin_col_last_ip }}</th>
         <th>{{ t.admin_col_runs }}</th>
+        <th>{{ t.admin_col_walltime }}</th>
         <th>{{ t.admin_col_playtime }}</th>
         <th>{{ t.admin_col_actions }}</th>
       </tr></thead>
@@ -193,7 +211,8 @@ REACTORSIM_PUBLIC_URL=https://reactorsim.example.net</code></pre>
           <td>{{ u.last_login_at | fmt_time }}</td>
           <td><code>{{ u.last_login_ip or '\u2013' }}</code></td>
           <td>{{ u.run_count }}</td>
-          <td>{{ u.total_playtime_s | fmt_duration }}</td>
+          <td>{{ u.total_wall_s | fmt_duration }}</td>
+          <td class="muted">{{ u.total_playtime_s | fmt_duration }}</td>
           <td class="actions">
             {% if u.status == 'active' %}
             <form class="inline" method="post" action="/admin/users/{{ u.id }}/lock">
@@ -214,7 +233,7 @@ REACTORSIM_PUBLIC_URL=https://reactorsim.example.net</code></pre>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="muted">{{ t.admin_no_users }}</td></tr>
+        <tr><td colspan="9" class="muted">{{ t.admin_no_users }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -227,7 +246,7 @@ REACTORSIM_PUBLIC_URL=https://reactorsim.example.net</code></pre>
     <table>
       <thead><tr><th>{{ t.admin_col_email }}</th><th>{{ t.admin_col_when }}</th><th>{{ t.admin_col_last_ip }}</th></tr></thead>
       <tbody>
-        {% for l in logins %}
+        {% for l in logins.rows %}
         <tr><td>{{ l.email }}</td><td>{{ l.at | fmt_time }}</td><td><code>{{ l.ip or '\u2013' }}</code></td></tr>
         {% else %}
         <tr><td colspan="3" class="muted">{{ t.admin_no_logins }}</td></tr>
@@ -235,6 +254,8 @@ REACTORSIM_PUBLIC_URL=https://reactorsim.example.net</code></pre>
       </tbody>
     </table>
     </div>
+    {{ pager(t, page_base, logins_param, logins,
+             {runs_param: (sessions.offset // sessions.limit) + 1}) }}
   </section>
 
   <section>
@@ -244,11 +265,12 @@ REACTORSIM_PUBLIC_URL=https://reactorsim.example.net</code></pre>
       <thead><tr>
         <th>{{ t.admin_col_email }}</th><th>{{ t.admin_col_when }}</th>
         <th>{{ t.admin_col_reactor }}</th><th>{{ t.admin_col_scenario }}</th>
-        <th>{{ t.admin_col_mode }}</th><th>{{ t.admin_col_duration }}</th>
+        <th>{{ t.admin_col_mode }}</th><th>{{ t.admin_col_walltime }}</th>
+        <th>{{ t.admin_col_duration }}</th>
         <th>{{ t.admin_col_outcome }}</th><th>{{ t.admin_col_score }}</th>
       </tr></thead>
       <tbody>
-        {% for s in sessions %}
+        {% for s in sessions.rows %}
         <tr>
           <td><a class="rowlink" href="/admin/users/{{ s.user_id }}">{{ s.email }}</a></td>
           <td>{{ s.at | fmt_time }}</td>
@@ -257,7 +279,8 @@ REACTORSIM_PUBLIC_URL=https://reactorsim.example.net</code></pre>
              Szenariodatei und ist das, wonach der Betreiber sucht. #}
           <td><code>{{ s.scenario or '–' }}</code></td>
           <td>{{ t.get('admin_mode_' + s.mode, t.admin_mode_unknown) if s.mode else t.admin_mode_unknown }}</td>
-          <td>{{ s.duration_s | fmt_duration }}</td>
+          <td>{{ s.wall_s | fmt_duration }}</td>
+          <td class="muted">{{ s.duration_s | fmt_duration }}</td>
           <td class="outcome-{{ s.outcome or 'unknown' }}">
             {{ t.get('admin_outcome_' + s.outcome, t.admin_outcome_unknown) if s.outcome
                else (t.admin_completed_yes if s.completed else t.admin_completed_no) }}
@@ -265,11 +288,14 @@ REACTORSIM_PUBLIC_URL=https://reactorsim.example.net</code></pre>
           <td>{{ s.score if s.score is not none else '\u2013' }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="muted">{{ t.admin_no_sessions }}</td></tr>
+        <tr><td colspan="9" class="muted">{{ t.admin_no_sessions }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
     </div>
+    {{ pager(t, page_base, runs_param, sessions,
+             {logins_param: (logins.offset // logins.limit) + 1}) }}
+    <p class="note">{{ t.admin_duration_note }}</p>
   </section>
 </div>
 </body>

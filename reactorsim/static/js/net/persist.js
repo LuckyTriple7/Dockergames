@@ -94,7 +94,6 @@ export function pack(engine, scenarioId, runState, session) {
       pumpsStuck: engine.ctx.pumpsStuck ? Array.from(engine.ctx.pumpsStuck) : undefined,
       recircPumpStuck: engine.ctx.recircPumpStuck,
       recircRunback: engine.ctx.recircRunback,
-      mcpRunback: engine.ctx.mcpRunback,
       // Schmaler Reaktivitaets-Trimm des Chernobyl-Tutorials (siehe
       // chernobylTutorial.js: _triggerCoastdown/step()) -- ein Ad-hoc-Objekt
       // auf ctx, kein ctx.saveable-Regler mit eigenem snapshot()/restore().
@@ -260,12 +259,10 @@ export function apply(blob, engine, runState, session) {
         engine.ctx.recircRunback = { from, to, t0, dur };
       }
     }
-    if (m.mcpRunback && typeof m.mcpRunback === 'object') {
-      const { from, to, t0, dur } = m.mcpRunback;
-      if ([from, to, t0, dur].every((x) => typeof x === 'number' && Number.isFinite(x))) {
-        engine.ctx.mcpRunback = { from, to, t0, dur };
-      }
-    }
+    // `mcpRunback` stand hier bis 0.6.0: die geskriptete Pumpenrampe des
+    // Auslaufversuchs. Sie ist ersatzlos weg -- der Auslauf ist jetzt eine
+    // Zustandsgroesse (s.tgSpeed/s.tgCoasting, siehe rbmk.js) und kommt damit
+    // ueber den ganz normalen Zustandsteil des Spielstands mit.
     if (m.arTrim && typeof m.arTrim === 'object') {
       const { rho, setpoint } = m.arTrim;
       if ([rho, setpoint].every((x) => typeof x === 'number' && Number.isFinite(x))) {

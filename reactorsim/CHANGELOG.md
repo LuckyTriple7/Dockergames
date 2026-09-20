@@ -1,5 +1,139 @@
 # Changelog
 
+## 0.6.1
+
+- ✨ **Der Turbinenauslaufversuch im Chernobyl-Tutorial ist keine Kulisse
+  mehr.** Bis 0.6.0 war er ein Drehbuch: ein Ereignis fuhr den
+  *Pumpen-Sollwert* linear über dreißig Sekunden auf null. Zwei Dinge waren
+  daran falsch. Es bewegte den Schieber des Spielers, ohne dass jemand ihn
+  angefasst hätte — auf dem Schirm sah das aus wie eine Bedienhandlung, die
+  nie stattgefunden hat. Und der Endwert war null, während historisch nur
+  **vier der acht** Hauptumwälzpumpen am auslaufenden Generator hingen; die
+  anderen vier blieben am Netz. Neu ist die Drehzahl eine echte
+  Zustandsgröße (`s.tgSpeed`, `rbmk.js: sp.turbogen`): Der Rotor bremst gegen
+  die Pumpenlast, und weil eine Kreiselpumpe Leistung mit der dritten Potenz
+  der Drehzahl zieht, folgt daraus `w(t) = w0/(1 + t/τ)` — der Rechenschritt
+  dafür ist exakt, der Zeitschritt fällt heraus. Der Kernstrom sinkt damit auf
+  etwa die Hälfte statt auf null, der Sollwert bleibt unberührt, und der
+  Auslauf kommt über den ganz normalen Zustandsteil eines Spielstands mit
+  statt über einen Sonderfall in `persist.js`.
+
+- ✨ **Damit treffen zum ersten Mal ALLE dokumentierten Zeiten der Nacht.**
+  Das Wirkfenster von AZ-5 wurde neu vermessen
+  (`tests/tools/chernobyl_press_window.mjs`): In den ersten zwölf Sekunden
+  nach Auslaufbeginn übersteht der Kern den Knopfdruck, ab etwa 15 Sekunden
+  zerstört er ihn — und das bis mindestens 105 Sekunden. Vorher waren es 8–21
+  Sekunden mit einem Überlebensstreifen dahinter; das war eine Eigenschaft der
+  alten Rampe auf null, nicht der Anlage. Weil die historischen 36 Sekunden
+  zwischen Testbeginn und AZ-5 jetzt mitten im Fenster liegen, muss die Übung
+  nicht mehr zwischen zwei Zeiten wählen. Sie zeigt nun der Reihe nach:
+  Schichtübernahme 00:27, Einbruch ab 00:28, Pumpen **01:07:00**, Testbeginn
+  **01:23:04**, AZ-5 **01:23:40**, Zerstörung 01:23:45. Jede dieser Marken ist
+  nachgemessen, nicht behauptet — Tests halten sie fest.
+
+- ✨ **AZ-5 ist jetzt die alleinige Ursache, nicht der Auslöser eines ohnehin
+  laufenden Ausbruchs.** Lässt man den Knopf in derselben Ausgangslage ganz
+  weg, bleibt die Leistung bei rund 7 % — vier Pumpen kühlen weiter. Vorher
+  trieb die Rampe die Anlage schon ohne jeden Knopfdruck auf 133 %, und der
+  Abschlusstext musste das einräumen. Der zweite Befund ist geblieben und
+  steht weiter im Debrief: Nimmt man der schmalen automatischen Regelung ihre
+  500 pcm, zerstört sich dieselbe Anlage nach rund 22 Sekunden von selbst.
+
+- ✨ **Die Pumpen laufen um 01:07 an, nicht um 01:23:25.** Historisch schaltete
+  die Mannschaft sie mitten in der Haltephase zu; die Übung ging ihre Schritte
+  der Reihe nach durch und kam deshalb erst danach dazu. Die Haltephase ist
+  jetzt geteilt (`recover` bis 01:07, dann `pumps`, dann `hold` bis zum
+  Testbeginn), die Summe bleibt bei den historischen rund 19 Minuten. Die
+  Dauer von `hold` steht dabei nicht fest, sondern zielt auf die Uhr — der
+  Pumpenhochlauf davor dauert, was er dauert, und der Auslauf beginnt trotzdem
+  auf die Sekunde richtig. Nachgemessen ändert die frühere Zuschaltung den
+  Zustand beim Auslaufbeginn praktisch nicht (n 6,25 % → 6,29 %).
+
+- ✨ **Der Leistungseinbruch wird gefahren, statt nur erzählt zu werden.** Im
+  Backlog stand, ein echter Einbruch reiße in diesem Modell mehr Xenon auf,
+  als sich je zurückholen lasse. Das galt für die damalige, ungetrennte
+  Stabkurve und stimmt seit deren Korrektur nicht mehr: nachgemessen
+  (`tests/tools/chernobyl_dip.mjs`) kommt die Anlage aus Einbrüchen bis
+  hinunter zu 0,05 % zuverlässig wieder auf 7,3 %, mit ORM ~76 und rho ~0 pcm
+  — praktisch auf den Zustand, den `prepare()` vorher fest hinterlegt hat.
+  Xenon spielt dabei kaum eine Rolle; ein Einbruch von Minuten ist gegen die
+  Jod-Halbwertszeit von knapp sieben Stunden zu kurz. Der Schritt „Der
+  Leistungseinbruch" fährt deshalb jetzt wirklich: Regelung auf Hand, Stäbe
+  ein, halten, und dieselbe Regelung holt die Leistung zurück. Nachgestellt
+  wird die *Wirkung*, nicht eine bestimmte Fehlbedienung — die Ursache ist bis
+  heute nicht abschließend geklärt (INSAG-7, Anhang I). Die Uhr springt danach
+  nur noch über den Rest der Erholung, die real bis kurz nach 01:00 dauerte.
+
+- ✨ **Zeitlupe.** Der Simulationstakt konnte Faktoren unter 1 immer schon
+  (`loop.js` rechnet mit festem Zeitschritt, der Faktor bestimmt nur die Zahl
+  der Schritte je Realsekunde) — es gab nur keine Bedienung dafür. Neu sind
+  ¼×- und ½×-Knöpfe in der Statusleiste sowie `−` und `+`, die die ganze
+  Leiter von ¼× bis 60× entlanggehen. Die Chernobyl-Übung fordert ¼× von sich
+  aus an, vier Sekunden vor AZ-5: Im Vorführmodus sind die Stellteile gesperrt,
+  und bei 1× ist der Moment, den die ganze Übung aufbaut, vorbei, bevor der
+  Blick von der Leistungsanzeige zum Reaktivitätsbalken gewandert ist.
+  Umgeschaltet wird nur an den Flanken — wer selbst pausiert, wird nicht
+  überfahren.
+
+- 📝 **Die Abschaltreserve bleibt niedriger als die dokumentierten 6–8
+  Stabäquivalente, und wir wissen jetzt warum.** Der Backlog vermutete eine
+  Skalenfrage. Das ist sie nicht: Bei der historischen Einfahrtiefe von 1,25 m
+  zeigt die Anzeige zwar exakt 7,4 — aber dort zerstört AZ-5 den Kern gar
+  nicht mehr, die Spitze bleibt bei 40 % (`tests/tools/chernobyl_rod_sweep.mjs`,
+  elf Stabstellungen zwischen 0,02 und 0,22 geprüft, nur 0,02 trägt den
+  Mechanismus). Dieses vereinfachte Zwei-Bank-Modell braucht die Stäbe weiter
+  draußen, als sie historisch standen. Statt die Zahl zurechtzubiegen steht
+  jetzt die Einfahrtiefe in Metern daneben, und der Schritttext sagt den
+  Unterschied ausdrücklich — „0,14 m von 7 m" sagt, was „ORM 0,0" verschweigt.
+
+- ✨ **Spieler können ihr Passwort jetzt selbst ändern.** Bis 0.6.0 gab es im
+  Spiel gar keinen Weg dafür: entweder setzte der Admin es im Panel zurück,
+  oder man ging über „Passwort vergessen" und wartete auf eine Mail — und ohne
+  eingerichteten Mailserver auch das nicht. Neu öffnet der Knopf „Konto" in
+  der Fußzeile des Startbildschirms einen Dialog. Das **alte** Passwort muss
+  mit: Die Sitzung läuft 30 Tage, ohne diese Abfrage genügte ein kurz
+  unbeaufsichtigter Browser, um ein Konto zu übernehmen. Der Wechsel wirft
+  jedes andere angemeldete Gerät hinaus, die eigene Sitzung bekommt ein
+  frisches Token als Cookie zurück. Zehn Versuche je Stunde und Konto.
+
+- ✨ **Konten lassen sich löschen, nicht nur sperren.** Sperren bleibt das
+  Mittel der Wahl — reversibel, Historie bleibt. Löschen ist für den anderen
+  Fall da, und mit der seit 0.6.0 deutlich längeren Historie je Konto ist das
+  kein Randfall mehr. Es geht nur von der Kontoseite aus, wo ein Konto allein
+  auf dem Schirm steht, und nur nach Abtippen der E-Mail-Adresse: Ein Klick
+  daneben in einer Zeile mit drei Knöpfen ist zu leicht, und es gibt keinen
+  Rückweg. Mitgelöscht wird alles, was an der Kennung hängt — Spielhistorie,
+  Anmeldeprotokoll, offene Reset-Vorgänge und sämtliche Spielstände als
+  Dateien —, und die laufende Sitzung wird entwertet. Bestenlisten-Einträge
+  bleiben stehen: Sie tragen einen frei gewählten Anzeigenamen und keine
+  Kontokennung, es gibt also nichts zuzuordnen.
+
+- ✨ **Blättern im Admin-Panel.** Die Übersicht zeigte die letzten 50 Einträge,
+  die Kontoseite die letzten 200 — und schwieg über den Rest, der nur noch
+  direkt in `users.db` zu sehen war. Jede der vier Listen hat jetzt eine
+  Blätterleiste mit Erster/Zurück/Weiter/Letzter und sagt, welcher Ausschnitt
+  auf dem Schirm steht und wie viele Zeilen es insgesamt gibt. Die
+  Seitennummer der jeweils anderen Tabelle wird mitgeführt, damit sie nicht
+  zurückspringt.
+
+- ✨ **Die Spielzeit in der Historie misst jetzt der Server selbst.** Sie war
+  reine Klientenangabe und nur bei 24 h gedeckelt — mehr konnte der Server
+  nicht tun, weil er vom Lauf selbst nichts wusste. Neu meldet der Client den
+  **Beginn** (`/api/runs/start`), der Server merkt sich seine eigene Uhr dazu
+  und schließt die Messung beim Beenden. Daraus fällt zweierlei ab: eine neue
+  Spalte „Am Schirm" mit der tatsächlich verbrachten Zeit, die gar nicht aus
+  einer Anfrage stammt — und eine Obergrenze für die gemeldete *simulierte*
+  Zeit, denn schneller als 60× kann kein Browser rechnen. Bei einem
+  fortgesetzten Lauf kommt auch der Startpunkt nicht mehr aus der Anfrage: Er
+  steht als `t_sim` im gespeicherten Stand auf der eigenen Platte. Eine
+  Kennung, die zu einem anderen Konto oder Szenario gehört, misst einen
+  anderen Lauf — dann wird lieber gar nicht gemessen als falsch. Kommt keine
+  Messung zustande (Neustart des Containers, älterer Client), steht die Spalte
+  leer, statt eine geschätzte Zahl zu erfinden. Für das freie Spiel bleibt die
+  60×-Grenze wirkungslos, weil der Xenon-Zeitraffer schneller rechnet; das
+  steht offen im Code, statt eine Grenze zu behaupten, die der eigene
+  Vorspulknopf bricht.
+
 ## 0.6.0
 
 - ✨ **Das Admin-Panel zeigt jetzt die vollständige Spielhistorie — vorher

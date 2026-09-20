@@ -153,6 +153,34 @@ export const spec = {
 
   orm: { total: 211, nominal: 46, min: 30, alarm: 15 },
 
+  // Turbogenerator als Schwungmasse.
+  //
+  // Bis 0.6.0 war der Auslaufversuch ein Drehbuch: ein Ereignis fuhr den
+  // Pumpen-SOLLWERT linear auf null, ueber dreissig Sekunden. Das hatte zwei
+  // Fehler. Erstens bewegte es den Schieber des Spielers, ohne dass jemand
+  // ihn angefasst haette. Zweitens war der Endwert null -- historisch hingen
+  // aber nur VIER der acht Hauptumwaelzpumpen am auslaufenden Generator, die
+  // anderen vier blieben am Netz.
+  //
+  // Jetzt ist die Drehzahl eine echte Zustandsgroesse (s.tgSpeed). Der Rotor
+  // bremst gegen die Pumpenlast, und eine Kreiselpumpe zieht Leistung
+  // proportional zur dritten Potenz der Drehzahl (Aehnlichkeitsgesetze). Aus
+  //     J w dw/dt = -P0 (w/w0)^3
+  // wird dw/dt = -w^2/tau, und das hat die geschlossene Loesung
+  //     w(t) = w0 / (1 + w0 t/tau).
+  // Der Schritt unten ist dafuer exakt, nicht genaehert -- der Zeitschritt
+  // faellt heraus. tau ist die Zeit bis zur halben Drehzahl; 15 s bildet den
+  // dokumentierten Auslauf ab (Durchsatz spuerbar weg nach rund einer halben
+  // Minute), ohne eine Rotortraegheit zu erfinden, die niemand nachschlagen
+  // kann.
+  //
+  // Nachgemessen (tests/tools/chernobyl_coastdown.mjs): mit dieser Kurve UND
+  // dem historischen Endwert -- vier Pumpen bleiben am Netz -- zerstoert AZ-5
+  // den Kern weiterhin. Mit der alten LINEAREN Rampe auf denselben Endwert
+  // nicht: der Rotor faellt anfangs schneller, und genau die ersten Sekunden
+  // entscheiden.
+  turbogen: { coastdownPumps: 4, tau_s: 15 },
+
   // Graphitverdränger unter dem Absorber.
   tip: {
     // Phenomenological worth per bank, not a reconstructed accident curve.
@@ -323,6 +351,9 @@ export const hooks = {
     s.p_prim = sp.drum.p0;
     s.P_demand = sp.P0_e;
     s.mcpDmd = 1.0;
+    // Am Netz gehalten: volle Drehzahl, kein Auslauf (siehe sp.turbogen).
+    s.tgSpeed = 1;
+    s.tgCoasting = false;
     s.T_gr = sp.graphite.T0;
 
     // Axiales Flussprofil. ao > 0 heißt bodennah -- genau der Zustand, in dem
@@ -521,11 +552,28 @@ export const hooks = {
 
   stepLoop(s, sp, ctx, dt) {
     if (!Number.isFinite(dt) || dt <= 0) return;
+    // ── Turbogenerator-Auslauf ──────────────────────────────────────────────
+    // Geschlossene Loesung von dw/dt = -w^2/tau, siehe sp.turbogen. Laeuft
+    // nur waehrend eines Auslaufversuchs; sonst haelt das Netz die Drehzahl.
+    if (s.tgCoasting) {
+      const tau = sp.turbogen.tau_s;
+      s.tgSpeed = s.tgSpeed / (1 + (dt * s.tgSpeed) / tau);
+    } else {
+      s.tgSpeed = 1;
+    }
+
     // ── Hauptumwälzpumpen ───────────────────────────────────────────────────
+    // Die letzten `coastdownPumps` haengen am Turbogenerator und verlieren mit
+    // ihm die Drehzahl; die uebrigen bleiben am Netz. Die beiden, die vor dem
+    // Versuch stillstehen, sind bewusst die ERSTEN (siehe
+    // chernobylTutorial.js prepare()) -- die beiden zusaetzlich zugeschalteten
+    // gehoeren damit zum Netzteil, so wie die vier Testpumpen historisch
+    // eigens fuer den Versuch ausgewaehlt waren.
+    const onRotor = ctx.mcp.length - sp.turbogen.coastdownPumps;
     let W = 0;
     for (let i = 0; i < ctx.mcp.length; i++) {
       const p = ctx.mcp[i];
-      p.demand = clamp(s.mcpDmd, 0, 1.1);
+      p.demand = clamp(s.mcpDmd * (i >= onRotor ? s.tgSpeed : 1), 0, 1.1);
       // Helpers and direct replay calls must not restart a failed pump for a tick.
       if (ctx.pumpsStuck?.has(i)) p.trip();
       p.step(dt);

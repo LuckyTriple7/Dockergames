@@ -18,6 +18,10 @@ Abgelegt in einer einzigen SQLite-Datei unter /data/users.db:
   die Bestenliste eingetragen hat -- Tutorials, freies Spiel, abgebrochene und
   gescheiterte Laeufe fehlten damit vollstaendig, und die Spalte "Spielzeit
   gesamt" zaehlte nur einen Bruchteil der tatsaechlichen Zeit.
+  Seit 0.6.1 steht neben der vom Client gemeldeten SIMULIERTEN Dauer auch
+  `wall_s` -- die tatsaechlich am Schirm verbrachte Zeit, vom Server selbst
+  gemessen (siehe app.py, /api/runs/start). Die beiden Zahlen sind nicht
+  dasselbe: bei 60-fachem Zeitraffer liegen zwischen ihnen Faktoren.
 * `password_resets` -- offene "Passwort vergessen"-Vorgaenge. Gespeichert wird
   nur der SHA-256-Abdruck des Tokens, nie das Token selbst: wer die Datei
   liest, kann damit kein Passwort setzen.
@@ -40,7 +44,7 @@ import string
 import threading
 import time
 
-from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 MAX_EMAIL_CHARS = 254
 MIN_PASSWORD_CHARS = 8
@@ -139,7 +143,8 @@ class UserStore:
         erfundene Vorgabe wuerde das Panel mit falschen Angaben fuellen.
         """
         have = {row['name'] for row in conn.execute('PRAGMA table_info(play_sessions)')}
-        for column, ddl in (('mode', 'TEXT'), ('outcome', 'TEXT'), ('score', 'INTEGER')):
+        for column, ddl in (('mode', 'TEXT'), ('outcome', 'TEXT'), ('score', 'INTEGER'),
+                            ('wall_s', 'REAL')):
             if column not in have:
                 conn.execute(f'ALTER TABLE play_sessions ADD COLUMN {column} {ddl}')
 
@@ -211,6 +216,68 @@ class UserStore:
             cur = conn.execute('UPDATE users SET status = ? WHERE id = ?', (status, user_id))
             return cur.rowcount > 0
 
+    def delete_user(self, user_id: str) -> dict | None:
+        """Konto samt Historie endgueltig entfernen. @return das geloeschte
+        Konto (fuer die Meldung im Panel), oder None wenn es das nicht gab.
+
+        Sperren ist der Normalfall -- ein gesperrtes Konto behaelt seine
+        Historie und laesst sich zuruecknehmen. Loeschen ist das Gegenteil und
+        genau dafuer da: wenn jemand nicht mehr in der Datei stehen soll. Es
+        nimmt deshalb ALLES mit, was an der Kennung haengt -- Anmelde- und
+        Spielprotokoll, offene Reset-Vorgaenge --, in EINER Transaktion. Ein
+        halb geloeschtes Konto waere das schlechteste von beidem: der Name weg,
+        die Spuren da.
+
+        NICHT betroffen sind die Bestenlisten-Eintraege: die tragen einen frei
+        gewaehlten Anzeigenamen und keine Kontokennung (siehe persist.py), es
+        gibt also gar nichts, was sich hier zuordnen liesse. Die Spielstaende
+        loescht der Aufrufer (app.py) -- sie liegen als Dateien, nicht hier.
+        """
+        with _lock, self._connect() as conn:
+            row = conn.execute('SELECT id, email FROM users WHERE id = ?',
+                               (user_id,)).fetchone()
+            if row is None:
+                return None
+            conn.execute('DELETE FROM login_events WHERE user_id = ?', (user_id,))
+            conn.execute('DELETE FROM play_sessions WHERE user_id = ?', (user_id,))
+            conn.execute('DELETE FROM password_resets WHERE user_id = ?', (user_id,))
+            conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
+            return dict(row)
+
+    def change_password(self, user_id: str, current: str,
+                        new_password: str) -> str | None:
+        """Passwortwechsel durch den Spieler selbst (siehe app.py,
+        /api/account/password). @return None bei Erfolg, sonst der Grund.
+
+        Das alte Passwort wird MITGEPRUEFT, obwohl der Aufrufer bereits
+        angemeldet ist: ohne das genuegt ein kurz unbeaufsichtigter Browser,
+        um ein Konto zu uebernehmen -- die Sitzung laeuft 30 Tage (siehe
+        auth.py SESSION_MAX_AGE).
+
+        Geprueft und geschrieben wird in EINER Transaktion, wie beim
+        Reset-Token: sonst koennten zwei gleichzeitige Wechsel beide gegen
+        denselben alten Hash pruefen.
+        """
+        if not new_password or len(new_password) < MIN_PASSWORD_CHARS:
+            return 'password_too_short'
+        with _lock, self._connect() as conn:
+            row = conn.execute(
+                'SELECT password_hash, status FROM users WHERE id = ?',
+                (user_id,)).fetchone()
+            if row is None:
+                return 'not_found'
+            if row['status'] != STATUS_ACTIVE:
+                return 'account_locked'
+            if not check_password_hash(row['password_hash'], current or ''):
+                return 'wrong_password'
+            if check_password_hash(row['password_hash'], new_password):
+                # Kein Fehler im technischen Sinn, aber der Spieler haette
+                # sonst den Eindruck, etwas geaendert zu haben.
+                return 'password_unchanged'
+            conn.execute('UPDATE users SET password_hash = ? WHERE id = ?',
+                         (generate_password_hash(new_password), user_id))
+        return None
+
     def reset_password(self, user_id: str) -> tuple[str | None, str | None]:
         """@return (neues Klartextpasswort, None) oder (None, 'not_found')."""
         new_password = generate_password()
@@ -231,6 +298,8 @@ class UserStore:
                         ORDER BY at DESC LIMIT 1) AS last_login_ip,
                     (SELECT COALESCE(SUM(duration_s), 0) FROM play_sessions
                         WHERE user_id = u.id) AS total_playtime_s,
+                    (SELECT COALESCE(SUM(wall_s), 0) FROM play_sessions
+                        WHERE user_id = u.id) AS total_wall_s,
                     (SELECT COUNT(*) FROM play_sessions WHERE user_id = u.id) AS run_count
                 FROM users u ORDER BY u.email
             ''').fetchall()
@@ -259,12 +328,19 @@ class UserStore:
                              duration_s, completed: bool,
                              mode: str = MODE_SCENARIO,
                              outcome: str | None = None,
-                             score: int | None = None) -> int:
+                             score: int | None = None,
+                             wall_s: float | None = None) -> int:
         """Einen beendeten Lauf in die Historie schreiben. @return die Zeilen-ID.
 
         Der Aufrufer prueft Reaktor und Szenario gegen den Katalog (app.py);
         hier wird nur noch auf die bekannten Modi/Ausgaenge eingedampft,
         damit kein freier Text aus einer Anfrage in der Tabelle landet.
+
+        `duration_s` ist SIMULIERTE Zeit und stammt vom Client; `wall_s` ist
+        die am Schirm verbrachte, vom Server selbst gemessene Zeit (siehe
+        app.py, /api/runs/start) und bleibt NULL, wenn zu diesem Lauf keine
+        Messung vorliegt -- dann ist sie unbekannt, und eine geschaetzte Zahl
+        waere eine erfundene Angabe.
         """
         mode = mode if mode in MODES else MODE_SCENARIO
         if outcome not in OUTCOMES:
@@ -272,10 +348,11 @@ class UserStore:
         with _lock, self._connect() as conn:
             cur = conn.execute(
                 'INSERT INTO play_sessions '
-                '(user_id, reactor, scenario, duration_s, completed, at, mode, outcome, score) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                '(user_id, reactor, scenario, duration_s, completed, at, mode, outcome, '
+                ' score, wall_s) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (user_id, reactor, scenario, duration_s, 1 if completed else 0,
-                 int(time.time()), mode, outcome, score))
+                 int(time.time()), mode, outcome, score, wall_s))
             return int(cur.lastrowid)
 
     # Wie lange nach dem Lauf ein eingereichter Punktestand noch als "zu
@@ -307,41 +384,68 @@ class UserStore:
             conn.execute('UPDATE play_sessions SET score = ? WHERE id = ?', (score, row['id']))
             return True
 
-    def recent_login_events(self, limit: int = 50) -> list[dict]:
+    # -- Blaetterbare Listen ---------------------------------------------------
+    #
+    # Jede dieser vier Abfragen liefert ein Dict mit `rows`, `total`, `offset`
+    # und `limit` statt einer nackten Liste. Der Grund ist die Anzeige: eine
+    # Seite, die nur die ersten 50 Zeilen zeigt und nicht sagt, wie viele es
+    # insgesamt sind, laesst den Betreiber im Unklaren, ob er alles sieht --
+    # und ohne `total` kann die Blaetterleiste nicht wissen, ob es eine
+    # naechste Seite gibt. COUNT(*) ueber eine indizierte Tabelle mit ein paar
+    # tausend Zeilen ist billig genug, um es bei jedem Seitenaufruf zu zahlen.
+
+    @staticmethod
+    def _page(rows, total: int, limit: int, offset: int) -> dict:
+        return {'rows': [dict(r) for r in rows], 'total': int(total),
+                'limit': int(limit), 'offset': int(offset)}
+
+    def recent_login_events(self, limit: int = 50, offset: int = 0) -> dict:
         with self._connect() as conn:
+            total = conn.execute('SELECT COUNT(*) FROM login_events').fetchone()[0]
             rows = conn.execute('''
                 SELECT l.at, l.ip, u.email FROM login_events l
                 JOIN users u ON u.id = l.user_id
-                ORDER BY l.at DESC LIMIT ?
-            ''', (limit,)).fetchall()
-        return [dict(r) for r in rows]
+                ORDER BY l.at DESC LIMIT ? OFFSET ?
+            ''', (limit, offset)).fetchall()
+        return self._page(rows, total, limit, offset)
 
-    def recent_play_sessions(self, limit: int = 50) -> list[dict]:
+    def recent_play_sessions(self, limit: int = 50, offset: int = 0) -> dict:
         with self._connect() as conn:
+            total = conn.execute('SELECT COUNT(*) FROM play_sessions').fetchone()[0]
             rows = conn.execute('''
-                SELECT p.at, p.reactor, p.scenario, p.duration_s, p.completed,
+                SELECT p.at, p.reactor, p.scenario, p.duration_s, p.wall_s, p.completed,
                        p.mode, p.outcome, p.score, u.email, u.id AS user_id
                 FROM play_sessions p JOIN users u ON u.id = p.user_id
-                ORDER BY p.at DESC LIMIT ?
-            ''', (limit,)).fetchall()
-        return [dict(r) for r in rows]
+                ORDER BY p.at DESC LIMIT ? OFFSET ?
+            ''', (limit, offset)).fetchall()
+        return self._page(rows, total, limit, offset)
 
     # -- Historie eines einzelnen Kontos --------------------------------------
 
-    def user_play_sessions(self, user_id: str, limit: int = 200) -> list[dict]:
+    def user_play_sessions(self, user_id: str, limit: int = 200,
+                           offset: int = 0) -> dict:
         with self._connect() as conn:
+            total = conn.execute(
+                'SELECT COUNT(*) FROM play_sessions WHERE user_id = ?',
+                (user_id,)).fetchone()[0]
             rows = conn.execute('''
-                SELECT at, reactor, scenario, duration_s, completed, mode, outcome, score
-                FROM play_sessions WHERE user_id = ? ORDER BY at DESC LIMIT ?
-            ''', (user_id, limit)).fetchall()
-        return [dict(r) for r in rows]
+                SELECT at, reactor, scenario, duration_s, wall_s, completed,
+                       mode, outcome, score
+                FROM play_sessions WHERE user_id = ? ORDER BY at DESC LIMIT ? OFFSET ?
+            ''', (user_id, limit, offset)).fetchall()
+        return self._page(rows, total, limit, offset)
 
-    def user_login_events(self, user_id: str, limit: int = 200) -> list[dict]:
+    def user_login_events(self, user_id: str, limit: int = 200,
+                          offset: int = 0) -> dict:
         with self._connect() as conn:
+            total = conn.execute(
+                'SELECT COUNT(*) FROM login_events WHERE user_id = ?',
+                (user_id,)).fetchone()[0]
             rows = conn.execute(
-                'SELECT at, ip FROM login_events WHERE user_id = ? ORDER BY at DESC LIMIT ?',
-                (user_id, limit)).fetchall()
-        return [dict(r) for r in rows]
+                'SELECT at, ip FROM login_events WHERE user_id = ? '
+                'ORDER BY at DESC LIMIT ? OFFSET ?',
+                (user_id, limit, offset)).fetchall()
+        return self._page(rows, total, limit, offset)
 
     def user_stats(self, user_id: str) -> dict:
         """Die Zahlen ueber der Historie. Eine Abfrage statt fuenf, damit die
@@ -350,6 +454,7 @@ class UserStore:
             row = conn.execute('''
                 SELECT COUNT(*) AS runs,
                        COALESCE(SUM(duration_s), 0) AS total_playtime_s,
+                       COALESCE(SUM(wall_s), 0) AS total_wall_s,
                        COALESCE(SUM(completed), 0) AS completed_runs,
                        MAX(score) AS best_score,
                        MAX(at) AS last_play_at
@@ -368,6 +473,7 @@ class UserStore:
             rows = conn.execute('''
                 SELECT reactor, scenario, mode, COUNT(*) AS runs,
                        COALESCE(SUM(duration_s), 0) AS total_s,
+                       COALESCE(SUM(wall_s), 0) AS total_wall_s,
                        COALESCE(SUM(completed), 0) AS completed_runs,
                        MAX(score) AS best_score,
                        MAX(at) AS last_at

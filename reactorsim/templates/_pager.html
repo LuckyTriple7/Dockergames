@@ -1,0 +1,42 @@
+{# Blaetterleiste unter einer Tabelle im Admin-Panel.
+
+   Bis 0.6.0 zeigten die Listen schlicht die letzten 50 bzw. 200 Zeilen und
+   sagten nicht, dass es mehr gab -- alles darueber hinaus war nur noch direkt
+   in users.db zu sehen. Diese Leiste sagt beides: welcher Ausschnitt gerade
+   auf dem Schirm steht, und wie viele Zeilen es insgesamt sind.
+
+   `page` ist das Dict aus users.py (`rows`, `total`, `limit`, `offset`),
+   `keep` traegt die Seitennummer der jeweils ANDEREN Tabelle auf derselben
+   Seite mit -- ohne das springt die Anmeldeliste auf Seite 1 zurueck, sobald
+   man in der Spielhistorie weiterblaettert. #}
+
+{% macro pager(t, base, param, page, keep={}) %}
+  {% set pages = ((page.total + page.limit - 1) // page.limit) if page.total else 1 %}
+  {% set current = (page.offset // page.limit) + 1 %}
+  <div class="pager">
+    <span class="pagecount">
+      {% if page.total %}
+        {{ t.admin_page_range.format(from=page.offset + 1,
+             to=page.offset + (page.rows | length), total=page.total) }}
+      {% else %}
+        {{ t.admin_page_empty }}
+      {% endif %}
+    </span>
+    {% if pages > 1 %}
+    <nav class="pagelinks" aria-label="{{ t.admin_page_nav }}">
+      {% for target, label, enabled in [
+           (1, '«', current > 1),
+           (current - 1, '‹', current > 1),
+           (current + 1, '›', current < pages),
+           (pages, '»', current < pages)] %}
+        {% if enabled %}
+          <a href="{{ base }}?{{ param }}={{ target }}{% for k, v in keep.items() %}&amp;{{ k }}={{ v }}{% endfor %}">{{ label }}</a>
+        {% else %}
+          <span class="off">{{ label }}</span>
+        {% endif %}
+      {% endfor %}
+      <span class="pagenum">{{ t.admin_page_of.format(page=current, pages=pages) }}</span>
+    </nav>
+    {% endif %}
+  </div>
+{% endmacro %}

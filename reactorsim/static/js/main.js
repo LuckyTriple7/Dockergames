@@ -1,7 +1,7 @@
 // Einstieg: Startbildschirm, Aufbau des Leitstands, Verdrahtung der Bedienung.
 
 import { $, $$, el, setText, setAttr } from './ui/dom.js';
-import { t, clock } from './ui/i18n.js';
+import { t, has as hasText, clock } from './ui/i18n.js';
 import { Render } from './ui/render.js';
 import { buildPanels } from './ui/panels.js';
 import { setControlsPaused, setControlsLocked, isControlsLocked } from './ui/controls.js';
@@ -378,6 +378,79 @@ function initStart() {
   });
 
   refreshResumeList();
+  initAccount();
+}
+
+/** Eigenes Konto: Passwort wechseln, ohne den Admin und ohne Umweg ueber das
+ *  Postfach.
+ *
+ *  Bis 0.6.0 gab es dafuer im Spiel gar keinen Weg -- entweder setzte der
+ *  Admin das Passwort im Panel zurueck, oder man ging ueber "Passwort
+ *  vergessen" und wartete auf eine Mail (und ohne eingerichteten Mailserver
+ *  gab es auch das nicht).
+ *
+ *  Die Adresse ist zugleich der Benutzername und bleibt deshalb unveraenderbar
+ *  -- sie gehoert dem Admin, der das Konto angelegt hat (siehe users.py). Die
+ *  Gleichheit der beiden neuen Felder wird HIER geprueft, das alte Passwort
+ *  und die Mindestlaenge im Server (users.py change_password): eine Pruefung,
+ *  die ueber Kontodaten entscheidet, gehoert nicht in den Browser. */
+function initAccount() {
+  const modal = $('#rs-account-modal');
+  const btn = $('#rs-account-btn');
+  if (!modal || !btn) return;
+  const form = $('#rs-account-form');
+  const current = $('#rs-account-current');
+  const next = $('#rs-account-new');
+  const repeat = $('#rs-account-repeat');
+  const msg = $('#rs-account-msg');
+  const save = $('#rs-account-save');
+
+  const say = (key, ok = false) => {
+    setText(msg, key ? t(key) : '');
+    setAttr(msg, 'data-ok', ok ? '1' : '0');
+    msg.hidden = !key;
+  };
+  const close = () => {
+    modal.hidden = true;
+    // Die Felder nie im DOM stehen lassen: der Dialog wird nicht neu gebaut,
+    // und ein Passwort soll nicht bis zum naechsten Oeffnen dort liegen.
+    form.reset();
+    say('');
+  };
+
+  btn.addEventListener('click', async () => {
+    form.reset();
+    say('');
+    modal.hidden = false;
+    current.focus();
+    const res = await api.readAccount();
+    setText($('#rs-account-who'),
+      res.ok && res.data ? t('account_who', { email: res.data.email }) : '');
+  });
+  $('#rs-account-close').addEventListener('click', close);
+  modal.addEventListener('click', (ev) => { if (ev.target === modal) close(); });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !modal.hidden) close();
+  });
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (next.value !== repeat.value) { say('account_err_mismatch'); return; }
+    save.disabled = true;
+    say('account_working', true);
+    const res = await api.changePassword(current.value, next.value);
+    save.disabled = false;
+    if (res.ok) {
+      form.reset();
+      say('account_done', true);
+      return;
+    }
+    // Unbekannte Gruende (und der Offline-Fall, in dem gar keine Antwort
+    // kommt) landen auf einer allgemeinen Meldung, statt einen rohen
+    // Schluesselnamen anzuzeigen.
+    const reason = res.data && res.data.error ? `account_err_${res.data.error}` : null;
+    say(reason && hasText(reason) ? reason : 'account_err_failed');
+  });
 }
 
 // Slot-Schema der zehn Handplaetze (siehe manualSlotName()) -- erkennt, ob
@@ -1043,6 +1116,10 @@ function initControls() {
     else if (ev.key === '2') setSpeed(4);
     else if (ev.key === '3') setSpeed(16);
     else if (ev.key === '4') setSpeed(60);
+    // Zeitlupe hat keine eigene Ziffer: sie waere die fuenfte Taste fuer
+    // etwas, das man selten und dann meist schrittweise braucht. '-' und '+'
+    // gehen stattdessen die ganze Leiter entlang, von 1/4x bis 60x.
+    else if (ev.key === '-' || ev.key === '+') stepSpeed(ev.key === '+' ? 1 : -1);
     else if (ev.ctrlKey && ev.key === 'ArrowUp') { ev.preventDefault(); if (app.jogRod) app.jogRod(-1); }
     else if (ev.ctrlKey && ev.key === 'ArrowDown') { ev.preventDefault(); if (app.jogRod) app.jogRod(1); }
     // Q quittiert die Meldetafel wie der Knopf selbst (siehe panels.js
@@ -1097,6 +1174,30 @@ function scramLabel() {
   return t((sp && sp.scram && sp.scram.labelKey) || 'btn_scram');
 }
 
+// Die Leiter, an der '-' und '+' entlanggehen -- dieselben Werte wie die
+// Knoepfe in der Statusleiste (siehe index.html, .rs-speed). Pause (0) steht
+// bewusst NICHT darin: dafuer gibt es die Leertaste, und eine Leiter, deren
+// unteres Ende der Stillstand ist, haelt beim Herunterschalten versehentlich
+// die ganze Anlage an.
+const SPEED_LADDER = [0.25, 0.5, 1, 4, 16, 60];
+
+/** Eine Stufe langsamer (-1) oder schneller (+1). Aus dem Stillstand heraus
+ *  geht es bei 1x weiter, nicht bei 1/4x: wer aus der Pause heraus '+'
+ *  drueckt, will weiterspielen, nicht in Zeitlupe. */
+function stepSpeed(dir) {
+  if (!app.loop) return;
+  const current = app.loop.speed;
+  if (!(current > 0)) { setSpeed(1); return; }
+  // Der nächstgelegene Eintrag statt indexOf(): die Geschwindigkeit kann von
+  // woanders gesetzt worden sein (Zeitlupe des Vorfuehrmodus, siehe
+  // applyTutorialSpeed()) und dann gar nicht auf der Leiter liegen.
+  let best = 0;
+  for (let i = 1; i < SPEED_LADDER.length; i++) {
+    if (Math.abs(SPEED_LADDER[i] - current) < Math.abs(SPEED_LADDER[best] - current)) best = i;
+  }
+  setSpeed(SPEED_LADDER[Math.max(0, Math.min(SPEED_LADDER.length - 1, best + dir))]);
+}
+
 function setSpeed(v) {
   const skip = app.xenonSkip;
   if (skip && skip.engine === app.engine && skip.session === app.session && skip.bootId === app.bootId) {
@@ -1111,6 +1212,34 @@ function setSpeed(v) {
   // liessen sich Staebe, Pumpen und Regler auch im Stillstand bewegen.
   setControlsPaused(v === 0);
   document.body.classList.toggle('rs-ctl-paused', v === 0);
+}
+
+/** Zeitlupe, die eine gefuehrte Uebung selbst anfordert (siehe
+ *  game/tutorial.js: speedHint, ueberschrieben in chernobylTutorial.js fuer
+ *  die Sekunden um AZ-5).
+ *
+ *  Umgeschaltet wird nur an den beiden Flanken, nicht in jedem Schritt: sonst
+ *  koennte der Spieler waehrend des Fensters gar nichts mehr am Zeitraffer
+ *  aendern, und die Pausentaste waere tot. Beim Verlassen wird die vorherige
+ *  Stufe nur dann wiederhergestellt, wenn seither niemand selbst umgestellt
+ *  hat -- ein Spieler, der mitten im Fenster auf Pause drueckt, soll nicht
+ *  hinterher unvermittelt wieder laufen. */
+function applyTutorialSpeed() {
+  if (!app.loop) return;
+  const raw = app.session && app.session.tutorial ? app.session.tutorial.speedHint : null;
+  const want = typeof raw === 'number' && raw > 0 ? raw : null;
+  if (want === app.tutorialSpeed) return;
+  const previous = app.tutorialSpeed;
+  app.tutorialSpeed = want;
+  if (want !== null) {
+    app.speedBeforeSlowmo = app.loop.speed;
+    setSpeed(want);
+  } else if (app.loop.speed === previous && app.speedBeforeSlowmo !== null) {
+    setSpeed(app.speedBeforeSlowmo);
+    app.speedBeforeSlowmo = null;
+  } else {
+    app.speedBeforeSlowmo = null;
+  }
 }
 
 // Sekunden Sim-Zeit je Innenschritt -- derselbe Takt wie loop.js (DT), sonst
@@ -1660,7 +1789,12 @@ function reportRun(outcome) {
     scenario,
     duration_s: t,
     outcome,
+    // Schliesst die Messung des Servers ab (siehe boot()/api.startRun()).
+    // Fehlt sie, zeichnet er den Lauf trotzdem auf -- nur ohne echte
+    // Spielzeit und mit dem alten 24-h-Deckel auf der simulierten.
+    run: app.runToken || undefined,
   });
+  app.runToken = null;
 }
 
 /** Wie der Lauf ausging -- aus Sicht der Historie, nicht der Wertung. */
@@ -1951,6 +2085,18 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
   app.endShown = false;
   app.endPending = false;
   app.runReported = false;
+  // Den Beginn melden, damit der Server die Dauer selbst misst statt der
+  // gemeldeten zu glauben (siehe app.py /api/runs/start). Ohne await: die
+  // Messung ist Buchhaltung, der Rundenstart wartet nicht darauf. Die
+  // Kennung kommt gegebenenfalls Millisekunden spaeter an -- bis dahin ist
+  // sie null, und ein Lauf, der in dieser Zeit endet, faellt unter die
+  // 30-Sekunden-Grenze ohnehin durch.
+  app.runToken = null;
+  const runTokenFor = bootId;
+  api.startRun({ reactor: reactorId, scenario: scenarioDef ? scenarioDef.id : null,
+    slot: loadSlot || null }).then((res) => {
+    if (app.bootId === runTokenFor && res.ok && res.data) app.runToken = res.data.run || null;
+  });
   app.engine = createEngine(plant, {
     burnup: saved?.state?.burnup,
     n: isColdStart ? 1e-6 : 1.0, cold: isColdStart, seed: scenarioDef ? scenarioDef.seed : 1,
@@ -2055,7 +2201,10 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
   app.loop.afterStep = (dt) => {
     app.session.step(dt, app.engine.trips.tiles(), app.engine.trips.unacknowledgedSeconds());
     built.sampleTrends();
+    applyTutorialSpeed();
   };
+  app.tutorialSpeed = null;
+  app.speedBeforeSlowmo = null;
 
   initControls();
   // Vorfuehrmodus (siehe game/chernobylTutorial.js: `locked`) -- als

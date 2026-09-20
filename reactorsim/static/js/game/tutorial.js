@@ -40,6 +40,12 @@ export class StartupTutorial {
   // Die drei Anfahrtutorials sind das Gegenteil davon -- dort IST das
   // Bedienen die Uebung; nur der Chernobyl-Nachbau ueberschreibt das.
   get locked() { return false; }
+  // Wunschgeschwindigkeit der Uebung, oder null fuer "der Spieler
+  // entscheidet". Gedacht fuer Abschnitte, die bei 1x schlicht zu schnell
+  // vorbei sind, um etwas zu zeigen -- der Chernobyl-Nachbau nutzt das fuer
+  // die Sekunden um AZ-5 (siehe chernobylTutorial.js). Die drei
+  // Anfahrtutorials haben keinen solchen Abschnitt.
+  get speedHint() { return null; }
 
   prepare() {
     const { state: s, ctx: c, spec: sp, reactivity } = this.engine;

@@ -18,6 +18,12 @@ const DT = 0.05;
 const NORMAL = 1.3 * rbmk.spec.drum.W_steam0;
 const FIELDS = ['auxFeedInstalled', 'auxFeedAvailable', 'auxFeedOn', 'auxFeedDmd',
   'auxWaterKg', 'W_fwDemand', 'W_fwMain', 'W_fwAux', 'fwSupplyMax', 'coolantHeatMW'];
+// Was die SHA-256-Grundlinie weiter unten zusaetzlich ausklammert. Der
+// Turbogenerator-Auslauf (rbmk.js sp.turbogen) kam nach ihr dazu und aendert
+// an der Physik nichts, solange der Generator am Netz haengt: tgSpeed steht
+// dann konstant auf 1, der Pumpensollwert geht unveraendert durch. Getestet
+// wird er in tests/test-rbmk-chernobyl-tutorial.mjs, wo er wirklich laeuft.
+const BASELINE_SKIP = [...FIELDS, 'tgSpeed', 'tgCoasting'];
 const json = value => JSON.parse(JSON.stringify(value));
 const near = (a, b, tol = 1e-7) => assert.ok(Math.abs(a - b) <= tol, `${a} != ${b}`);
 const fire = (e, id, args) => getEvent(id).apply(e, args);
@@ -77,7 +83,7 @@ test('unequipped RBMK retains exact pre-change physics and controller timing', (
   const e = createEngine(rbmk);
   for (let i = 0; i <= 1200; i++) {
     if (baseline[i]) {
-      const old = Object.fromEntries(Object.entries(e.state).filter(([k]) => !FIELDS.includes(k)));
+      const old = Object.fromEntries(Object.entries(e.state).filter(([k]) => !BASELINE_SKIP.includes(k)));
       if (i === 0) delete old.srv; // Previously initialized only on the first step.
       assert.equal(createHash('sha256').update(JSON.stringify(old)).digest('hex'), baseline[i], `step ${i}`);
     }

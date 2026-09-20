@@ -15,6 +15,7 @@ export const SHORTCUTS = [
   { key: 'sc_speed2', def: 'sc_speed2_d' },
   { key: 'sc_speed3', def: 'sc_speed3_d' },
   { key: 'sc_speed4', def: 'sc_speed4_d' },
+  { key: 'sc_speed_step', def: 'sc_speed_step_d' },
   { key: 'sc_save', def: 'sc_save_d' },
   { key: 'sc_menu', def: 'sc_menu_d' },
   { key: 'sc_scram', def: 'sc_scram_d' },
