@@ -25,7 +25,7 @@ def _fresh(tmp_path, monkeypatch):
     monkeypatch.setenv('REACTORSIM_DATA', str(tmp_path))
     monkeypatch.setenv('REACTORSIM_USER', ADMIN_USER)
     monkeypatch.setenv('REACTORSIM_PASSWORD', ADMIN_PASSWORD)
-    for mod in ('app', 'auth', 'persist', 'scoring', 'atomic_io', 'users'):
+    for mod in ('app', 'auth', 'persist', 'scoring', 'atomic_io', 'users', 'mailer'):
         sys.modules.pop(mod, None)
     import app as appmod
     appmod.app.config['TESTING'] = True
@@ -199,10 +199,20 @@ def test_login_event_is_recorded_with_ip(admin):
     assert '203.0.113.7' in html
 
 
-def test_play_session_is_recorded_for_scored_runs_only(admin):
-    """Nur ausgewertete Laeufe zaehlen (Entscheidung Phase 1) -- das
-    Tutorial (tutorial_unranked) und abgelehnte Einsendungen tauchen im
-    Admin-Panel nicht als Spielzeit auf."""
+def _player(mod, email='play@example.test', password='play-passwort-1'):
+    """Angemeldeter Spieler-Client."""
+    mod.USERS.create_user(email, password)
+    client = mod.app.test_client()
+    r = client.post('/login', data={'user': email, 'password': password,
+                                    'csrf': _csrf(client), 'next': '/'})
+    assert r.status_code == 302
+    return client
+
+
+def test_a_scored_run_lands_in_the_history_with_its_score(admin):
+    """Eine eingereichte Wertung erzeugt auch dann einen Historieneintrag,
+    wenn /api/runs nie ankam (alter Client, oder beim Beenden offline) --
+    aber nur EINEN, und mit Punktestand."""
     mod, c = admin
     mod.USERS.create_user('play@example.test', 'play-passwort-1')
     player = mod.app.test_client()
@@ -227,10 +237,141 @@ def test_play_session_is_recorded_for_scored_runs_only(admin):
     assert entry['scenario'] == 'pwr_load_follow'
     assert entry['duration_s'] == 14400.0
     assert entry['completed'] == 1
+    assert entry['mode'] == 'scenario'
+    assert entry['outcome'] == 'completed'
+    assert entry['score'] == r.get_json()['score']
 
     html = c.get('/admin').get_data(as_text=True)
     assert 'play@example.test' in html
     assert 'pwr_load_follow' in html
+
+
+def test_every_finished_run_is_recorded_not_only_scored_ones(admin):
+    """Der eigentliche Grund fuer /api/runs: bis dahin zaehlte ein Lauf nur,
+    wenn jemand am Ende auf "Eintragen" drueckte. Tutorial, freies Spiel und
+    jeder gescheiterte Lauf fehlten in der Historie vollstaendig."""
+    mod, c = admin
+    player = _player(mod)
+
+    for body in (
+        {'reactor': 'pwr', 'scenario': 'pwr_startup_tutorial',
+         'duration_s': 1500.0, 'outcome': 'completed'},
+        {'reactor': 'rbmk', 'scenario': None, 'duration_s': 900.0, 'outcome': 'aborted'},
+        {'reactor': 'bwr', 'scenario': 'bwr_msiv', 'duration_s': 600.0, 'outcome': 'failed'},
+        {'reactor': 'rbmk', 'scenario': 'rbmk_chernobyl', 'duration_s': 300.0,
+         'outcome': 'destroyed'},
+    ):
+        assert player.post('/api/runs', json=body).status_code == 200, body
+
+    sessions = mod.USERS.recent_play_sessions()
+    assert len(sessions) == 4
+    by_mode = {s['mode'] for s in sessions}
+    assert by_mode == {'tutorial', 'free', 'scenario'}
+    assert {s['outcome'] for s in sessions} == {'completed', 'aborted', 'failed', 'destroyed'}
+    # Und die Spielzeit im Panel zaehlt jetzt alles zusammen, nicht nur das
+    # Eingereichte.
+    assert mod.USERS.user_stats(sessions[0]['user_id'])['total_playtime_s'] == 3300.0
+
+
+def test_the_mode_comes_from_the_catalog_not_from_the_request(admin):
+    """Ein Client koennte 'mode' mitschicken -- gelesen wird er nicht. Ob ein
+    Szenario ein Tutorial ist, steht in seiner Datei."""
+    mod, _c = admin
+    player = _player(mod)
+    ok = player.post('/api/runs', json={
+        'reactor': 'pwr', 'scenario': 'pwr_startup_tutorial', 'duration_s': 900.0,
+        'outcome': 'completed', 'mode': 'scenario'})
+    assert ok.status_code == 200
+    assert mod.USERS.recent_play_sessions()[0]['mode'] == 'tutorial'
+
+
+@pytest.mark.parametrize('body', [
+    {'reactor': 'kein-reaktor', 'scenario': None, 'duration_s': 900, 'outcome': 'aborted'},
+    {'reactor': 'pwr', 'scenario': 'gibt-es-nicht', 'duration_s': 900, 'outcome': 'aborted'},
+    {'reactor': 'pwr', 'scenario': None, 'duration_s': 900, 'outcome': 'ausgedacht'},
+    {'reactor': 'pwr', 'scenario': None, 'duration_s': 'viel', 'outcome': 'aborted'},
+    {'reactor': 'pwr', 'scenario': None, 'duration_s': 5, 'outcome': 'aborted'},
+])
+def test_implausible_runs_are_refused(admin, body):
+    mod, _c = admin
+    player = _player(mod)
+    assert player.post('/api/runs', json=body).status_code == 400
+    assert mod.USERS.recent_play_sessions() == []
+
+
+def test_an_absurd_duration_is_capped(admin):
+    """Die Dauer kommt vom Client. Sie ist Buchhaltung, keine Wertung -- aber
+    ohne Deckel macht eine Fantasiezahl die Spalte "Spielzeit gesamt" fuer
+    alle anderen unlesbar."""
+    mod, _c = admin
+    player = _player(mod)
+    r = player.post('/api/runs', json={'reactor': 'pwr', 'scenario': None,
+                                       'duration_s': 9e12, 'outcome': 'aborted'})
+    assert r.status_code == 200
+    assert mod.USERS.recent_play_sessions()[0]['duration_s'] == mod._RUN_MAX_DURATION_S
+
+
+def test_a_score_attaches_to_the_reported_run_instead_of_doubling_it(admin):
+    """Der Lauf wird beim Beenden gemeldet, der Punktestand erst danach beim
+    Eintragen. Ohne attach_score() stuende derselbe Lauf zweimal in der
+    Historie und die Spielzeit waere doppelt gezaehlt."""
+    mod, _c = admin
+    player = _player(mod)
+    assert player.post('/api/runs', json={
+        'reactor': 'pwr', 'scenario': 'pwr_load_follow', 'duration_s': 14400.0,
+        'outcome': 'completed'}).status_code == 200
+
+    summary = {
+        'reactor': 'pwr', 'scenario': 'pwr_load_follow', 'difficulty': 1,
+        'energy_mwh_delivered': 5400.0, 'energy_mwh_demanded': 5600.0,
+        'deviation_mwh': 12.5, 'alarm_seconds_unacked': 60,
+        'violation_seconds': {'1': 30, '2': 0, '3': 0}, 'scram_count': 0,
+        'fuel_damage': False, 'duration_s': 14400.0, 'completed': True,
+    }
+    r = player.post('/api/highscores', json={'name': 'Play', 'summary': summary})
+    assert r.status_code == 200, r.get_json()
+
+    sessions = mod.USERS.recent_play_sessions()
+    assert len(sessions) == 1, 'der Lauf steht doppelt in der Historie'
+    assert sessions[0]['score'] == r.get_json()['score']
+    assert mod.USERS.user_stats(sessions[0]['user_id'])['total_playtime_s'] == 14400.0
+
+
+def test_the_account_page_shows_that_players_own_history(admin):
+    mod, c = admin
+    player = _player(mod, 'detail@example.test', 'detail-passwort-1')
+    other = _player(mod, 'andere@example.test', 'andere-passwort-1')
+    player.post('/api/runs', json={'reactor': 'rbmk', 'scenario': 'rbmk_night_shift',
+                                   'duration_s': 1800.0, 'outcome': 'failed'})
+    other.post('/api/runs', json={'reactor': 'bwr', 'scenario': 'bwr_msiv',
+                                  'duration_s': 600.0, 'outcome': 'completed'})
+
+    uid = mod.USERS.find_for_login('detail@example.test')['id']
+    page = c.get(f'/admin/users/{uid}')
+    assert page.status_code == 200
+    html = page.get_data(as_text=True)
+    assert 'detail@example.test' in html
+    assert 'rbmk_night_shift' in html
+    # Die Kontoseite zeigt NUR diesen einen Spieler.
+    assert 'bwr_msiv' not in html
+    assert 'andere@example.test' not in html
+
+
+def test_the_account_page_refuses_unknown_ids_and_players(admin):
+    mod, c = admin
+    assert c.get('/admin/users/gibt-es-nicht').status_code == 404
+    player = _player(mod, 'nosnoop@example.test', 'nosnoop-passwort-1')
+    uid = mod.USERS.find_for_login('nosnoop@example.test')['id']
+    assert player.get(f'/admin/users/{uid}').status_code == 403
+
+
+def test_a_player_run_needs_an_account(admin):
+    """Der Admin spielt nicht -- er landet auf /admin, nicht auf /api/runs."""
+    mod, c = admin
+    r = c.post('/api/runs', json={'reactor': 'pwr', 'scenario': None,
+                                  'duration_s': 900, 'outcome': 'aborted'})
+    assert r.status_code in (302, 403)
+    assert mod.USERS.recent_play_sessions() == []
 
 
 def test_player_cannot_reach_admin_routes(admin):

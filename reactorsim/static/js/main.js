@@ -1556,6 +1556,9 @@ function leaveToMenu() {
     app.session.abort();
     return;
   }
+  // Das freie Spiel kennt keine Auswertung: es endet genau hier. Ohne diese
+  // Meldung fehlte es in der Historie vollstaendig.
+  if (app.session && app.session.phase === PHASE.RUNNING) reportRun('aborted');
   toMenu();
 }
 
@@ -1632,11 +1635,48 @@ function deferEnd(fn) {
   }, DESTROY_PAUSE_MS);
 }
 
+// Kuerzere Laeufe sind kein Lauf, sondern ein Blick hinein -- sie wuerden die
+// Historie im Admin-Panel mit Einzeilern zumuellen. Derselbe Wert steht in
+// app.py (_RUN_MIN_DURATION_S); durchgesetzt wird er dort.
+const RUN_REPORT_MIN_S = 30;
+
+/** Den beendeten Lauf an den Server melden.
+ *
+ *  Grundlage der Spielhistorie im Admin-Panel. Bis 0.5.11 entstand der
+ *  einzige Eintrag als Nebenwirkung von "Eintragen" im Debrief -- Tutorials,
+ *  freies Spiel und jeder gescheiterte oder abgebrochene Lauf tauchten
+ *  deshalb nirgends auf. Hier wird jeder Ausgang gemeldet, einmal je Lauf
+ *  (app.runReported, zurueckgesetzt in boot()): showDebriefNow() und
+ *  leaveToMenu() rufen beide hierher, und eine zerstoerte Anlage kommt ueber
+ *  showDebrief() sogar auf beiden Wegen an. */
+function reportRun(outcome) {
+  if (app.runReported || !app.session || !app.engine) return;
+  const t = app.engine.state ? app.engine.state.t_sim : 0;
+  if (!(t >= RUN_REPORT_MIN_S)) return;
+  app.runReported = true;
+  const scenario = app.session.scenario ? app.session.scenario.id : null;
+  api.recordRun({
+    reactor: app.engine.spec.id,
+    scenario,
+    duration_s: t,
+    outcome,
+  });
+}
+
+/** Wie der Lauf ausging -- aus Sicht der Historie, nicht der Wertung. */
+function runOutcome(failed) {
+  if (app.engine.state.destroyed) return 'destroyed';
+  if (failed === 'aborted') return 'aborted';
+  return failed ? 'failed' : 'completed';
+}
+
 /** Auswertung am Ende eines Szenarios. */
 function showDebrief(result, failed) {
   $('#rs-tutorial-modal').hidden = true;
   // Free play has no score: its loss screen is opened after the next render.
-  if (!result && app.engine.state.destroyed) return;
+  // Fuer die Historie ist das trotzdem ein Ende -- hier gemeldet, weil dieser
+  // Zweig showDebriefNow() gar nicht erst erreicht.
+  if (!result && app.engine.state.destroyed) { reportRun('destroyed'); return; }
   if (app.engine.state.destroyed && !app.endShown) {
     // Ruft NICHT showDebrief() erneut auf: das wuerde denselben Zweig hier
     // wieder treffen (endShown ist ja noch false) und die Pause endlos
@@ -1648,6 +1688,7 @@ function showDebrief(result, failed) {
 }
 
 function showDebriefNow(result, failed) {
+  reportRun(runOutcome(failed));
   setSpeed(0);
   app.bgMusic.stop();
   const verdict = $('#rs-debrief-verdict');
@@ -1909,6 +1950,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
 
   app.endShown = false;
   app.endPending = false;
+  app.runReported = false;
   app.engine = createEngine(plant, {
     burnup: saved?.state?.burnup,
     n: isColdStart ? 1e-6 : 1.0, cold: isColdStart, seed: scenarioDef ? scenarioDef.seed : 1,

@@ -73,14 +73,44 @@ Dauer). Spielerkonten liegen in `/data/users.db` (SQLite) statt in der
 Umgebung; `REACTORSIM_USERS` ist entfallen. Mehrere Spielerkonten spielen
 gleichzeitig, eigene Spielstände je Konto (`persist.Store.account_key`).
 
+**Seit 0.6.0 zusätzlich umgesetzt:**
+
+- **Mailversand über die Dockge-Konfiguration** (`mailer.py`,
+  `REACTORSIM_SMTP_*` plus `REACTORSIM_PUBLIC_URL`). Wie beim Admin-Konto
+  steht das Postfachpasswort in der Umgebung, nicht im Panel -- das Panel
+  zeigt die Einstellung nur an (ohne Passwort) und schickt eine Testmail.
+  Unkonfiguriert bleibt alles wie vorher; Mailversand ist Zugabe, nicht
+  Voraussetzung.
+- **Willkommens-Mail** an ein neu angelegtes Konto, als Kreuzchen im
+  Anlegen-Formular. Ein gescheiterter Versand lässt das Konto stehen und
+  nennt den Grund im Panel.
+- **Passwort-Reset Phase 2:** das zurückgesetzte Passwort geht automatisch an
+  den Spieler, sofern ein Mailserver bereitsteht. Angezeigt wird es trotzdem
+  weiterhin einmalig.
+- **Passwort vergessen** (`/forgot`, `/reset`): Einmal-Link, zwei Stunden
+  gültig, nur der SHA-256-Abdruck liegt in der Datenbank. Die Antwort ist
+  immer dieselbe, ob es die Adresse gibt oder nicht; Versand asynchron, damit
+  auch die Antwortzeit nichts verrät.
+- **Vollständige Spielhistorie** (`/api/runs`, Kontoseite
+  `/admin/users/<id>`): Jeder beendete Lauf wird gemeldet -- Szenario,
+  Tutorial und freies Spiel, mit Ausgang (geschafft/gescheitert/abgebrochen/
+  zerstört) und nachgetragenem Punktestand. Vorher entstand der einzige
+  Eintrag als Nebenwirkung von "Eintragen" im Debrief, weshalb "Spielzeit
+  gesamt" nur einen Bruchteil zeigte.
+
 Offen:
 
-- **Passwort-Reset Phase 2:** bisher zeigt das Panel ein neues Zufallspasswort
-  nur einmalig an (manuell weiterzugeben); automatischer Mailversand über
-  SMTP-Konfiguration folgt später.
-- **Self-Service:** ein Spieler kann sein Passwort nicht selbst ändern, nur
-  der Admin per Reset (bewusste Entscheidung für Phase 1).
-- Kein Löschen von Spielerkonten im Panel, nur Sperren.
+- **Self-Service:** ein Spieler kann sein Passwort im laufenden Betrieb nicht
+  selbst ändern. Über "Passwort vergessen" geht es inzwischen indirekt (Link
+  ins eigene Postfach), ein eigener Dialog im Spiel fehlt aber.
+- Kein Löschen von Spielerkonten im Panel, nur Sperren. Mit der jetzt
+  deutlich längeren Historie je Konto wird das eher wichtiger als vorher.
+- **Keine Seitenblätterung im Panel.** Die Übersicht zeigt die letzten 50
+  Einträge, die Kontoseite die letzten 200; darüber hinaus ist nichts
+  erreichbar, außer direkt in `users.db`.
+- **Die gemeldete Dauer kommt vom Client** und ist nur gedeckelt (24 h),
+  nicht nachgerechnet. Für die Bestenliste gilt das ausdrücklich nicht, die
+  rechnet weiterhin selbst nach (`verify_run.mjs`).
 
 ### Chernobyl-Tutorial „Block 4 – Die Nacht des 26. April“
 

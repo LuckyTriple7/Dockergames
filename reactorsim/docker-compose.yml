@@ -31,6 +31,22 @@ services:
       - REACTORSIM_USER=admin
       - REACTORSIM_PASSWORD=bitte-aendern
       - TZ=Europe/Berlin
+      # ── Mailversand (optional) ────────────────────────────────────────────
+      # Ohne diese Werte laeuft alles wie bisher: das Panel zeigt neue
+      # Passwoerter einmalig an, und der Admin gibt sie selbst weiter. Mit
+      # ihnen gibt es zusaetzlich eine Willkommens-Mail an neue Spieler und
+      # "Passwort vergessen" auf der Anmeldeseite.
+      #
+      # Die Zeile darunter gehoert dazu: ein Link in einer Mail muss die
+      # Adresse tragen, unter der die Anlage von aussen erreichbar ist --
+      # die kennt nur, wer den Reverse Proxy eingerichtet hat.
+      #- REACTORSIM_SMTP_HOST=mail.example.net
+      #- REACTORSIM_SMTP_PORT=587          # Vorgabe: 587 starttls, 465 ssl, 25 none
+      #- REACTORSIM_SMTP_SECURITY=starttls # starttls | ssl | none
+      #- REACTORSIM_SMTP_USER=reactorsim@example.net
+      #- REACTORSIM_SMTP_PASSWORD=postfach-passwort
+      #- REACTORSIM_SMTP_FROM=reactorsim@example.net   # Vorgabe: der Wert von _USER
+      #- REACTORSIM_PUBLIC_URL=https://reactorsim.example.net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:17779/health"]

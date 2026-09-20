@@ -65,6 +65,17 @@
   .muted { color: #56656f; }
   .scroll { overflow-x: auto; }
   code { font-family: ui-monospace, monospace; background: #0d1219; padding: 1px 5px; border-radius: 4px; }
+  a.rowlink { color: #64d8ff; text-decoration: none; }
+  a.rowlink:hover { text-decoration: underline; }
+  .note { margin: 0; font-size: 12px; color: #7e8fa0; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 13px; }
+  .kv dt { color: #7e8fa0; }
+  .kv dd { margin: 0; font-family: ui-monospace, monospace; }
+  .check { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #7e8fa0; }
+  .check input { min-height: 0; width: 16px; height: 16px; }
+  .outcome-completed { color: #7ee0a0; }
+  .outcome-failed, .outcome-destroyed { color: #ffb3bd; }
+  .outcome-aborted { color: #d2b36a; }
 </style>
 </head>
 <body>
@@ -92,10 +103,18 @@
   {% if reset_password %}
     <p class="ok">{{ t.admin_reset_banner.format(email=reset_password.email, password=reset_password.password) }}</p>
   {% endif %}
+  {% if mail_result %}
+    {% if mail_result.error %}
+      <p class="err">{{ t.admin_mail_failed.format(email=mail_result.email,
+          reason=t.get('admin_mail_error_' + mail_result.error, mail_result.error)) }}</p>
+    {% else %}
+      <p class="ok">{{ t.admin_mail_sent.format(email=mail_result.email) }}</p>
+    {% endif %}
+  {% endif %}
 
   <section>
     <h2>{{ t.admin_add_user_heading }}</h2>
-    <form class="addform" method="post" action="/admin/users">
+    <form class="addform" id="rs-addform" method="post" action="/admin/users">
       <label>{{ t.admin_email_label }}
         <input type="email" name="email" required autocomplete="off">
       </label>
@@ -105,6 +124,48 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button type="submit">{{ t.admin_add_submit }}</button>
     </form>
+    {% if mail.configured %}
+    <label class="check">
+      {# Gehoert zum Formular darueber, steht aber in eigener Zeile: in der
+         .addform-Reihe waere ein Kaestchen zwischen zwei Textfeldern kaum zu
+         treffen. #}
+      <input type="checkbox" name="welcome" value="1" form="rs-addform" checked>
+      {{ t.admin_welcome_label }}
+    </label>
+    {% else %}
+    <p class="note">{{ t.admin_welcome_off }}</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>{{ t.admin_mail_heading }}</h2>
+    <p class="note">{{ t.admin_mail_intro }}</p>
+    {% if mail.configured %}
+      <dl class="kv">
+        <dt>{{ t.admin_mail_host }}</dt><dd>{{ mail.host }}:{{ mail.port }}</dd>
+        <dt>{{ t.admin_mail_security }}</dt><dd>{{ mail.security }}</dd>
+        <dt>{{ t.admin_mail_user }}</dt><dd>{{ mail.user or '\u2013' }}</dd>
+        <dt>{{ t.admin_mail_sender }}</dt><dd>{{ mail.sender }}</dd>
+        <dt>{{ t.admin_mail_password }}</dt>
+        <dd>{{ t.admin_mail_password_set if mail.password_set else t.admin_mail_password_unset }}</dd>
+      </dl>
+      <form class="addform" method="post" action="/admin/mail/test">
+        <label>{{ t.admin_mail_test_label }}
+          <input type="email" name="to" required autocomplete="off">
+        </label>
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">{{ t.admin_mail_test_submit }}</button>
+      </form>
+    {% else %}
+      <p class="err">{{ t.admin_mail_off }}</p>
+      <pre class="scroll"><code>REACTORSIM_SMTP_HOST=mail.example.net
+REACTORSIM_SMTP_PORT=587
+REACTORSIM_SMTP_SECURITY=starttls
+REACTORSIM_SMTP_USER=reactorsim@example.net
+REACTORSIM_SMTP_PASSWORD=...
+REACTORSIM_SMTP_FROM=reactorsim@example.net
+REACTORSIM_PUBLIC_URL=https://reactorsim.example.net</code></pre>
+    {% endif %}
   </section>
 
   <section>
@@ -117,19 +178,21 @@
         <th>{{ t.admin_col_created }}</th>
         <th>{{ t.admin_col_last_login }}</th>
         <th>{{ t.admin_col_last_ip }}</th>
+        <th>{{ t.admin_col_runs }}</th>
         <th>{{ t.admin_col_playtime }}</th>
         <th>{{ t.admin_col_actions }}</th>
       </tr></thead>
       <tbody>
         {% for u in users %}
         <tr>
-          <td>{{ u.email }}</td>
+          <td><a class="rowlink" href="/admin/users/{{ u.id }}">{{ u.email }}</a></td>
           <td class="status-{{ u.status }}">
             {{ t.admin_status_active if u.status == 'active' else t.admin_status_locked }}
           </td>
           <td>{{ u.created_at | fmt_time }}</td>
           <td>{{ u.last_login_at | fmt_time }}</td>
           <td><code>{{ u.last_login_ip or '\u2013' }}</code></td>
+          <td>{{ u.run_count }}</td>
           <td>{{ u.total_playtime_s | fmt_duration }}</td>
           <td class="actions">
             {% if u.status == 'active' %}
@@ -147,10 +210,11 @@
               <input type="hidden" name="csrf" value="{{ csrf }}">
               <button type="submit">{{ t.admin_action_reset }}</button>
             </form>
+            <a class="rowlink" href="/admin/users/{{ u.id }}">{{ t.admin_action_detail }}</a>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="muted">{{ t.admin_no_users }}</td></tr>
+        <tr><td colspan="8" class="muted">{{ t.admin_no_users }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -180,18 +244,28 @@
       <thead><tr>
         <th>{{ t.admin_col_email }}</th><th>{{ t.admin_col_when }}</th>
         <th>{{ t.admin_col_reactor }}</th><th>{{ t.admin_col_scenario }}</th>
-        <th>{{ t.admin_col_duration }}</th><th>{{ t.admin_col_completed }}</th>
+        <th>{{ t.admin_col_mode }}</th><th>{{ t.admin_col_duration }}</th>
+        <th>{{ t.admin_col_outcome }}</th><th>{{ t.admin_col_score }}</th>
       </tr></thead>
       <tbody>
         {% for s in sessions %}
         <tr>
-          <td>{{ s.email }}</td><td>{{ s.at | fmt_time }}</td>
-          <td>{{ s.reactor or '\u2013' }}</td><td>{{ s.scenario or '\u2013' }}</td>
+          <td><a class="rowlink" href="/admin/users/{{ s.user_id }}">{{ s.email }}</a></td>
+          <td>{{ s.at | fmt_time }}</td>
+          <td>{{ s.reactor or '\u2013' }}</td>
+          {# Die Kennung, nicht der uebersetzte Titel: sie steht so in der
+             Szenariodatei und ist das, wonach der Betreiber sucht. #}
+          <td><code>{{ s.scenario or '–' }}</code></td>
+          <td>{{ t.get('admin_mode_' + s.mode, t.admin_mode_unknown) if s.mode else t.admin_mode_unknown }}</td>
           <td>{{ s.duration_s | fmt_duration }}</td>
-          <td>{{ t.admin_completed_yes if s.completed else t.admin_completed_no }}</td>
+          <td class="outcome-{{ s.outcome or 'unknown' }}">
+            {{ t.get('admin_outcome_' + s.outcome, t.admin_outcome_unknown) if s.outcome
+               else (t.admin_completed_yes if s.completed else t.admin_completed_no) }}
+          </td>
+          <td>{{ s.score if s.score is not none else '\u2013' }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="muted">{{ t.admin_no_sessions }}</td></tr>
+        <tr><td colspan="8" class="muted">{{ t.admin_no_sessions }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

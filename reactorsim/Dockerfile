@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY auth.py .
 COPY users.py .
+COPY mailer.py .
 COPY persist.py .
 COPY scoring.py .
 COPY atomic_io.py .

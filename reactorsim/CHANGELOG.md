@@ -1,5 +1,91 @@
 # Changelog
 
+## 0.6.0
+
+- ✨ **Das Admin-Panel zeigt jetzt die vollständige Spielhistorie — vorher
+  einen Bruchteil davon.** Ein Lauf landete bisher nur dann im Panel, wenn
+  der Spieler am Ende ausdrücklich auf „Eintragen" drückte: Die einzige
+  Aufzeichnung entstand als Nebenwirkung der Bestenlisten-Einsendung. Alles
+  andere fehlte vollständig — Tutorials (die gar nicht gewertet werden),
+  freies Spiel, gescheiterte Läufe, zerstörte Anlagen, jeder Abbruch —, und
+  die Spalte „Spielzeit gesamt" zählte entsprechend nur einen Bruchteil der
+  wirklich gespielten Zeit. Neu meldet der Client jeden beendeten Lauf über
+  `/api/runs` (`main.js: reportRun()`), unabhängig von jeder Wertung: mit
+  Art (Szenario/Tutorial/freies Spiel), Dauer und Ausgang (geschafft,
+  gescheitert, abgebrochen, Anlage zerstört). Ein später eingereichter
+  Punktestand wird an denselben Eintrag **nachgetragen**
+  (`UserStore.attach_score()`) statt einen zweiten anzulegen — sonst stünde
+  jeder gewertete Lauf doppelt da und die Spielzeit wäre doppelt gezählt.
+  Art und Tutorialeigenschaft kommen aus dem Szenariokatalog, nicht aus der
+  Anfrage (derselbe Grundsatz wie beim Schwierigkeitsgrad); die Dauer ist
+  Client-Angabe und bei 24 h gedeckelt, Läufe unter 30 simulierten Sekunden
+  werden gar nicht erst aufgezeichnet. Bestehende Einträge bleiben erhalten
+  und stehen mit „unbekannt" in den neuen Spalten — für sie *ist* die Art
+  unbekannt, eine erfundene Vorgabe wäre eine falsche Angabe.
+
+- ✨ **Neue Kontoseite `/admin/users/<id>`: alles zu einem Spieler an einem
+  Ort.** Die Übersicht zeigt je Konto eine Zeile und daneben die letzten 50
+  Ereignisse aller Spieler gemischt — die Frage „was hat dieser eine
+  eigentlich gespielt?" ließ sich damit nicht beantworten. Die Kontoseite
+  zeigt Kennzahlen (Läufe, Spielzeit, davon geschafft, bester Wert,
+  Anmeldungen), eine Auswertung je Szenario und die vollständigen Listen
+  aller Läufe und Anmeldungen dieses Kontos (jeweils die letzten 200, was
+  darüber liegt, ist ausdrücklich als gekürzt gekennzeichnet). Erreichbar
+  über die E-Mail-Adresse in jeder Tabelle des Panels.
+
+- ✨ **Mailversand — eingerichtet über Dockge, nicht im Panel.** Neues Modul
+  `mailer.py` mit `REACTORSIM_SMTP_HOST/_PORT/_SECURITY/_USER/_PASSWORD/
+  _FROM/_TIMEOUT` und `REACTORSIM_PUBLIC_URL`. Die Zugangsdaten des Postfachs
+  stehen damit dort, wo schon das Admin-Passwort steht; das Panel *zeigt* die
+  Einstellung nur (ohne Passwort, nur „gesetzt"/„nicht gesetzt") und kann
+  eine Testmail schicken. Ein Postfachpasswort über ein Browserformular
+  entgegenzunehmen hieße, ein weiteres Geheimnis zu speichern, zu
+  verschlüsseln und wieder anzuzeigen — dafür gibt es keinen Grund, solange
+  Dockge daneben liegt. Verschickt wird reiner Text, kein HTML, kein
+  nachgeladenes Bild, kein Zählpixel (dieselbe Linie wie bei der Seite
+  selbst). **Ohne gesetzten Mailserver ändert sich nichts**: das Panel zeigt
+  erzeugte Passwörter weiterhin einmalig an, und „Passwort vergessen" ist
+  gar nicht erst sichtbar. Fehler nennen den Grund im Panel (Anmeldung
+  abgelehnt, nicht erreichbar, Empfänger abgelehnt) statt nur im Protokoll.
+
+- ✨ **Willkommens-Mail an ein neu angelegtes Spielerkonto.** Ein Kreuzchen
+  im Anlegen-Formular, kein Automatismus — wer zwanzig Konten für einen Kurs
+  anlegt und die Zugänge ausdruckt, lässt es weg. Die Mail enthält Adresse,
+  Benutzername und Passwort; dasselbe Passwort steht **zusätzlich weiterhin
+  einmalig im Panel**, damit ein fehlgeschlagener Versand kein unbrauchbares
+  Konto hinterlässt. Auch „Passwort zurücksetzen" schickt das neue Passwort
+  jetzt direkt an den Spieler, sofern ein Mailserver bereitsteht — das war
+  als „Passwort-Reset Phase 2" seit Einführung der Konten offen.
+
+- ✨ **„Passwort vergessen" auf der Anmeldeseite.** `/forgot` nimmt die
+  Adresse entgegen, `/reset?token=…` setzt das neue Passwort. Der Link gilt
+  **zwei Stunden und genau einmal**; in der Datenbank liegt nur sein
+  SHA-256-Abdruck, nie der Link selbst — wer `users.db` liest, kann daraus
+  keinen bauen. Ein neuer Link entwertet alle vorherigen, und ein gesetztes
+  Passwort beendet jede noch laufende Sitzung des Kontos. Die Antwort auf
+  `/forgot` ist **immer dieselbe**, ob es die Adresse gibt, ob das Konto
+  gesperrt ist oder ob die Mail ankam; der Versand läuft deshalb
+  asynchron, damit auch die Antwortzeit nichts verrät. Grenzen: fünf
+  Anfragen je Stunde und Absenderadresse, drei je E-Mail-Adresse, zwanzig
+  Einlöseversuche je Stunde. CSRF-Token sind je Formular getrennt — ein
+  Token des Anmeldeformulars gilt hier nicht.
+
+- 🔧 **Anmeldung, „Passwort vergessen" und „Neues Passwort" teilen sich jetzt
+  eine Vorlage** (`templates/auth_base.html`). Dieselbe Regelmenge dreimal
+  nebeneinander wäre beim nächsten Farbwechsel auseinandergelaufen. Wie
+  vorher lädt keine dieser Seiten eine Datei nach, die hinter der Anmeldung
+  liegt.
+
+- ✅ 34 neue Tests: `tests/test_mail.py` (22, mit einer smtplib-Attrappe —
+  STARTTLS-Reihenfolge, Anmeldung, Fehlergründe, Willkommens-Mail, Reset-Mail,
+  Testmail, der gesamte Passwort-vergessen-Ablauf samt Einmaligkeit des Links
+  und gleicher Antwort für unbekannte und gesperrte Konten), sieben in
+  `tests/test_admin.py` (Historie für Tutorial/freies Spiel/Abbruch/
+  Zerstörung, Art aus dem Katalog statt aus der Anfrage, Nachtragen statt
+  Verdoppeln, Kontoseite) und vier in `tests/test-lifecycle.mjs`
+  (`reportRun()` meldet genau einmal, auch im freien Spiel und bei zerstörtem
+  Kern, und ein kurzes Hineinschauen gar nicht).
+
 ## 0.5.11
 
 - 🐛 **Admin-Panel zeigte bei jedem Besucher dieselbe Docker-Gateway-Adresse

@@ -34,10 +34,17 @@ ReactorSim beim ersten Start eines und schreibt es ins Protokoll; offen steht
 die Seite nie. Der Admin spielt nicht: er meldet sich an und landet im Panel
 unter `/admin`, wo er **Spielerkonten** anlegt (E-Mail-Adresse als
 Benutzername), sperrt/entsperrt, Passwörter zurücksetzt und sieht, wer sich
-wann von welcher Adresse angemeldet und was er gespielt hat. Je Spielerkonto
-ist genau eine Sitzung gleichzeitig aktiv — meldet es sich auf einem zweiten
-Gerät an, endet die Sitzung auf dem ersten; das Admin-Konto ist davon
-ausgenommen.
+wann von welcher Adresse angemeldet und was er gespielt hat — jeden beendeten
+Lauf mit Art, Dauer, Ausgang und Punktestand, je Konto auf einer eigenen
+Seite. Je Spielerkonto ist genau eine Sitzung gleichzeitig aktiv — meldet es
+sich auf einem zweiten Gerät an, endet die Sitzung auf dem ersten; das
+Admin-Konto ist davon ausgenommen.
+
+Ist zusätzlich ein Mailserver konfiguriert (`REACTORSIM_SMTP_*`, siehe
+[DOCKGE.md](DOCKGE.md)), bekommt ein neues Konto auf Wunsch eine
+Willkommens-Mail mit seinen Zugangsdaten, und die Anmeldeseite bietet
+„Passwort vergessen" an. Ohne Mailserver bleibt es beim bisherigen Weg: Der
+Admin liest das Passwort einmalig im Panel ab und gibt es selbst weiter.
 
 Unter `./data` landen Spielstände, Bestenliste, Spielerkonten samt Anmelde-
 und Spielprotokoll (SQLite) sowie die Admin-Zugangsdaten (nur als Hash).

@@ -1,0 +1,29 @@
+{% extends "auth_base.html" %}
+{% block subtitle %}{{ t.reset_title }}{% endblock %}
+{% block form %}
+  <form class="box" method="post" action="/reset" autocomplete="on">
+    <h1>{{ t.app_title }}<span>{{ t.reset_title }}</span></h1>
+
+    {% if error %}<p class="err">{{ t.get(error, error) }}</p>{% endif %}
+
+    {% if done %}
+      <p class="ok">{{ t.reset_done }}</p>
+    {% elif token %}
+      <p class="note">{{ t.reset_intro.format(email=email) }}</p>
+      <label>{{ t.reset_password }}
+        <input type="password" name="password" autocomplete="new-password"
+               minlength="8" required autofocus>
+      </label>
+      <label>{{ t.reset_password_repeat }}
+        <input type="password" name="password2" autocomplete="new-password"
+               minlength="8" required>
+      </label>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="token" value="{{ token }}">
+      <button type="submit">{{ t.reset_submit }}</button>
+    {% endif %}
+
+    <p class="back"><a href="/login">{{ t.forgot_back }}</a></p>
+    {% include "auth_foot.html" %}
+  </form>
+{% endblock %}

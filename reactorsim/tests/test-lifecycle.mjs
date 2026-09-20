@@ -25,7 +25,9 @@ function harness(readSave = async () => ({ ok: false })) {
       append() {}, replaceChildren() {}, focus() {} });
     return nodes.get(key);
   };
-  const counters = { starts: 0, autosaves: 0, samples: 0, panels: 0 };
+  // `runs` sammelt, was main.js an /api/runs melden wuerde -- Grundlage der
+  // Spielhistorie im Admin-Panel (siehe reportRun()).
+  const counters = { starts: 0, autosaves: 0, samples: 0, panels: 0, runs: [] };
   // Aufgezeichnet statt real verzoegert: deferEnd() (siehe main.js) nutzt
   // window.setTimeout fuer die kurze Pause vor der Kernzerstoerungs-Anzeige --
   // der Test loest sie ueber flushTimeouts() gezielt aus, statt drei echte
@@ -37,7 +39,7 @@ function harness(readSave = async () => ({ ok: false })) {
     introMusic: music(), bgMusic: music(), render: { clear() {}, tick() {} } };
   const ctx = vm.createContext({ app, $, PHASE, getPlant, createEngine, Session,
     gridDeviationTrips, attachRecorder, applySave: apply,
-    api: { readSave },
+    api: { readSave, recordRun: (run) => { counters.runs.push(run); return Promise.resolve({ ok: true }); } },
     t: (key) => key, clock: String,
     setText: (node, text) => { node.textContent = text; }, setAttr() {}, el: () => ({}),
     buildStatusBar() {}, statusTiles: new Map(), applyStatusSelection() {},
@@ -51,6 +53,7 @@ function harness(readSave = async () => ({ ok: false })) {
     document: { body: { classList: { toggle() {} } } },
     scramLabel: () => 'SCRAM', refreshResumeList() {}, playClip() {},
     showFault() {}, AUTOSAVE_INTERVAL_MS: 60000, XENON_SKIP_TARGET: 1, DESTROY_PAUSE_MS: 3000,
+    RUN_REPORT_MIN_S: 30,
     window: { clearInterval() {}, setInterval() { counters.autosaves++; return 1; },
       setTimeout(fn) { timeouts.push(fn); return timeouts.length; }, clearTimeout() {} },
     buildPanels(engine, render, helperEnabled) {
@@ -68,7 +71,7 @@ function harness(readSave = async () => ({ ok: false })) {
     closeSaveSlots() {}, resetSaveStatus() {},
     renderGuidance(host, def) { host.hidden = !def?.guidance; },
   });
-  for (const name of ['cancelScenarioLoad', 'clearEndDialogs', 'toMenu', 'showBriefing', 'deferEnd', 'showDebrief', 'showDebriefNow', 'showDestroyed', 'boot']) {
+  for (const name of ['cancelScenarioLoad', 'clearEndDialogs', 'toMenu', 'showBriefing', 'deferEnd', 'reportRun', 'runOutcome', 'showDebrief', 'showDebriefNow', 'showDestroyed', 'leaveToMenu', 'boot']) {
     const fn = source.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
     assert.ok(fn, name);
     vm.runInContext(fn[0], ctx);
@@ -349,4 +352,66 @@ test('score response updates the displayed result, but cannot replace a later se
   h.app.engine.recorder = null;
   h.ctx.submitTest();
   assert.equal(calls, 2, 'hidden submission cannot bypass the recorder requirement');
+});
+
+// Objekte aus dem vm-Kontext haben einen anderen Object-Prototyp als die des
+// Testmoduls -- deepStrictEqual scheitert daran, obwohl der Inhalt stimmt.
+const plain = (v) => JSON.parse(JSON.stringify(v));
+
+test('every finished run is reported exactly once, free play included', async () => {
+  // Der Grund fuer /api/runs: bis dahin entstand der einzige Eintrag der
+  // Spielhistorie als Nebenwirkung von "Eintragen" im Debrief. Tutorial,
+  // freies Spiel und jeder Abbruch fehlten damit ganz.
+  const h = harness();
+  await h.ctx.boot('pwr', { id: 'test', reactor: 'pwr', duration_s: 60 });
+  h.app.engine.state.t_sim = 1800;
+  h.ctx.showDebrief(null, 'aborted');
+  assert.deepEqual(plain(h.counters.runs), [{
+    reactor: 'pwr', scenario: 'test', duration_s: 1800, outcome: 'aborted',
+  }]);
+
+  // Ein zweiter Durchlauf desselben Laufs meldet nicht noch einmal.
+  h.ctx.showDebriefNow(null, 'aborted');
+  assert.equal(h.counters.runs.length, 1);
+
+  // Freies Spiel endet ohne Auswertung -- ueber leaveToMenu().
+  await h.ctx.boot('bwr', null);
+  h.app.engine.state.t_sim = 900;
+  h.ctx.leaveToMenu();
+  assert.deepEqual(plain(h.counters.runs[1]), {
+    reactor: 'bwr', scenario: null, duration_s: 900, outcome: 'aborted',
+  });
+});
+
+test('the reported outcome distinguishes loss, abort and destruction', async () => {
+  const h = harness();
+  await h.ctx.boot('pwr', null);
+  assert.equal(h.ctx.runOutcome(null), 'completed');
+  assert.equal(h.ctx.runOutcome('fail_objectives_unmet'), 'failed');
+  assert.equal(h.ctx.runOutcome('aborted'), 'aborted');
+  h.app.engine.state.destroyed = true;
+  // Eine zerstoerte Anlage schlaegt jeden anderen Ausgang -- auch den, den
+  // das Szenario sonst gemeldet haette.
+  assert.equal(h.ctx.runOutcome('fail_objectives_unmet'), 'destroyed');
+});
+
+test('a glance into the plant is not a run', async () => {
+  const h = harness();
+  await h.ctx.boot('pwr', null);
+  h.app.engine.state.t_sim = 5;
+  h.ctx.leaveToMenu();
+  assert.deepEqual(h.counters.runs, []);
+});
+
+test('a destroyed core is reported even where free play shows no debrief', async () => {
+  const h = harness();
+  await h.ctx.boot('rbmk', null);
+  h.app.engine.state.t_sim = 600;
+  h.app.engine.state.destroyed = true;
+  // Freies Spiel hat kein `result`: showDebrief() steigt hier aus, bevor
+  // showDebriefNow() ueberhaupt erreicht ist.
+  h.ctx.showDebrief(null, 'event_fuel_dispersal');
+  assert.deepEqual(plain(h.counters.runs), [{
+    reactor: 'rbmk', scenario: null, duration_s: 600, outcome: 'destroyed',
+  }]);
 });

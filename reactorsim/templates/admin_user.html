@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ t.app_title }} — {{ account.email }}</title>
+<style nonce="{{ csp_nonce() }}">
+  /* Wie admin.html: eigenstaendige Seite, kein Nachladen aus static/.
+     Die Regeln sind bewusst dieselben wie dort -- beide Seiten gehoeren
+     sichtbar zusammen. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100dvh; padding: 24px 16px;
+    background: radial-gradient(1200px 600px at 50% -10%, #14263a 0%, transparent 60%), #080b10;
+    color: #c9d6e3;
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 20px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: .03em; }
+  h1 span {
+    display: block; font-size: 11px; font-weight: 400; letter-spacing: .18em;
+    text-transform: uppercase; color: #56656f; margin-top: 3px;
+  }
+  .top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .top .ver { margin-left: auto; font-family: ui-monospace, monospace; font-size: 11px; color: #56656f; }
+  .top a { color: #64d8ff; text-decoration: none; font-size: 12px; }
+  section {
+    background: #121a24; border: 1px solid #223040; border-radius: 10px;
+    padding: 18px; display: grid; gap: 12px;
+  }
+  h2 { margin: 0; font-size: 15px; letter-spacing: .03em; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #1a242f; }
+  th { color: #7e8fa0; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .muted { color: #56656f; }
+  .note { margin: 0; font-size: 12px; color: #7e8fa0; }
+  .scroll { overflow-x: auto; }
+  code { font-family: ui-monospace, monospace; background: #0d1219; padding: 1px 5px; border-radius: 4px; }
+  .status-active { color: #7ee0a0; }
+  .status-locked { color: #ffb3bd; }
+  .outcome-completed { color: #7ee0a0; }
+  .outcome-failed, .outcome-destroyed { color: #ffb3bd; }
+  .outcome-aborted { color: #d2b36a; }
+  /* Kennzahlenreihe ueber der Historie: bricht auf schmalen Schirmen in
+     mehrere Zeilen, statt die Seite waagerecht scrollen zu lassen. */
+  .stats { display: flex; flex-wrap: wrap; gap: 10px; }
+  .stat {
+    flex: 1 1 130px; background: #0d1219; border: 1px solid #1a242f;
+    border-radius: 7px; padding: 10px 12px;
+  }
+  .stat b { display: block; font-size: 19px; font-family: ui-monospace, monospace; color: #dff1ff; }
+  .stat span { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #7e8fa0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>{{ account.email }}<span>{{ t.admin_user_heading }}</span></h1>
+    <a href="/admin">{{ t.admin_back }}</a>
+    <a href="/logout">{{ t.btn_logout }}</a>
+    <span class="ver">v{{ app_version }}</span>
+  </div>
+
+  <section>
+    <h2>{{ t.admin_user_overview }}</h2>
+    <div class="stats">
+      <div class="stat"><b>{{ stats.runs }}</b><span>{{ t.admin_stat_runs }}</span></div>
+      <div class="stat"><b>{{ stats.total_playtime_s | fmt_duration }}</b><span>{{ t.admin_stat_playtime }}</span></div>
+      <div class="stat"><b>{{ stats.completed_runs }}</b><span>{{ t.admin_stat_completed }}</span></div>
+      <div class="stat"><b>{{ stats.best_score if stats.best_score is not none else '–' }}</b><span>{{ t.admin_stat_best }}</span></div>
+      <div class="stat"><b>{{ stats.logins }}</b><span>{{ t.admin_stat_logins }}</span></div>
+    </div>
+    <p class="note">
+      {{ t.admin_col_status }}:
+      <span class="status-{{ account.status }}">{{ t.admin_status_active if account.status == 'active' else t.admin_status_locked }}</span>
+      &middot; {{ t.admin_col_created }}: {{ account.created_at | fmt_time }}
+      &middot; {{ t.admin_stat_last_play }}: {{ stats.last_play_at | fmt_time }}
+    </p>
+  </section>
+
+  <section>
+    <h2>{{ t.admin_breakdown_heading }}</h2>
+    <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>{{ t.admin_col_reactor }}</th><th>{{ t.admin_col_scenario }}</th>
+        <th>{{ t.admin_col_mode }}</th><th>{{ t.admin_col_runs }}</th>
+        <th>{{ t.admin_col_completed }}</th><th>{{ t.admin_col_playtime }}</th>
+        <th>{{ t.admin_col_best_score }}</th><th>{{ t.admin_col_when }}</th>
+      </tr></thead>
+      <tbody>
+        {% for b in breakdown %}
+        <tr>
+          <td>{{ b.reactor or '–' }}</td>
+          <td><code>{{ b.scenario or '–' }}</code></td>
+          <td>{{ t.get('admin_mode_' + b.mode, t.admin_mode_unknown) if b.mode else t.admin_mode_unknown }}</td>
+          <td>{{ b.runs }}</td>
+          <td>{{ b.completed_runs }}</td>
+          <td>{{ b.total_s | fmt_duration }}</td>
+          <td>{{ b.best_score if b.best_score is not none else '–' }}</td>
+          <td>{{ b.last_at | fmt_time }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="muted">{{ t.admin_no_sessions }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>{{ t.admin_history_heading }}</h2>
+    {% if sessions | length >= detail_limit %}
+      <p class="note">{{ t.admin_list_truncated.format(n=detail_limit) }}</p>
+    {% endif %}
+    <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>{{ t.admin_col_when }}</th><th>{{ t.admin_col_reactor }}</th>
+        <th>{{ t.admin_col_scenario }}</th><th>{{ t.admin_col_mode }}</th>
+        <th>{{ t.admin_col_duration }}</th><th>{{ t.admin_col_outcome }}</th>
+        <th>{{ t.admin_col_score }}</th>
+      </tr></thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td>{{ s.at | fmt_time }}</td>
+          <td>{{ s.reactor or '–' }}</td>
+          <td><code>{{ s.scenario or '–' }}</code></td>
+          <td>{{ t.get('admin_mode_' + s.mode, t.admin_mode_unknown) if s.mode else t.admin_mode_unknown }}</td>
+          <td>{{ s.duration_s | fmt_duration }}</td>
+          <td class="outcome-{{ s.outcome or 'unknown' }}">
+            {{ t.get('admin_outcome_' + s.outcome, t.admin_outcome_unknown) if s.outcome
+               else (t.admin_completed_yes if s.completed else t.admin_completed_no) }}
+          </td>
+          <td>{{ s.score if s.score is not none else '–' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="muted">{{ t.admin_no_sessions }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>{{ t.admin_logins_heading }}</h2>
+    {% if logins | length >= detail_limit %}
+      <p class="note">{{ t.admin_list_truncated.format(n=detail_limit) }}</p>
+    {% endif %}
+    <div class="scroll">
+    <table>
+      <thead><tr><th>{{ t.admin_col_when }}</th><th>{{ t.admin_col_last_ip }}</th></tr></thead>
+      <tbody>
+        {% for l in logins %}
+        <tr><td>{{ l.at | fmt_time }}</td><td><code>{{ l.ip or '–' }}</code></td></tr>
+        {% else %}
+        <tr><td colspan="2" class="muted">{{ t.admin_no_logins }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+</div>
+</body>
+</html>

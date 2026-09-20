@@ -27,6 +27,7 @@ from waitress import serve
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import auth as authmod
+import mailer as mailermod
 import persist
 import scoring
 import users as usersmod
@@ -63,6 +64,13 @@ PORT = int(os.environ.get('REACTORSIM_PORT', '17779'))
 # Spielerkonten im Admin-Panel an (siehe users.py, /admin-Routen unten).
 REACTORSIM_USER = os.environ.get('REACTORSIM_USER', 'admin')
 REACTORSIM_PASSWORD = os.environ.get('REACTORSIM_PASSWORD', '')
+
+# Unter welcher Adresse die Anlage von aussen erreichbar ist -- nur fuer die
+# Links in verschickten Mails. Ohne die Angabe nimmt _public_url() die Adresse
+# der gerade laufenden Anfrage; das stimmt fast immer, geht aber daneben,
+# sobald der Reverse Proxy unter einem anderen Namen veroeffentlicht als dem,
+# unter dem der Container gerade angesprochen wurde.
+REACTORSIM_PUBLIC_URL = os.environ.get('REACTORSIM_PUBLIC_URL', '').strip().rstrip('/')
 
 # Eine einzige Versionsquelle: die Datei VERSION. Sie ist zugleich der Ausloeser
 # des Build-Workflows, deshalb kann sie hier nicht auseinanderlaufen. Der
@@ -119,19 +127,33 @@ STORE = persist.Store(_DATA)
 LIMITS = persist.RateLimit()
 USERS = usersmod.UserStore(_DATA)
 AUTH = authmod.Auth(_DATA, REACTORSIM_USER, REACTORSIM_PASSWORD, USERS)
+# Konfiguration aus der Umgebung, also aus Dockge -- genau wie das
+# Admin-Konto darueber. Ohne gesetzten Server bleibt alles beim Alten: das
+# Panel zeigt erzeugte Passwoerter einmalig an, "Passwort vergessen" ist
+# ausgeblendet. Siehe mailer.py.
+MAIL = mailermod.Mailer.from_env()
+if MAIL.configured:
+    log.info('Mailversand ueber %s:%s (%s), Absender %s',
+             MAIL.host, MAIL.port, MAIL.security, MAIL.sender)
+else:
+    log.info('Kein Mailserver gesetzt -- keine Willkommens-Mails, '
+             'kein "Passwort vergessen". REACTORSIM_SMTP_HOST setzt ihn.')
 
 PLAYER_COOKIE = 'rs_player'
 
 # Was ohne Anmeldung erreichbar bleibt. /health muss offen sein, sonst meldet
 # der Healthcheck den Container als krank; die Anmeldeseite selbst kann nicht
 # hinter der Anmeldung liegen; /set-lang stellt nur ein Cookie und existiert
-# auch auf der Anmeldeseite.
-_PUBLIC_ENDPOINTS = frozenset({'health', 'login', 'set_lang'})
+# auch auf der Anmeldeseite. /forgot und /reset MUESSEN offen
+# sein: wer sein Passwort vergessen hat, kommt per Definition nicht an der
+# Anmeldung vorbei. Beide sind deshalb gesondert ratenbegrenzt (siehe dort).
+_PUBLIC_ENDPOINTS = frozenset({'health', 'login', 'set_lang', 'forgot', 'reset'})
 
 # Nur der Admin darf hier hinein, ein Spieler nie -- siehe _require_login().
 _ADMIN_ENDPOINTS = frozenset({
     'admin_panel', 'admin_create_user', 'admin_lock_user',
-    'admin_unlock_user', 'admin_reset_password',
+    'admin_unlock_user', 'admin_reset_password', 'admin_user_detail',
+    'admin_test_mail',
 })
 
 
@@ -209,6 +231,10 @@ def login():
     resp = make_response(render_template(
         'login.html', t=t, lang=lang, app_version=APP_VERSION,
         csrf=AUTH.csrf_token(), next_url=nxt, error=error,
+        # Ohne Mailserver gibt es keinen Weg, einen Link zuzustellen -- dann
+        # bleibt der Hinweis weg, statt auf ein Formular zu zeigen, das nichts
+        # tun kann (der Admin setzt das Passwort dann wie bisher im Panel).
+        can_reset=MAIL.configured,
         prefill=request.form.get('user', '') if request.method == 'POST' else ''))
     resp.headers['Cache-Control'] = 'no-store'
     return resp, (401 if error else 200)
@@ -222,6 +248,144 @@ def logout():
     AUTH.revoke(AUTH.valid(request.cookies.get(authmod.SESSION_COOKIE)))
     resp = make_response(redirect('/login'))
     resp.delete_cookie(authmod.SESSION_COOKIE)
+    return resp
+
+
+# ── Mail ──────────────────────────────────────────────────────────────────────
+
+
+def _public_url(path: str = '/') -> str:
+    """Absolute Adresse fuer einen Link in einer Mail.
+
+    Eine Mail wird gelesen, wenn von der Anfrage laengst nichts mehr da ist --
+    ein relativer Pfad waere darin wertlos. REACTORSIM_PUBLIC_URL gewinnt, weil
+    nur der Betreiber weiss, unter welchem Namen die Anlage veroeffentlicht
+    ist; sonst die Adresse der laufenden Anfrage.
+    """
+    base = REACTORSIM_PUBLIC_URL or request.url_root.rstrip('/')
+    return base + path
+
+
+def _mail_text(t: dict, key: str, **kw) -> str:
+    """Mailtext aus der Sprachdatei. Wie jeder andere Text der Seite -- eine
+    Mail ist kein Grund, Deutsch fest zu verdrahten."""
+    return t.get(key, key).format(**kw)
+
+
+def _send_mail(t: dict, to: str, subject_key: str, body_key: str, **kw) -> str | None:
+    """@return None bei Erfolg, sonst der Grund fuer die Anzeige im Panel."""
+    return MAIL.send(to, _mail_text(t, subject_key), _mail_text(t, body_key, **kw))
+
+
+# ── Passwort vergessen ────────────────────────────────────────────────────────
+#
+# Zwei offene Seiten, sonst waere der Ablauf sinnlos: wer sein Passwort
+# vergessen hat, kommt nicht an der Anmeldung vorbei.
+#
+# Beide verraten NICHTS ueber den Kontobestand. /forgot antwortet immer
+# gleich -- ob es die Adresse gibt, ob das Konto gesperrt ist, ob die Mail
+# ankam. Deshalb geht der Versand auch in einen Hintergrund-Thread
+# (Mailer.send_async): sonst wuerde schon die Antwortzeit verraten, ob
+# ueberhaupt etwas zu verschicken war.
+
+_FORGOT_PER_IP = 5          # je Stunde
+_FORGOT_PER_EMAIL = 3       # je Stunde -- gegen das Zumuellen eines Postfachs
+_RESET_PER_IP = 20          # je Stunde; Tokens raten ist damit chancenlos
+
+
+@app.route('/forgot', methods=['GET', 'POST'])
+def forgot():
+    lang = detect_language(request)
+    t = load_translations(lang)
+    error = None
+    done = False
+
+    if not MAIL.configured:
+        # Ohne Mailserver gibt es keinen Zustellweg. Die Seite sagt das offen,
+        # statt ein Formular zu zeigen, das nichts bewirken kann.
+        return _render_auth_page('forgot.html', t, lang, error='forgot_mail_off', status=404)
+
+    if request.method == 'POST':
+        addr = _client_ip()
+        email = usersmod.normalize_email(request.form.get('email', ''))
+        if not LIMITS.hit(f'forgot:a:{addr}', _FORGOT_PER_IP, 3600):
+            error = 'forgot_rate_limited'
+        elif not AUTH.csrf_ok(request.form.get('csrf'), 'forgot'):
+            error = 'forgot_expired'
+        elif not LIMITS.hit(f'forgot:e:{email}', _FORGOT_PER_EMAIL, 3600):
+            # Auch das darf nichts verraten: dieselbe Antwort wie im Erfolgsfall.
+            done = True
+        else:
+            USERS.purge_expired_resets()
+            found = USERS.create_reset_token(email)
+            if found:
+                token, account = found
+                link = _public_url('/reset?token=' + quote(token, safe=''))
+                MAIL.send_async(
+                    account['email'], _mail_text(t, 'mail_reset_subject'),
+                    _mail_text(t, 'mail_reset_body', url=link,
+                               hours=usersmod.RESET_TTL_S // 3600))
+            else:
+                log.info('Passwort-vergessen fuer unbekannte oder gesperrte '
+                         'Adresse -- keine Mail verschickt')
+            done = True
+
+    status = 200 if not error else (429 if error == 'forgot_rate_limited' else 400)
+    return _render_auth_page('forgot.html', t, lang, error=error, done=done,
+                             status=status, csrf_scope='forgot')
+
+
+@app.route('/reset', methods=['GET', 'POST'])
+def reset():
+    lang = detect_language(request)
+    t = load_translations(lang)
+    token = (request.values.get('token') or '').strip()
+    addr = _client_ip()
+
+    if not LIMITS.hit(f'reset:a:{addr}', _RESET_PER_IP, 3600):
+        return _render_auth_page('reset.html', t, lang, error='reset_rate_limited',
+                                 status=429)
+
+    account = USERS.peek_reset_token(token) if token else None
+    if account is None:
+        return _render_auth_page('reset.html', t, lang, error='reset_error_bad_token',
+                                 status=400)
+
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        repeat = request.form.get('password2', '')
+        if not AUTH.csrf_ok(request.form.get('csrf'), 'reset'):
+            error = 'reset_expired'
+        elif password != repeat:
+            error = 'reset_error_mismatch'
+        else:
+            email, why = USERS.consume_reset_token(token, password)
+            if why:
+                error = 'reset_error_' + why
+            else:
+                # Ein neues Passwort beendet jede noch laufende Sitzung des
+                # Kontos -- sonst bliebe genau das Geraet angemeldet, wegen
+                # dem man das Passwort vielleicht gerade wechselt.
+                AUTH.revoke(email)
+                log.info('Passwort ueber Reset-Link neu gesetzt')
+                return _render_auth_page('reset.html', t, lang, done=True)
+        return _render_auth_page('reset.html', t, lang, error=error, token=token,
+                                 email=account['email'], status=400, csrf_scope='reset')
+
+    return _render_auth_page('reset.html', t, lang, token=token,
+                             email=account['email'], csrf_scope='reset')
+
+
+def _render_auth_page(template: str, t: dict, lang: str, status: int = 200,
+                      csrf_scope: str = 'login', **extra):
+    """Die kleinen offenen Seiten neben der Anmeldung. `no-store`, weil auf
+    ihnen ein Einmal-Token steht, das kein Zwischenspeicher aufbewahren soll."""
+    ctx = {'t': t, 'lang': lang, 'app_version': APP_VERSION,
+           'csrf': AUTH.csrf_token(csrf_scope),
+           'error': None, 'done': False, 'token': '', 'email': ''}
+    ctx.update(extra)
+    resp = make_response(render_template(template, **ctx), status)
+    resp.headers['Cache-Control'] = 'no-store'
     return resp
 
 
@@ -351,6 +515,10 @@ def _current_player_row() -> dict | None:
 # gespielt hat.
 
 _ADMIN_LIST_LIMIT = 50
+# Die Kontoseite zeigt die Historie eines einzelnen Spielers -- da darf es
+# mehr sein als in der Uebersicht, aber nicht unbegrenzt: die Seite wird am
+# Stueck gerendert und soll auch nach tausend Laeufen noch aufgehen.
+_ADMIN_DETAIL_LIMIT = 200
 
 
 def _render_admin(status: int = 200, **extra):
@@ -361,7 +529,8 @@ def _render_admin(status: int = 200, **extra):
         'logins': USERS.recent_login_events(_ADMIN_LIST_LIMIT),
         'sessions': USERS.recent_play_sessions(_ADMIN_LIST_LIMIT),
         'csrf': AUTH.csrf_token('admin'),
-        'created': None, 'reset_password': None, 'error': None,
+        'mail': MAIL.status(),
+        'created': None, 'reset_password': None, 'error': None, 'mail_result': None,
     }
     ctx.update(extra)
     resp = make_response(render_template('admin.html', **ctx), status)
@@ -373,6 +542,26 @@ def _admin_csrf_ok() -> bool:
     return AUTH.csrf_ok(request.form.get('csrf'), 'admin')
 
 
+def _mail_credentials(subject_key: str, body_key: str, email: str, password: str):
+    """Zugangsdaten an ein Spielerkonto schicken (Willkommen bzw. neues
+    Passwort). @return das Ergebnis-Dict fuer das Banner, oder None, wenn gar
+    nicht verschickt werden sollte.
+
+    Das Passwort steht im Klartext in der Mail. Das ist bewusst so und hier
+    auch kein Geheimnisverlust gegenueber vorher: dieselbe Zeichenkette stand
+    bisher im Panel und wurde von Hand weitergereicht -- per Zuruf, Chat oder
+    Zettel. Der Weg ueber das Postfach des Spielers ist davon nicht der
+    schlechteste. Das Panel zeigt das Passwort ZUSAETZLICH weiterhin einmalig
+    an, damit ein fehlgeschlagener Versand das Konto nicht unbrauchbar macht.
+    """
+    if not MAIL.configured:
+        return None
+    t = load_translations(detect_language(request))
+    err = _send_mail(t, email, subject_key, body_key,
+                     url=_public_url('/'), email=email, password=password)
+    return {'email': email, 'error': err}
+
+
 @app.route('/admin', methods=['GET'])
 def admin_panel():
     return _render_admin()
@@ -382,12 +571,62 @@ def admin_panel():
 def admin_create_user():
     if not _admin_csrf_ok():
         return _render_admin(400, error='csrf_expired')
-    user, err = USERS.create_user(request.form.get('email', ''),
-                                  request.form.get('password') or None,
+    password = request.form.get('password') or None
+    user, err = USERS.create_user(request.form.get('email', ''), password,
                                   created_by=g.user)
     if err:
         return _render_admin(400, error=err)
-    return _render_admin(created=user)
+    # Die Willkommens-Mail ist eine Kreuzchen-Entscheidung im Formular, keine
+    # Automatik: wer zehn Konten fuer einen Kurs anlegt und die Zugaenge
+    # ausdruckt, will sie nicht.
+    mail_result = None
+    if request.form.get('welcome'):
+        mail_result = _mail_credentials(
+            'mail_welcome_subject', 'mail_welcome_body',
+            user['email'], user.get('generated_password') or password or '')
+    return _render_admin(created=user, mail_result=mail_result)
+
+
+@app.route('/admin/users/<user_id>', methods=['GET'])
+def admin_user_detail(user_id: str):
+    """Kontoseite: alles zu EINEM Spieler an einem Ort.
+
+    Die Uebersicht zeigt je Konto nur eine Zeile und daneben die letzten 50
+    Ereignisse aller Spieler gemischt -- die Frage "was hat dieser eine
+    eigentlich gespielt?" liess sich damit nicht beantworten.
+    """
+    row = USERS.get_by_id(user_id)
+    if row is None:
+        return _render_admin(404, error='not_found')
+    lang = detect_language(request)
+    resp = make_response(render_template(
+        'admin_user.html', t=load_translations(lang), lang=lang,
+        app_version=APP_VERSION, csrf=AUTH.csrf_token('admin'), account=row,
+        stats=USERS.user_stats(user_id),
+        breakdown=USERS.scenario_breakdown(user_id),
+        sessions=USERS.user_play_sessions(user_id, _ADMIN_DETAIL_LIMIT),
+        logins=USERS.user_login_events(user_id, _ADMIN_DETAIL_LIMIT),
+        detail_limit=_ADMIN_DETAIL_LIMIT))
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
+
+@app.route('/admin/mail/test', methods=['POST'])
+def admin_test_mail():
+    """Eine Testmail, bevor das erste echte Konto darauf angewiesen ist.
+
+    Ohne sie faellt ein Tippfehler im Hostnamen erst auf, wenn ein Spieler
+    auf einen Link wartet, der nie kam -- und der Admin sieht davon nichts.
+    """
+    if not _admin_csrf_ok():
+        return _render_admin(400, error='csrf_expired')
+    if not MAIL.configured:
+        return _render_admin(400, error='mail_not_configured')
+    to = (request.form.get('to') or '').strip()
+    t = load_translations(detect_language(request))
+    err = _send_mail(t, to, 'mail_test_subject', 'mail_test_body', url=_public_url('/'))
+    return _render_admin(200 if err is None else 400,
+                         mail_result={'email': to, 'error': err})
 
 
 @app.route('/admin/users/<user_id>/lock', methods=['POST'])
@@ -414,7 +653,14 @@ def admin_reset_password(user_id: str):
     if err:
         return _render_admin(404, error=err)
     row = USERS.get_by_id(user_id)
-    return _render_admin(reset_password={'email': row['email'], 'password': new_password})
+    # Backlog "Passwort-Reset Phase 2": steht ein Mailserver bereit, geht das
+    # neue Passwort direkt an den Spieler, statt vom Admin von Hand
+    # weitergereicht zu werden. Angezeigt wird es trotzdem noch einmal --
+    # siehe _mail_credentials().
+    mail_result = _mail_credentials('mail_newpass_subject', 'mail_newpass_body',
+                                    row['email'], new_password)
+    return _render_admin(reset_password={'email': row['email'], 'password': new_password},
+                         mail_result=mail_result)
 
 
 @app.template_filter('fmt_time')
@@ -570,6 +816,91 @@ def prefs_write():
     return jsonify({'ok': True})
 
 
+# ── Spielhistorie ─────────────────────────────────────────────────────────────
+#
+# Bis 0.5.11 entstand der einzige Eintrag der Historie als Nebenwirkung von
+# /api/highscores -- ein Lauf zaehlte also nur, wenn der Spieler am Ende
+# ausdruecklich auf "Eintragen" drueckte. Tutorials (die gar nicht gewertet
+# werden), freies Spiel, gescheiterte, zerstoerte und abgebrochene Laeufe
+# tauchten damit nirgends auf, und "Spielzeit gesamt" im Panel zeigte einen
+# Bruchteil der wirklich gespielten Zeit.
+#
+# Dieser Endpunkt meldet JEDEN beendeten Lauf, unabhaengig von der Wertung
+# (main.js: reportRun()). Der Punktestand wird spaeter nachgetragen, falls
+# einer eingereicht wird -- siehe UserStore.attach_score().
+
+_RUN_MODES = frozenset(usersmod.MODES)
+_RUN_OUTCOMES = frozenset(usersmod.OUTCOMES)
+
+# Obergrenze fuer die gemeldete Dauer. Sie ist SIMULIERTE Zeit und kommt vom
+# Client -- wer will, kann eine Fantasiezahl schicken. Das faellt nicht ins
+# Gewicht (die Historie ist Buchhaltung, keine Wertung; die Bestenliste
+# rechnet weiterhin selbst nach, siehe scores_add), aber eine offene Grenze
+# wuerde die Spalte "Spielzeit gesamt" fuer alle anderen unlesbar machen.
+_RUN_MAX_DURATION_S = 24 * 3600
+# Darunter war es kein Lauf, sondern ein Blick hinein. Derselbe Wert steht in
+# main.js -- geprueft wird er hier, weil nur der Server ihn durchsetzen kann.
+_RUN_MIN_DURATION_S = 30
+
+
+@app.route('/api/runs', methods=['POST'])
+def run_record():
+    """Ein beendeter Lauf fuer die Historie im Admin-Panel."""
+    # Weiter als eine Runde dauern kann: ein Lauf endet nicht dreissigmal in
+    # der Minute, und bei einem Fehler soll der naechste echte Lauf nicht
+    # ausgesperrt sein.
+    if _limited('run', 30, 60):
+        return jsonify({'error': 'rate_limited'}), 429
+
+    player = _current_player_row()
+    if not player:
+        # Kann nur ein Konto sein, das zwischen Anmeldung und jetzt
+        # verschwunden ist -- der Admin kommt hier gar nicht an
+        # (_require_login leitet ihn nach /admin um).
+        return jsonify({'error': 'no_account'}), 403
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({'error': 'bad_body'}), 400
+
+    reactor = body.get('reactor')
+    if not isinstance(reactor, str) or reactor not in REACTOR_P0:
+        return jsonify({'error': 'bad_reactor'}), 400
+
+    scenario = body.get('scenario')
+    if scenario is not None and (not isinstance(scenario, str) or scenario not in SCENARIO_IDS):
+        return jsonify({'error': 'bad_scenario'}), 400
+
+    outcome = body.get('outcome')
+    if outcome not in _RUN_OUTCOMES:
+        return jsonify({'error': 'bad_outcome'}), 400
+
+    try:
+        duration = float(body.get('duration_s') or 0.0)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'bad_duration'}), 400
+    if not (duration == duration) or duration < _RUN_MIN_DURATION_S:   # NaN faellt mit durch
+        return jsonify({'error': 'too_short'}), 400
+    duration = min(duration, _RUN_MAX_DURATION_S)
+
+    # Der Modus kommt aus dem KATALOG, nicht aus der Anfrage -- derselbe
+    # Grundsatz wie beim Schwierigkeitsgrad in scores_add(). Ohne Szenario ist
+    # es freies Spiel, und ob ein Szenario ein Tutorial ist, steht in seiner
+    # Datei.
+    if scenario is None:
+        mode = usersmod.MODE_FREE
+    elif SCENARIO_BY_ID[scenario].get('tutorial'):
+        mode = usersmod.MODE_TUTORIAL
+    else:
+        mode = usersmod.MODE_SCENARIO
+
+    USERS.record_play_session(
+        player['id'], reactor, scenario, duration,
+        completed=(outcome == usersmod.OUTCOME_COMPLETED),
+        mode=mode, outcome=outcome)
+    return jsonify({'ok': True})
+
+
 # ── Bestenliste ───────────────────────────────────────────────────────────────
 
 
@@ -707,13 +1038,20 @@ def scores_add():
     result = scoring.score(summary)
     entry = STORE.add_score(reactor, scenario, name, result['score'], summary,
                             score_mode='incident_v1' if incident else 'legacy')
-    # Admin-Panel: was ein Spieler gespielt hat und wie lange -- nur fuer
-    # ausgewertete Laeufe (siehe Entscheidung Phase 1), das Tutorial landet
-    # schon oben bei 'tutorial_unranked' nie hier.
+    # Admin-Panel: der Lauf selbst steht schon in der Historie, gemeldet beim
+    # Beenden ueber /api/runs. Hier kommt nur noch der Punktestand dazu.
+    # Findet sich kein passender Lauf (der Client war beim Beenden offline,
+    # oder es ist ein alter Client), wird einer angelegt -- lieber ein Eintrag
+    # ohne Gegenstueck als ein gewerteter Lauf, der in der Historie fehlt.
     player = _current_player_row()
     if player:
-        USERS.record_play_session(player['id'], reactor, scenario,
-                                  summary.get('duration_s'), bool(summary.get('completed')))
+        if not USERS.attach_score(player['id'], reactor, scenario, result['score']):
+            USERS.record_play_session(
+                player['id'], reactor, scenario, summary.get('duration_s'),
+                bool(summary.get('completed')), mode=usersmod.MODE_SCENARIO,
+                outcome=(usersmod.OUTCOME_COMPLETED if summary.get('completed')
+                         else usersmod.OUTCOME_FAILED),
+                score=result['score'])
     return jsonify({'ok': True, 'entry': entry, 'score': result['score'],
                     'parts': result['parts'], 'summary': summary})
 

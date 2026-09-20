@@ -49,6 +49,11 @@ export const api = {
   // selbst nachzurechnen statt der Zusammenfassung nur auf Plausibilität zu
   // vertrauen (siehe scoring.py, verify_run.mjs).
   submitScore: (name, summary, log) => request('POST', '/api/highscores', { name, summary, log }),
+  // Ein beendeter Lauf fuer die Spielhistorie im Admin-Panel -- unabhaengig
+  // davon, ob jemals eine Wertung eingereicht wird (siehe main.js
+  // reportRun(), app.py /api/runs). Scheitert der Aufruf, geht der Lauf
+  // verloren und sonst nichts: das Spiel selbst haengt nicht daran.
+  recordRun: (run) => request('POST', '/api/runs', run),
   readPrefs: () => request('GET', '/api/prefs'),
   writePrefs: (blob) => request('PUT', '/api/prefs', blob),
 };
