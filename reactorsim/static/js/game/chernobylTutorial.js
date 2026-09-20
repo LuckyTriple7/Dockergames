@@ -79,10 +79,20 @@ const HOLD = [5, 10, RECOVER_HOLD_S, 3, HOLD_FALLBACK_S, 5, 0.2, 15];
 // Verschwunden ist damit der frueher dokumentierte "Ueberlebensstreifen"
 // zwischen 22 und 38 s. Er war eine Eigenschaft der alten, auf NULL
 // gefahrenen Rampe -- die trieb die Anlage schon ohne jeden Knopfdruck auf
-// 133 % und liess nur eine kurze Spitze zu. Mit vier Pumpen weiter am Netz
-// passiert das nicht mehr: ohne AZ-5 bleibt die Leistung bei 7,6 % (siehe
-// tut_chernobyl_debrief_note und den zugehoerigen Test). Der Knopf ist damit
-// nicht mehr nur die Ursache, er ist die einzige.
+// 133 %.
+//
+// Ohne AZ-5 bleibt die LEISTUNG jetzt flach bei rund 7,4 %. Das heisst
+// ausdruecklich NICHT, dass in diesen 36 Sekunden nichts geschieht: der
+// Dampfblasenanteil steigt von 5,9 auf 7,7 %, die Reaktivitaet waechst
+// entsprechend, und die schmale automatische Regelgruppe haelt mit bis zu
+// -111 pcm dagegen (nachgemessen, tests/tools/chernobyl_pre_az5.mjs). Die
+// flache Anzeige ist das Ergebnis dieses Gleichgewichts, nicht sein Fehlen --
+// nimmt man die Regelung weg, ist der Kern bei t+20s zerstoert, ohne dass
+// jemand AZ-5 beruehrt haette. Genau so beschreiben es die Aufzeichnungen der
+// Nacht: Leistung rund 36 s nahezu konstant bei ~200 MWth.
+//
+// AZ-5 legt darauf 600 pcm aus den Graphitspitzen -- auf einen Kern, dessen
+// einzige Gegenkopplung zu dem Zeitpunkt 111 pcm sind.
 const DESTROY_WINDOWS = [[13, 13], [15, 105]];
 
 // Das Fenster, in dem AZ-5 tatsaechlich die Ursache ist -- siehe oben.

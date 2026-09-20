@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.2
+
+- 🐛 **Richtigstellung zu 0.6.1: AZ-5 war der Auslöser, nicht die alleinige
+  Ursache.** Der Abschlusstext der Chernobyl-Übung und der Changelog-Eintrag
+  davor schlossen aus „ohne AZ-5 bleibt die Leistung bei 7 %", vor dem
+  Knopfdruck sei nichts geschehen. Nachgemessen
+  (`tests/tools/chernobyl_pre_az5.mjs`) stimmt das nicht: In den 36 Sekunden
+  zwischen Testbeginn und AZ-5 steigt der Dampfblasenanteil von 5,9 auf 7,7 %
+  und die Reaktivität mit ihm. Flach bleibt nur die **Anzeige**, weil die
+  schmale automatische Regelgruppe mit bis zu −111 pcm dagegenhält — nimmt man
+  ihr diese Autorität, zerstört sich dieselbe Anlage schon nach 20 Sekunden,
+  ohne dass jemand den Knopf berührt. AZ-5 legt darauf weitere 600 pcm aus den
+  Graphitspitzen. Das ist genau der historische Befund: Die Leistung blieb rund
+  36 Sekunden nahezu konstant bei ~200 MWth, während der Kern längst geladen
+  war. Debrief- und Schritttexte sagen das jetzt so, und ein neuer Test hält
+  das Gleichgewicht fest (Blasenanteil steigt, Trimm hält dagegen, Leistung
+  steht), damit die Formulierung nicht wieder abrutscht.
+
 ## 0.6.1
 
 - ✨ **Der Turbinenauslaufversuch im Chernobyl-Tutorial ist keine Kulisse

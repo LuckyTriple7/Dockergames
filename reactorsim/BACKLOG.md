@@ -180,12 +180,25 @@ Das hat drei weitere Punkte mit umgeworfen, die vorher als unlösbar galten:
   Pumpen zeigten 01:23:25 statt 01:07 (die Haltephase ist dafür in `recover`
   und `hold` geteilt, mit einem Schritt dazwischen, dessen Dauer auf die Uhr
   zielt statt fest zu stehen).
-- **AZ-5 ist jetzt die alleinige Ursache.** Ohne Knopfdruck bleibt die Leistung
-  bei rund 7 % -- vier Pumpen kühlen weiter. Vorher trieb die Rampe die Anlage
-  schon ohne jeden Knopfdruck auf 133 %, und der Abschlusstext musste das
-  einräumen. Geblieben ist der zweite Befund: nimmt man der schmalen
-  automatischen Regelung ihre 500 pcm, zerstört sich dieselbe Anlage nach rund
-  22 s von selbst.
+- **Die Leistung bleibt vor AZ-5 flach -- und das ist der historische
+  Befund, nicht Ruhe.** Ohne Knopfdruck steht die Anzeige bei rund 7 %. Darunter
+  passiert trotzdem alles: der Dampfblasenanteil steigt in den 36 Sekunden von
+  5,9 auf 7,7 %, die Reaktivität wächst mit, und die schmale automatische
+  Regelgruppe hält mit bis zu **−111 pcm** dagegen
+  ([`tests/tools/chernobyl_pre_az5.mjs`](tests/tools/chernobyl_pre_az5.mjs)).
+  Nimmt man ihr diese Autorität, zerstört sich dieselbe Anlage nach 20 s, ohne
+  dass jemand AZ-5 berührt. Genau so beschreiben es die Aufzeichnungen der
+  Nacht: Leistung rund 36 s nahezu konstant bei ~200 MWth, während der Kern
+  längst geladen war. AZ-5 legt darauf weitere **600 pcm** aus den
+  Graphitspitzen.
+
+  Vorher trieb die Rampe auf null die Anlage schon ohne jeden Knopfdruck
+  sichtbar auf 133 % -- das war unhistorisch, die reale Leistungsanzeige blieb
+  flach. Das neue Modell ist also auch hier näher an der Nacht; die Aussage
+  „AZ-5 ist die alleinige Ursache" aus der ersten Fassung von 0.6.1 war
+  trotzdem falsch und ist in 0.6.2 richtiggestellt: **Auslöser ja, alleinige
+  Ursache nein.** Ein Test hält das Gleichgewicht jetzt fest, damit die
+  Formulierung nicht wieder abrutscht.
 
 **Ebenfalls in 0.6.1 umgesetzt:**
 

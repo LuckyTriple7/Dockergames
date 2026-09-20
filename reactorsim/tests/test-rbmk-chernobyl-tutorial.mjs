@@ -385,15 +385,15 @@ test('the exercise asks for slow motion only around AZ-5, not during the hold', 
 // (tut_chernobyl_debrief_note). Er hat sich mit dem echten Rotorauslauf
 // GEAENDERT und gehoert deshalb erst recht in einen Test:
 //
-//   frueher (Rampe auf null): die Anlage lief schon ohne AZ-5 auf 133 % und
-//   haing allein am schmalen Trimm -- der Knopf gab nur den Rest.
-//   jetzt (vier Pumpen bleiben am Netz): ohne AZ-5 passiert NICHTS, die
-//   Leistung bleibt bei rund 7 %. Der Knopf ist die Ursache, nicht der
-//   Ausloeser eines ohnehin laufenden Ausbruchs.
+//   frueher (Rampe auf null): die Anlage lief schon ohne AZ-5 sichtbar auf
+//   133 % hoch -- unhistorisch, real blieb die Leistung flach.
+//   jetzt (vier Pumpen bleiben am Netz): ohne AZ-5 bleibt die ANZEIGE ruhig
+//   bei rund 7 %. Dass darunter trotzdem Reaktivitaet aufgebaut wird, haelt
+//   der Test 'flat power before AZ-5 is a balance' fest.
 //
 // Was geblieben ist: ohne den schmalen AR-Trimm zerstoert sich dieselbe
 // Anlage auch ohne jeden Knopfdruck.
-test('the debrief note must stay true: nothing without AZ-5, destroyed without the trim', t => {
+test('the debrief note must stay true: power flat without AZ-5, destroyed without the trim', t => {
   // Bis zum Beginn des Pumpenschritts, mit ausgehebeltem AZ-5 -- das Drehbuch
   // selbst (Pumpen, Auslauf, AR-Trimm) laeuft unveraendert weiter, step()
   // ruft engine.scram() nur ins Leere.
@@ -419,9 +419,9 @@ test('the debrief note must stay true: nothing without AZ-5, destroyed without t
     return { s, peak, tPeak, since: s.t_sim - tut._runbackT0 };
   }
 
-  // 1) Ohne AZ-5 passiert nichts. Vier der acht Pumpen bleiben am Netz, der
-  //    Kern bleibt gekuehlt -- die Leistung ruehrt sich kaum von ihren 7 %.
-  //    Damit ist der Knopfdruck die Ursache und nicht die Zugabe.
+  // 1) Ohne AZ-5 bleibt die Leistung bei ihren 7 % -- so, wie die
+  //    Aufzeichnungen der Nacht es beschreiben. Was darunter liegt, misst
+  //    der Test 'flat power before AZ-5 is a balance'.
   const held = runWithoutAz5();
   assert.equal(held.s.destroyed, false,
     `without AZ-5 nothing must happen (peak ${(held.peak * 100).toFixed(1)}%)`);
@@ -437,6 +437,40 @@ test('the debrief note must stay true: nothing without AZ-5, destroyed without t
   assert.ok(bare.since < 40, `should fail early without the trim, got t+${bare.since.toFixed(1)}s`);
   t.diagnostic(`no AZ-5: peak ${(held.peak * 100).toFixed(1)}%; `
     + `without trim destroyed at t+${bare.since.toFixed(1)}s`);
+});
+
+// Der Punkt, an dem sich "flache Leistung" und "ruhige Anlage" trennen.
+//
+// Ohne AZ-5 bleibt die Leistung bei rund 7 %. Daraus zu schliessen, vor dem
+// Knopfdruck sei nichts passiert, waere falsch -- und genau diese
+// Fehldeutung soll der Abschlusstext nicht stuetzen. Gemessen wird deshalb,
+// was unter der flachen Anzeige liegt.
+test('flat power before AZ-5 is a balance, not calm -- void rises while the trim holds', t => {
+  const { engine, session } = boot();
+  const s = engine.state; const c = engine.ctx; const tut = session.tutorial;
+  engine.scram = () => {};      // nur das Drehbuch aushebeln
+  step({ engine, session }, Math.round(6 / DT));
+  tut.confirmInspect();
+  advanceTo({ engine, session }, 5, 1400);
+
+  const voidStart = s.alphaBar;
+  const nStart = s.n;
+  let guard = 0;
+  while ((s.t_sim - tut._runbackT0) < 36 && session.phase === PHASE.RUNNING
+    && guard < Math.round(120 / DT)) { step({ engine, session }, 1); guard++; }
+
+  // 1) Der Dampfblasenanteil steigt deutlich -- die Reaktivitaet baut sich auf.
+  assert.ok(s.alphaBar > voidStart * 1.2,
+    `void must grow during the coastdown: ${(voidStart * 100).toFixed(2)}% -> ${(s.alphaBar * 100).toFixed(2)}%`);
+  // 2) Die Regelgruppe haelt dagegen, bis in die Naehe ihres Anschlags.
+  const trim = (s.rho_ext || 0) * 1e5;
+  assert.ok(trim < -60, `the trim must be pushing back hard, got ${trim.toFixed(0)} pcm`);
+  // 3) Und deshalb -- nur deshalb -- steht die Leistungsanzeige still.
+  assert.ok(Math.abs(s.n - nStart) < 0.005,
+    `power should stay flat: ${(nStart * 100).toFixed(2)}% -> ${(s.n * 100).toFixed(2)}%`);
+  assert.equal(s.destroyed, false);
+  t.diagnostic(`t+36s: void ${(voidStart * 100).toFixed(2)}% -> ${(s.alphaBar * 100).toFixed(2)}%, `
+    + `trim ${trim.toFixed(0)} pcm, power ${(s.n * 100).toFixed(2)}%`);
 });
 
 // Der erste Befund, und der Kern der Uebung: derselbe Knopf, zu frueh
