@@ -62,6 +62,10 @@ function harness(readSave = async () => ({ ok: false })) {
     document: { body: { classList: { toggle() {} } } },
     scramLabel: () => 'SCRAM', refreshResumeList() {}, playClip() {},
     showFault() {}, AUTOSAVE_INTERVAL_MS: 60000, XENON_SKIP_TARGET: 1, DESTROY_PAUSE_MS: 3000,
+    // Der Nachlauf (engine.js: startAftermath) haelt den Endbildschirm zurueck,
+    // bis der Deckel abgehoben ist -- beim DWR dieser Harness gibt es keinen,
+    // die Obergrenze steht trotzdem im Kontext, weil deferEnd() sie liest.
+    DESTROY_WAIT_MAX_MS: 15000, num: (v) => String(v),
     RUN_REPORT_MIN_S: 30,
     window: { clearInterval() {}, setInterval() { counters.autosaves++; return 1; },
       setTimeout(fn) { timeouts.push(fn); return timeouts.length; }, clearTimeout() {} },
@@ -80,7 +84,7 @@ function harness(readSave = async () => ({ ok: false })) {
     closeSaveSlots() {}, resetSaveStatus() {},
     renderGuidance(host, def) { host.hidden = !def?.guidance; },
   });
-  for (const name of ['cancelScenarioLoad', 'clearEndDialogs', 'toMenu', 'showBriefing', 'deferEnd', 'reportRun', 'runOutcome', 'showDebrief', 'showDebriefNow', 'showDestroyed', 'leaveToMenu', 'boot']) {
+  for (const name of ['cancelScenarioLoad', 'clearEndDialogs', 'toMenu', 'showBriefing', 'deferEnd', 'reportRun', 'runOutcome', 'showDebrief', 'showDebriefNow', 'showAftermath', 'showDestroyed', 'leaveToMenu', 'boot']) {
     const fn = source.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
     assert.ok(fn, name);
     vm.runInContext(fn[0], ctx);

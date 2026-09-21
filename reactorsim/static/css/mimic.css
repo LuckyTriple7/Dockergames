@@ -78,6 +78,58 @@ svg[data-destroyed="1"] .rs-core {
   stroke: var(--rs-alarm);
   stroke-width: 2;
 }
+/* ── Nachlauf: der abgehobene Deckel ──────────────────────────────────────
+   Nur der RBMK kennt ihn (rbmk.js: sp.aftermath, engine.js: startAftermath).
+   Gezeichnet wird er immer, sichtbar wird er ueber data-aftermath="lid" auf
+   der SVG-Wurzel -- das Bild baut im Ereignisfall nichts nach, es macht nur
+   sichtbar, was schon daliegt. */
+.rs-lid {
+  fill: #223142;
+  stroke: #46617a;
+  stroke-width: 2;
+  transition: transform .9s cubic-bezier(.2, .9, .3, 1);
+}
+/* Abgehoben und schraeg zurueckgefallen -- so lag der Schild danach auf dem
+   Schacht. transform-box/-origin: ohne sie dreht ein SVG-Rechteck um den
+   Ursprung des Koordinatensystems, nicht um sich selbst. */
+svg[data-aftermath="lid"] .rs-lid {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: translate(10px, -34px) rotate(24deg);
+  stroke: var(--rs-alarm);
+}
+/* Fahne und aufgerissene Kernoberseite. Beide liegen ausserhalb der
+   Hover-Gruppe des Kerns: sie sind kein Bauteil, sondern ein Zustand. */
+.rs-plume,
+.rs-breach {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .6s ease-in;
+}
+/* Wie beim Deckel: ohne fill-box zoege das Flackern die Fahne quer durch das
+   Bild, statt sie an ihrem Fuss atmen zu lassen. */
+.rs-plume {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+}
+.rs-plume-a { fill: color-mix(in oklab, var(--rs-alarm) 55%, #f7c27a); }
+.rs-plume-b { fill: color-mix(in oklab, var(--rs-hot) 70%, #fff0c8); }
+.rs-breach { fill: #0b0608; stroke: var(--rs-alarm); stroke-width: 2; }
+svg[data-aftermath="lid"] .rs-plume-a { opacity: .85; animation: rs-plume-flicker 1.3s ease-in-out infinite alternate; }
+svg[data-aftermath="lid"] .rs-plume-b { opacity: .7; animation: rs-plume-flicker .9s ease-in-out infinite alternate-reverse; }
+svg[data-aftermath="lid"] .rs-breach { opacity: 1; }
+@keyframes rs-plume-flicker {
+  from { opacity: .45; transform: translateY(2px) scaleY(.94); }
+  to { opacity: .9; transform: translateY(-3px) scaleY(1.06); }
+}
+/* Dasselbe Bild ohne Bewegung: der Zustand muss lesbar bleiben, das Flackern
+   ist Zugabe. */
+@media (prefers-reduced-motion: reduce) {
+  .rs-lid { transition: none; }
+  svg[data-aftermath="lid"] .rs-plume-a,
+  svg[data-aftermath="lid"] .rs-plume-b { animation: none; opacity: .8; }
+}
+
 /* Nie im Bild selbst sichtbar -- der Bauteilname kommt als Tooltip neben dem
    Mauszeiger (siehe wireHoverTooltips() in mimic.js). Der Textinhalt bleibt
    trotzdem hier im SVG stehen: der Tooltip liest ihn von hier ab, statt ihn

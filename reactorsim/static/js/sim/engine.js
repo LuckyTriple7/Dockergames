@@ -24,7 +24,7 @@ import { makeReactivity } from './reactivity.js';
 import { stepDecay, decaySum } from './decayheat.js';
 import { stepPoisons } from './poisons.js';
 import { TripSystem } from './trips.js';
-import { tsat } from './steam.js';
+import { tsat, hfg } from './steam.js';
 import { Rng } from '../rng.js';
 
 /** Regler laufen nicht in jedem Rechenschritt, sondern alle 0,2 s. */
@@ -52,6 +52,9 @@ const HISTORY_CAP = 120;
 const ENTHALPY_LIMIT_JPG = 963;
 const ENTHALPY_RISE_LIMIT_JPG = 250;
 const PEAK_FACTOR = 2.6;
+
+/** Erdbeschleunigung -- gebraucht fuer den Nachlauf (siehe startAftermath). */
+const G = 9.81;
 
 /**
  * Wie lange eine Bedingung anstehen muss, bevor die Anlage verloren ist.
@@ -233,8 +236,14 @@ export function createEngine(plant, opts = {}) {
     s.enthalpyBase = relax(s.enthalpyBase, s.enthalpy, h, 120);
     s.enthalpyRise = s.enthalpy - s.enthalpyBase;
     const peakRise = PEAK_FACTOR * s.enthalpyRise;
+    // WELCHE der beiden Grenzen zuerst faellt, gehoert in die Meldung: die
+    // 963 J/g sind die Zerlegung des Brennstoffs selbst, der Zuwachs von
+    // 250 J/g ist das Versagen der Huellrohre im heissesten Kanal. Bis 0.6.4
+    // sagte der Endbildschirm in beiden Faellen "der Brennstoff ist zerlegt"
+    // -- bei einer Exkursion faellt aber fast immer die zweite Grenze zuerst,
+    // und die sagt weniger.
     if (!s.destroyed && (s.enthalpy > ENTHALPY_LIMIT_JPG || peakRise > ENTHALPY_RISE_LIMIT_JPG)) {
-      lose('event_fuel_dispersal');
+      lose(s.enthalpy > ENTHALPY_LIMIT_JPG ? 'event_fuel_dispersal' : 'event_fuel_failure');
     }
   }
 
@@ -250,6 +259,74 @@ export function createEngine(plant, opts = {}) {
     if (s.destroyed) return;
     s.destroyed = true;
     s.destroyedKey = key;
+    ctx.log.push({ t: s.t_sim, key, severity: 3 });
+    ctx.trends?.mark({ t: s.t_sim, kind: 'event', key, severity: 3 });
+    startAftermath(key);
+  }
+
+  /**
+   * Der Nachlauf: was nach dem Brennstoffversagen noch RECHENBAR ist.
+   *
+   * Bis 0.6.4 endete das Modell mit `destroyed` -- der Endbildschirm sagte
+   * "Brennstoff zerstoert", und was in einer solchen Anlage danach wirklich
+   * geschieht, kam gar nicht vor. Fuer den RBMK ist das zu wenig: die Nacht
+   * des 26. April endete nicht mit zerlegtem Brennstoff, sondern mit einem
+   * abgehobenen Deckel.
+   *
+   * Gerechnet wird deshalb genau der eine Schritt, den der eigene Zustand
+   * hergibt -- eine Energiebilanz, keine Explosionsmechanik:
+   *
+   *   E_ueber  die im Brennstoffknoten gespeicherte Energie OBERHALB der
+   *            Saettigungstemperatur des Kuehlmittels. Nur sie kann beim
+   *            Zerlegen an das Wasser uebergehen.
+   *   m_Dampf  was davon verdampfen kann, begrenzt durch das Wasser im Kern.
+   *   W_Deckel die Hubarbeit des oberen Schilds: Masse mal g mal Hubhoehe.
+   *   p_Hub    der statische Ueberdruck, ab dem er ueberhaupt abhebt --
+   *            Gewicht durch Flaeche, zwei nachschlagbare Zahlen und eine
+   *            Division.
+   *
+   * Die EINZIGE Annahme ist der Umsetzungsgrad: welcher Anteil der
+   * thermischen Energie in einer Dampfexplosion mechanisch wird. Versuche
+   * nennen wenige Prozent; spec.aftermath.conversion haelt den Wert fest,
+   * und `share` sagt, welcher Anteil hier noetig WAERE. Ist er kleiner,
+   * hebt der Deckel ab. Alles Weitere -- zweite Explosion, Graphitbrand,
+   * Freisetzung -- rechnet dieses Modell nicht und behauptet es auch nicht.
+   */
+  function startAftermath(cause) {
+    const cfg = spec.aftermath;
+    if (!cfg || s.aftermath) return;
+    const p = s.p_drum || spec.coolant.p0;
+    const Tsat = tsat(p);
+    const mFuel = (spec.fuel.mass_t || 0) * 1000;
+    const mWater = spec.coolant.mass || 0;
+    const h = hfg(p) * 1000;
+    const energy = Math.max(0, mFuel * (spec.fuel.cp || 300) * (s.T_f - Tsat));
+    const mLid = (cfg.lid.mass_t || 0) * 1000;
+    const area = Math.PI * (cfg.lid.diameter_m / 2) ** 2;
+    const work = mLid * G * cfg.lid.lift_m;
+    s.aftermath = {
+      cause,
+      t0: s.t_sim,
+      energy_J: energy,
+      steam_kg: h > 0 ? Math.min(mWater, energy / h) : 0,
+      water_kg: mWater,
+      work_J: work,
+      lift_bar: area > 0 ? (mLid * G) / area / 1e5 : 0,
+      share: energy > 0 ? work / energy : Infinity,
+      lid: null,
+      done: false,
+    };
+  }
+
+  /** Eine Stufe, nach cfg.lid_delay_s -- lange genug, dass die Anzeigen den
+   *  Ausschlag noch zeigen, kurz genug, dass es derselbe Vorgang bleibt. */
+  function stepAftermath() {
+    const a = s.aftermath;
+    const cfg = spec.aftermath;
+    if (!a || a.done || s.t_sim - a.t0 < cfg.lid_delay_s) return;
+    a.lid = a.share <= cfg.conversion;
+    a.done = true;
+    const key = a.lid ? 'event_lid_lifted' : 'event_lid_held';
     ctx.log.push({ t: s.t_sim, key, severity: 3 });
     ctx.trends?.mark({ t: s.t_sim, kind: 'event', key, severity: 3 });
   }
@@ -414,6 +491,8 @@ export function createEngine(plant, opts = {}) {
 
     // Die uebrigen Verlustwege neben der Enthalpiegrenze -- siehe checkLoss().
     checkLoss(d, dt);
+    // Und was danach noch rechenbar ist -- siehe startAftermath().
+    if (s.aftermath) stepAftermath();
 
     s.t_sim += dt;
 

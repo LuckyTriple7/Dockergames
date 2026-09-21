@@ -181,6 +181,35 @@ export const spec = {
   // entscheiden.
   turbogen: { coastdownPumps: 4, tau_s: 15 },
 
+  // Der Nachlauf nach dem Brennstoffversagen (siehe engine.js:
+  // startAftermath). Bisher nur bei diesem Typ -- die anderen beiden stehen
+  // im BACKLOG.
+  //
+  // Der obere biologische Schild, in den Unterlagen "Schema J"/Deckel des
+  // Reaktorschachts, wiegt rund 2000 t bei etwa 17 m Durchmesser. Aus diesen
+  // beiden nachschlagbaren Zahlen folgt ohne weitere Annahme der statische
+  // Ueberdruck, ab dem er abhebt: 2000 t mal g durch 227 m^2 -- rund 0,86 bar.
+  // Das ist die zweite Zahl, die der Nachlauf nennt.
+  //
+  // `lift_m` und `conversion` sind dagegen GESETZT, und zwar sichtbar: zehn
+  // Meter Hub sind eine Groessenordnung (der Schild wurde angehoben und fiel
+  // schraeg zurueck), und der Umsetzungsgrad einer Dampfexplosion liegt in
+  // Versuchen bei wenigen Prozent der thermischen Energie. Beide sind so
+  // gewaehlt, dass sie die Aussage eher schwaechen als staerken: mit 2 %
+  // braucht der Hub rund ein Prozent der im Brennstoff ueber Saettigung
+  // gespeicherten Energie -- mehr als genug, aber eben gerechnet und nicht
+  // behauptet.
+  //
+  // `lid_delay_s` ist keine Physik, sondern Anzeige: zwei Sekunden, damit der
+  // Ausschlag auf den Instrumenten noch zu sehen ist, bevor das Bild
+  // umschlaegt. Historisch lagen zwischen den beiden Schlaegen der Nacht
+  // ebenfalls wenige Sekunden.
+  aftermath: {
+    lid: { mass_t: 2000, diameter_m: 17, lift_m: 10 },
+    conversion: 0.02,
+    lid_delay_s: 2,
+  },
+
   // Graphitverdränger unter dem Absorber.
   tip: {
     // Phenomenological worth per bank, not a reconstructed accident curve.

@@ -7,6 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
 import { createEngine } from '../static/js/sim/engine.js';
 import * as rbmk from '../static/js/plants/rbmk.js';
 import { Session, PHASE } from '../static/js/game/session.js';
@@ -27,6 +28,9 @@ const DEF = {
 // wett). Alle Zeitbudgets hier zielen deshalb auf diese Groessenordnung.
 const TO_PUMPS_S = 2600;
 const TO_COASTDOWN_S = 3400;
+// Bis zur Zerstoerung selbst noch einmal ein Stueck weiter -- sie faellt rund
+// 40 s nach dem Auslaufbeginn.
+const TO_END_S = 3600;
 
 function boot() {
   const engine = createEngine(rbmk, { seed: DEF.seed });
@@ -406,6 +410,119 @@ test('the feedwater surge at 01:19 is really driven -- and the test still starts
     + `· voids ${(before.void * 100).toFixed(2)} -> ${(voidMin * 100).toFixed(2)} -> ${(voidMax * 100).toFixed(2)} % `
     + `· power ${(nMin * 100).toFixed(2)} / ${(before.n * 100).toFixed(2)} / ${(nMax * 100).toFixed(2)} % `
     + `· level max ${levelMax.toFixed(2)} m · destroyed ${hms(end)}`);
+});
+
+// ── Nachlauf: was nach dem Brennstoffversagen noch gerechnet wird ───────────
+//
+// Bis 0.6.4 endete das Modell mit `destroyed`, und der Endbildschirm sagte
+// "Brennstoff zerstoert". Die Nacht des 26. April endete aber nicht damit,
+// sondern mit einem abgehobenen Deckel. Gerechnet wird deshalb der eine
+// Schritt, den der eigene Zustand hergibt -- eine Energiebilanz (engine.js:
+// startAftermath). Dieser Test prueft, dass jede Zahl darin WIRKLICH aus
+// Zustand und Datenblatt kommt und nicht danebengeschrieben ist.
+
+test('the aftermath is computed from the plant state, not written down', t => {
+  const f = boot();
+  const { engine, session } = f;
+  const s = engine.state;
+  const tut = session.tutorial;
+  const sp = engine.spec;
+  const cfg = sp.aftermath;
+
+  step(f, Math.round(6 / DT));
+  assert.ok(tut.confirmInspect());
+  let guard = 0;
+  const limit = Math.round(TO_END_S / DT);
+  while (!s.destroyed && guard < limit) { step(f, 1); guard++; }
+  assert.equal(s.destroyed, true);
+
+  // Bei einer schnellen Exkursion faellt die ZUWACHS-Grenze zuerst, nicht die
+  // 963 J/g. Der Endbildschirm sagt seither Huellrohrversagen statt
+  // Brennstoffzerlegung -- die kleinere, richtige Aussage.
+  assert.equal(s.destroyedKey, 'event_fuel_failure');
+  assert.ok(s.enthalpy < 963, `${s.enthalpy} J/g is below the dispersal limit`);
+
+  const a = s.aftermath;
+  assert.ok(a, 'the RBMK knows an aftermath (spec.aftermath)');
+  assert.ok(Math.abs(a.t0 - s.t_sim) <= 2 * DT,
+    `it starts in the step the fuel fails, off by ${(s.t_sim - a.t0).toFixed(3)} s`);
+  assert.equal(a.done, false, 'and it is not over in the same instant');
+
+  // Nachgerechnet, nicht nachgelesen: Hubarbeit und Hubdruck folgen aus
+  // Masse, Durchmesser und Hubhoehe im Datenblatt.
+  const mLid = cfg.lid.mass_t * 1000;
+  const area = Math.PI * (cfg.lid.diameter_m / 2) ** 2;
+  assert.ok(Math.abs(a.work_J - mLid * 9.81 * cfg.lid.lift_m) < 1);
+  assert.ok(Math.abs(a.lift_bar - (mLid * 9.81) / area / 1e5) < 1e-9);
+  assert.ok(a.lift_bar > 0.8 && a.lift_bar < 0.95,
+    `2000 t on 17 m lift at about 0.86 bar, got ${a.lift_bar}`);
+  assert.ok(Math.abs(a.share - a.work_J / a.energy_J) < 1e-12);
+  // Und die Energie ist die im Brennstoff ueber der Saettigung -- mehr kann
+  // beim Zerlegen nicht an das Wasser uebergehen.
+  assert.ok(a.energy_J > 0 && a.energy_J < sp.fuel.mass_t * 1000 * sp.fuel.cp * s.T_f);
+  assert.ok(a.steam_kg > 0 && a.steam_kg <= a.water_kg,
+    'more steam than there is water would be nonsense');
+
+  // Zwei Simulationssekunden spaeter hebt der Deckel ab -- weil ein Prozent
+  // Umsetzung genuegt und zwei angenommen sind. Gestept wird ab hier die
+  // ENGINE, nicht die Runde: die ist mit der Zerstoerung vorbei, waehrend die
+  // Anlage im Bild noch weiterlaeuft (main.js: DESTROY_PAUSE_MS).
+  const before = engine.ctx.log.length;
+  for (let i = 0; i < Math.round(30 / DT) && !a.done; i++) engine.step(DT);
+  const waited = s.t_sim - a.t0;
+  assert.ok(waited >= cfg.lid_delay_s && waited <= cfg.lid_delay_s + 3 * DT,
+    `the lid goes ${cfg.lid_delay_s} s after the failure, waited ${waited.toFixed(3)} s`);
+  assert.equal(a.lid, true, `share ${a.share} must be below conversion ${cfg.conversion}`);
+  assert.ok(engine.ctx.log.slice(before).some(e => e.key === 'event_lid_lifted'),
+    'the lid belongs into the timeline, not only into the end screen');
+  t.diagnostic(`${(a.energy_J / 1e9).toFixed(1)} GJ over saturation · `
+    + `${(a.steam_kg / 1000).toFixed(1)} t of ${(a.water_kg / 1000).toFixed(1)} t flashed · `
+    + `lift ${(a.work_J / 1e6).toFixed(0)} MJ = ${(a.share * 100).toFixed(2)} % · `
+    + `${a.lift_bar.toFixed(2)} bar`);
+});
+
+test('a shield that needs more than the assumed conversion stays on', () => {
+  // Die einzige Annahme im Nachlauf ist der Umsetzungsgrad. Dass sie WIRKT --
+  // und nicht nur danebensteht -- zeigt sich, wenn man sie unter den
+  // gerechneten Bedarf drueckt: dann hebt derselbe Deckel nicht ab.
+  const cfg = rbmk.spec.aftermath;
+  const keep = cfg.conversion;
+  cfg.conversion = 1e-6;
+  try {
+    const f = boot();
+    const { engine, session } = f;
+    const s = engine.state;
+    const tut = session.tutorial;
+    step(f, Math.round(6 / DT));
+    assert.ok(tut.confirmInspect());
+    let guard = 0;
+    const limit = Math.round(TO_END_S / DT);
+    while (!s.destroyed && guard < limit) { step(f, 1); guard++; }
+    assert.equal(s.destroyed, true);
+    for (let i = 0; i < Math.round(30 / DT) && !s.aftermath.done; i++) engine.step(DT);
+    assert.equal(s.aftermath.done, true);
+    assert.equal(s.aftermath.lid, false);
+    assert.ok(engine.ctx.log.some(e => e.key === 'event_lid_held'));
+    assert.ok(!engine.ctx.log.some(e => e.key === 'event_lid_lifted'));
+  } finally {
+    cfg.conversion = keep;
+  }
+});
+
+// Das Bild muss den Zustand auch zeigen koennen: mimic.js haengt Deckel und
+// Fahne an `data-aftermath` auf der SVG-Wurzel, mimic.css macht sie darueber
+// sichtbar. Ein Schreibfehler auf einer der beiden Seiten faellt sonst erst
+// im Browser auf -- und dort genau einmal, naemlich zu spaet.
+test('the flow diagram has the parts the aftermath switches on', () => {
+  const js = readFileSync(new URL('../static/js/ui/mimic.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../static/css/mimic.css', import.meta.url), 'utf8');
+  for (const cls of ['rs-lid', 'rs-plume', 'rs-breach']) {
+    assert.ok(js.includes(`class: '${cls}`) || js.includes(`'${cls} `),
+      `${cls} is drawn in mimic.js`);
+    assert.ok(css.includes(`.${cls}`), `${cls} is styled in mimic.css`);
+  }
+  assert.ok(js.includes("setAttr(root, 'data-aftermath'"), 'the root carries the state');
+  assert.ok(css.includes('svg[data-aftermath="lid"]'), 'and the stylesheet reads it');
 });
 
 // ── Turbogenerator als Schwungmasse ─────────────────────────────────────────

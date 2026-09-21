@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.6.5
+
+- ✨ **Die Anlage endet nicht mehr mit „Brennstoff zerstört" — beim RBMK hebt
+  der Deckel ab.** Bis 0.6.4 hörte das Modell mit `destroyed` auf; die Nacht
+  des 26. April endete aber nicht mit zerlegtem Brennstoff, sondern mit einem
+  abgehobenen oberen Schild. Neu rechnet die Engine genau den einen Schritt
+  weiter, den der eigene Zustand hergibt — eine Energiebilanz, keine
+  Explosionsmechanik (`engine.js: startAftermath`, `rbmk.js: sp.aftermath`):
+
+  - rund **20 GJ** stehen im Brennstoff über der Sättigungstemperatur des
+    Kühlmittels — nur diese Energie kann beim Zerlegen übergehen,
+  - das reicht, um **13,8 der 24 t** Kühlmittel im Kern schlagartig zu
+    verdampfen,
+  - der obere Schild — 2000 t auf 17 m Durchmesser — hebt schon bei **0,86
+    bar** Überdruck ab (Gewicht durch Fläche, zwei nachschlagbare Zahlen und
+    eine Division),
+  - seine Hubarbeit von **196 MJ** sind **knapp 1 %** der freigesetzten
+    Energie; angenommen sind 2 % Umsetzungsgrad, wie sie Versuche für
+    Dampfexplosionen nennen.
+
+  Zwei Simulationssekunden nach dem Brennstoffversagen hebt er ab. Die
+  einzige Annahme in dieser Kette ist der Umsetzungsgrad — dass sie WIRKT und
+  nicht nur danebensteht, hält ein Test fest: drückt man sie unter den
+  gerechneten Bedarf, bleibt derselbe Deckel liegen.
+
+- ✨ **Im Fließbild ist das zu sehen, nicht nur zu lesen.** Der obere Schild
+  steht ab sofort im Bild — er gehört ohnehin hinein, schließlich rechnet der
+  Nachlauf mit seinem Gewicht. Hebt er ab, kippt er sichtbar zur Seite, der
+  Schacht reißt auf, und eine Dampf- und Trümmerfahne steht über dem Kern.
+  Vorher gab es dafür nur einen roten Rand um die verkohlte Kernzone. Ohne
+  Bewegung (`prefers-reduced-motion`) bleibt dasselbe Bild stehen, nur ohne
+  Flackern.
+
+- 🐛 **Der Endbildschirm sagt jetzt, welche der beiden Grenzen gefallen ist.**
+  963 J/g sind die Zerlegung des Brennstoffs selbst; 250 J/g Enthalpie-Zuwachs
+  im heißesten Kanal sind das Versagen der Hüllrohre. Bei einer schnellen
+  Exkursion fällt fast immer die zweite zuerst — im Chernobyl-Lauf steht der
+  Brennstoff bei 191 J/g, also weit unter der ersten. Trotzdem meldete das
+  Spiel in beiden Fällen „der Brennstoff ist zerlegt". Neu ist
+  `event_fuel_failure` mit eigenem Text; die alte Meldung bleibt für den Fall,
+  in dem sie stimmt.
+
+- 📝 **Und der Endbildschirm sagt, wo das Modell aufhört.** Unter den
+  gerechneten Zahlen steht abgesetzt, was in der Nacht danach kam und hier
+  weder gerechnet noch behauptet wird: die zweite Explosion, deren Ursache bis
+  heute umstritten ist, der Graphitbrand über Tage, die Freisetzung. Dazu die
+  unbequemste Zahl: Auch die Wucht bleibt zurück — die Exkursion erreicht hier
+  rund 295 % der Nennleistung, Schätzungen für die reale nennen ein
+  Vielfaches. Der Nachlauf für DWR und SWR steht im BACKLOG; beim SWR gäbe es
+  mit Sicherheitsbehälter und Wasserstoffpfad schon eine Schwelle, beim DWR
+  fehlt sie noch ganz.
+
 ## 0.6.4
 
 - ✨ **Der Speisewasserschwall um 01:19 wird in der Chernobyl-Übung gefahren.**

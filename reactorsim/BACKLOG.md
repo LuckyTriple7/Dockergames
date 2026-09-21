@@ -34,6 +34,29 @@ Auto/Hand-Schalter, jeder Pumpenknopf. Über eine Worker-Grenze braucht jeder
 davon eine Nachricht. Das ist ein Umbau, keine Optimierung, und erst dann
 sinnvoll, wenn Ruckeln tatsächlich auftritt.
 
+### Nachlauf nach der Zerstörung für DWR und SWR
+
+Seit 0.6.5 rechnet der RBMK einen Schritt weiter als bis `destroyed`: eine
+Energiebilanz aus dem eigenen Zustand (Energie über Sättigung, verdampfbares
+Inventar, Hubarbeit und Hubdruck des oberen Schilds) entscheidet, ob der
+Deckel abhebt — siehe `engine.js: startAftermath` und `rbmk.js:
+sp.aftermath`. Die Schnittstelle ist typunabhängig geschnitten, ein
+Reaktortyp ohne `aftermath`-Block verhält sich wie vorher.
+
+Für die anderen beiden fehlt nicht die Rechnung, sondern die Zielgröße:
+
+- **SWR:** Der Sicherheitsbehälter ist bereits modelliert (`bwr.js`:
+  `containment` mit `designLimit`, `contFailed`, plus Wasserstoff aus der
+  Zirkon-Wasser-Reaktion und `event_h2_explosion`). Ein Nachlauf hätte hier
+  also schon seine Schwelle und seinen zweiten Weg; zu klären wäre, wie er
+  sich mit dem bestehenden Wasserstoffpfad verträgt, statt ihn zu doppeln.
+- **DWR:** Kein Sicherheitsbehältermodell, also auch keine Schwelle. Ein
+  ehrlicher Nachlauf bräuchte zuerst einen Druckaufbau im Behälter —
+  das ist ein eigener Baustein, kein Zusatz zum vorhandenen.
+
+Offen bleibt in beiden Fällen dasselbe wie beim RBMK: Zweitexplosion,
+Brandverlauf und Freisetzung rechnet dieses Modell nicht.
+
 ### Vierter Reaktortyp
 
 Die Schnittstelle aus `spec` und `hooks` trägt das ohne Änderung an der Engine
@@ -283,8 +306,31 @@ abgearbeitet.** Nachweise: [Chernobyl-Audit 0.6.4](audit/CHERNOBYL-2026-09-21.md
   Haltephasen, 1× für die Pumpenzuschaltung, 4× für den Schwall, 1× für den
   Auslauf, ¼× um AZ-5).
 
+**Seit 0.6.5: die Übung endet nicht mehr mit „Brennstoff zerstört".** Der
+Nachlauf rechnet aus dem eigenen Zustand weiter (`engine.js:
+startAftermath`): rund 20 GJ stehen im Brennstoff über der
+Sättigungstemperatur, genug, um 13,8 der 24 t Kühlmittel im Kern schlagartig
+zu verdampfen; der obere Schild — 2000 t auf 17 m — hebt schon bei 0,86 bar
+Überdruck ab, seine Hubarbeit von 196 MJ ist knapp 1 % der freigesetzten
+Energie. Zwei Sekunden nach dem Brennstoffversagen hebt er im Fließbild
+sichtbar ab, Fahne und offener Schacht inklusive. Zugleich benennt der
+Endbildschirm ausdrücklich, wo das Modell aufhört.
+
 Offen/bekannte Einschränkungen:
 
+- **Die Wucht bleibt hinter der Nacht zurück.** Die Exkursion erreicht hier
+  rund 295 % der Nennleistung; Schätzungen der Untersuchungen nennen für die
+  reale ein Vielfaches davon (Größenordnung hundertfache Nennleistung). Das
+  ist keine fehlende Zeile Code, sondern die Kalibrierung des Kernmodells —
+  dieselbe Baustelle wie die Stabkurve unten.
+- **Nicht gerechnet und nicht behauptet:** die zweite Explosion (ihre Ursache
+  ist bis heute umstritten, INSAG-7 lässt sie offen), der Graphitbrand (das
+  Graphit steht im Modell beim Ende bei 309 °C, Zündung bräuchte ~700 °C) und
+  die Freisetzung (es gibt kein Quellterm- oder Dosismodell).
+- **`lift_m` und `conversion` sind gesetzt**, nicht hergeleitet: zehn Meter
+  Hub als Größenordnung, 2 % Umsetzungsgrad als der in Versuchen genannte
+  Bereich. Beide sind so gewählt, dass sie die Aussage eher schwächen als
+  stärken — gebraucht würde rund 1 %.
 - **Die Abschaltreserve zeigt weniger an als die dokumentierten 6-8
   Stabäquivalente** -- vor dem Test 0,0. Das ist, anders als hier bis 0.6.0
   vermutet, **keine Skalenfrage**. Nachgemessen

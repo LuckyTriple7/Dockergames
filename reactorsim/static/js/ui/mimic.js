@@ -663,7 +663,30 @@ export function buildRbmkMimic(container) {
   // Zeitkonstante ueber eine ganze Schicht praktisch unbewegt. Der Text ist
   // bewusst selbst beschriftet ("ORM …"), nicht nur eine nackte Zahl.
   coreNodes.push(readout(60, 246, 'orm'));
+  // Der obere biologische Schild -- rund 2000 t auf 17 m. Er steht hier nicht
+  // als Schmuck: aus seinem Gewicht und seiner Flaeche rechnet der Nachlauf
+  // den Ueberdruck aus, ab dem er abhebt (rbmk.js: sp.aftermath, engine.js:
+  // startAftermath). Ein Bauteil, das im Bild fehlt, kann am Ende auch nicht
+  // abheben.
   g.push(hoverGroup(coreNodes));
+  // Eigene Hover-Gruppe, nicht in die des Kerns: der Tooltip nimmt das ERSTE
+  // .rs-label seiner Gruppe (siehe wireHoverTooltips) -- im Kern waere das
+  // "Reaktorkern", und der Schild haette nie einen Namen.
+  g.push(hoverGroup([
+    svg('rect', { class: 'rs-lid', 'data-mimic': 'lid', x: 68, y: 68, width: 100, height: 9, rx: 2 }),
+    svg('text', { class: 'rs-label', x: 168, y: 62, 'text-anchor': 'end' }, [t('mimic_lid')]),
+  ]));
+
+  // Was nach dem Abheben zu sehen ist: offener Schacht, Dampf- und
+  // Truemmerfahne. Liegt immer im Bild und ist per CSS unsichtbar, solange
+  // die Wurzel nicht data-aftermath="lid" traegt (siehe update() unten) --
+  // so muss im Ereignisfall nichts nachgebaut werden, es wird nur sichtbar.
+  const plume = [
+    svg('path', { class: 'rs-plume rs-plume-a', d: 'M 96 70 L 88 18 L 106 42 L 112 6 L 124 44 L 140 16 L 136 70 Z' }),
+    svg('path', { class: 'rs-plume rs-plume-b', d: 'M 104 70 L 100 34 L 118 52 L 122 24 L 130 70 Z' }),
+    svg('path', { class: 'rs-breach', d: 'M 80 92 L 92 84 L 104 92 L 118 82 L 132 92 L 144 85 L 156 92 Z' }),
+  ];
+  for (const node of plume) g.push(node);
 
   // Trommelabscheider.
   g.push(hoverGroup([
@@ -736,6 +759,11 @@ export function buildRbmkMimic(container) {
       setVar(root, '--rs-t-cold', norm(s.T_ci - 273.15, 250, 340).toFixed(3));
       setVar(root, '--rs-n', Math.max(0, Math.min(1, s.n)).toFixed(3));
       setAttr(root, 'data-destroyed', s.destroyed ? '1' : '0');
+      // Der Nachlauf (engine.js: startAftermath): erst wenn er durch ist UND
+      // der Deckel wirklich abgehoben hat, oeffnet sich das Bild. Vorher
+      // bleibt es bei der verkohlten Zone -- zwei Sekunden lang ist die
+      // Anlage zerstoert, aber noch zu.
+      setAttr(root, 'data-aftermath', s.aftermath?.done && s.aftermath.lid ? 'lid' : '');
       setVar(root, '--rs-steam-l', norm(s.p_drum, 20, 85).toFixed(3));
       // Der Graphitblock glüht eigenständig -- er hängt an seiner eigenen,
       // sehr langen Zeitkonstante und nicht an der Leistung von eben.

@@ -1,7 +1,7 @@
 // Einstieg: Startbildschirm, Aufbau des Leitstands, Verdrahtung der Bedienung.
 
 import { $, $$, el, setText, setAttr } from './ui/dom.js';
-import { t, has as hasText, clock } from './ui/i18n.js';
+import { t, has as hasText, clock, num } from './ui/i18n.js';
 import { Render } from './ui/render.js';
 import { buildPanels } from './ui/panels.js';
 import { setControlsPaused, setControlsLocked, isControlsLocked } from './ui/controls.js';
@@ -1652,6 +1652,7 @@ function showDestroyed() {
   const key = s.destroyedKey || 'event_fuel_dispersal';
   setText($('#rs-destroyed-title'), t('end_lost_title'));
   setText($('#rs-destroyed-body'), t(key + '_body'));
+  showAftermath(s.aftermath);
   setText($('#rs-destroyed-detail'),
     `${t('val_fuel_temp')}: ${Math.round(s.T_f - 273.15)} °C · `
     + `${Math.round(s.enthalpy)} J/g · ${clock(s.t_sim)}`);
@@ -1663,6 +1664,33 @@ function showDestroyed() {
     list.append(log.children[i].cloneNode(true));
   }
   $('#rs-destroyed').hidden = false;
+}
+
+/**
+ * Der Nachlauf auf dem Endbildschirm (engine.js: startAftermath).
+ *
+ * Zwei Absaetze, und der Unterschied zwischen ihnen ist der Punkt: oben
+ * stehen Zahlen, die dieses Modell aus seinem eigenen Zustand gerechnet hat
+ * -- Energie ueber Saettigung, verdampfbares Inventar, Hubarbeit und
+ * Hubdruck des oberen Schilds. Darunter steht, was danach kam und hier NICHT
+ * gerechnet wird. Ein Reaktortyp ohne `aftermath` zeigt beides nicht.
+ */
+function showAftermath(a) {
+  const box = $('#rs-destroyed-aftermath');
+  const beyond = $('#rs-destroyed-beyond');
+  const has = !!(a && a.done && a.lid);
+  box.hidden = !has;
+  beyond.hidden = !has;
+  if (!has) return;
+  setText(box, t('aftermath_lid_body', {
+    energy: num(a.energy_J / 1e9, 1),
+    steam: num(a.steam_kg / 1000, 1),
+    water: num(a.water_kg / 1000, 1),
+    work: num(a.work_J / 1e6, 0),
+    share: num(a.share * 100, 1),
+    bar: num(a.lift_bar, 2),
+  }));
+  setText(beyond, t('aftermath_beyond'));
 }
 
 /** Gleicher Reaktortyp, gleiches Szenario (oder freies Spiel), sofort von
@@ -1757,6 +1785,9 @@ function toMenu() {
 // setzt beim Druecken ohnehin auf 1x zurueck) lassen die Anlage sichtbar
 // weiterlaufen, bevor angehalten und die Auswertung gezeigt wird.
 const DESTROY_PAUSE_MS = 3000;
+// Und hoechstens so lange zusaetzlich, wenn der Reaktortyp einen Nachlauf
+// kennt (siehe deferEnd): bei 1/4x sind zwei Simulationssekunden acht reale.
+const DESTROY_WAIT_MAX_MS = 15000;
 
 /** Einmal angestossen, hoechstens einmal wirksam: `app.endPending` haelt
  *  sowohl showDebrief() als auch den Renderloop-Auslöser fuer showDestroyed()
@@ -1766,14 +1797,23 @@ function deferEnd(fn) {
   if (app.endShown || app.endPending) return;
   app.endPending = true;
   const bootId = app.bootId;
-  window.setTimeout(() => {
-    app.endPending = false;
+  const deadline = Date.now() + DESTROY_WAIT_MAX_MS;
+  const tick = () => {
     // Ein Menü-/Neustart-Klick waehrend der Pause hat laengst eine neue Runde
     // (oder keine mehr) -- ein verspaeteter Aufruf darf sich dann nicht mehr
     // ueber deren Bild legen.
-    if (app.bootId !== bootId || !app.session || app.endShown) return;
+    if (app.bootId !== bootId || !app.session || app.endShown) { app.endPending = false; return; }
+    // Kennt der Reaktortyp einen Nachlauf (engine.js: startAftermath), endet
+    // die Runde nicht mitten darin: der Deckel hebt zwei Simulationssekunden
+    // nach dem Brennstoffversagen ab, und bei Zeitlupe sind das mehr als die
+    // drei Sekunden Pause. Die Obergrenze steht daneben, damit ein haengender
+    // Nachlauf den Endbildschirm nicht ganz verschluckt.
+    const a = app.engine?.state?.aftermath;
+    if (a && !a.done && Date.now() < deadline) { window.setTimeout(tick, 200); return; }
+    app.endPending = false;
     fn();
-  }, DESTROY_PAUSE_MS);
+  };
+  window.setTimeout(tick, DESTROY_PAUSE_MS);
 }
 
 // Kuerzere Laeufe sind kein Lauf, sondern ein Blick hinein -- sie wuerden die

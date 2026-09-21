@@ -393,6 +393,15 @@ button {
   display: grid;
   gap: 12px;
 }
+/* Der Absatz hinter der Linie: was NICHT mehr aus dem Modell kommt (siehe
+   showAftermath() in main.js). Abgesetzt statt hervorgehoben -- er soll als
+   Einordnung lesbar sein, nicht als Ergebnis. */
+.rs-modal-note {
+  border-left: 2px solid var(--rs-fg-mute);
+  padding-left: 10px;
+  color: var(--rs-fg-mute);
+  font-style: italic;
+}
 .rs-modal-detail {
   font-family: var(--rs-font-num);
   font-size: 12px;
