@@ -179,18 +179,27 @@ export class FreeFaults {
     if (!this.active) return;
     const s = this.engine.state;
     const t = s.t_sim;
+    if (!this._ready()) {
+      // Solange die Anlage steht, wird der Zeitpunkt vor sich hergeschoben --
+      // und zwar um die volle Einfahrzeit, nicht nur bis zum naechsten Takt.
+      // Beides zusammen: waehrend des Stillstands staut sich nichts auf, und
+      // nach dem Wiederanfahren bekommt die Mannschaft dieselbe Ruhe wie zu
+      // Rundenbeginn. Ohne den zweiten Teil schlug die naechste Stoerung
+      // ausgerechnet in den Wiederanlauf hinein, weil ihr Zeitpunkt noch
+      // waehrend der Abschaltung gezogen worden war.
+      this.nextT = Math.max(this.nextT, t + this.level.grace);
+      this.alerted = false;
+      return;
+    }
     if (this.level.warnS > 0 && !this.alerted && t >= this.nextT - this.level.warnS
-      && t < this.nextT && this._ready()) {
+      && t < this.nextT) {
       this.alerted = true;
       if (this.onAlert) this.onAlert();
     }
     if (t < this.nextT) return;
-    // Nicht fällig heisst nicht verfallen: solange die Anlage steht oder
-    // gerade abgeschaltet ist, wird der Zeitpunkt nur nach hinten geschoben.
-    // Sonst prasselte nach jeder Schnellabschaltung alles auf einmal herein,
-    // was während des Stillstands aufgelaufen ist.
-    if (!this._ready()) { this._reschedule(t, 0.5); return; }
     const fired = this._fire();
+    // Findet sich gerade nichts, das im aktuellen Zustand noch etwas bewirkt,
+    // dann bald wieder nachsehen statt das volle Intervall zu verschenken.
     this._reschedule(t, fired ? 1 : 0.25);
   }
 

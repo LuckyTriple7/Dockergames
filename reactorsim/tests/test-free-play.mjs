@@ -15,10 +15,14 @@ import { coreAgeBurnup, CORE_AGE_IDS } from '../static/js/game/coreAge.js';
 
 const DT = 0.05;
 
-/** Runde ohne Szenario, mit gewählter Störungsstufe. */
-function freeRun(reactor, faults = 'off', opts = {}) {
+/** Runde ohne Szenario, mit gewählter Störungsstufe. Der Würfel ist hier
+ *  IMMER gesät: im Spiel kommt er aus der Uhr, damit jede Runde anders
+ *  verläuft -- ein Test, der das übernimmt, schlägt irgendwann zufällig
+ *  fehl, und zwar auf einem anderen Rechner als dem, auf dem er geschrieben
+ *  wurde. Genau das ist bei 0.6.6 einmal passiert. */
+function freeRun(reactor, faults = 'off', { seed = 1234, ...opts } = {}) {
   const engine = createEngine(getPlant(reactor), { n: 1.0, ...opts });
-  const session = new Session(engine, null, { faults });
+  const session = new Session(engine, null, { faults, faultSeed: seed });
   session.start();
   return { engine, session };
 }
@@ -114,12 +118,17 @@ test('Die stehende Anlage bekommt keine Störung aufgeladen', () => {
   engine.scram('test');
   advanceFaults(engine, session.faults, 40000);
   assert.deepEqual(eventLog(engine), [], 'Stoerung bei stehender Anlage');
-  // Und auch nicht gesammelt, sobald sie wieder laeuft: was waehrend des
-  // Stillstands faellig gewesen waere, ist verfallen, nicht aufgestaut.
+  // Und der Wiederanlauf bleibt frei: was waehrend des Stillstands faellig
+  // gewesen waere, ist verfallen, und die Einfahrzeit beginnt von vorn.
+  // Vorher schlug die naechste Stoerung wenige Sekunden nach dem
+  // Wiederanfahren ein -- ihr Zeitpunkt war noch waehrend der Abschaltung
+  // gezogen worden.
   engine.state.scram.active = false;
-  const before = engine.state.t_sim;
-  advanceFaults(engine, session.faults, before + 200);
-  assert.deepEqual(eventLog(engine), []);
+  const back = engine.state.t_sim;
+  advanceFaults(engine, session.faults, back + FAULT_LEVELS.hard.grace - 5);
+  assert.deepEqual(eventLog(engine), [], 'Stoerung direkt nach dem Wiederanlauf');
+  advanceFaults(engine, session.faults, back + 20000);
+  assert.ok(eventLog(engine).length > 0, 'danach aber schon');
 });
 
 test('Störungen überleben das Speichern -- ohne sich zu wiederholen', () => {

@@ -75,7 +75,9 @@ export class Session {
    * @param {object} [opts]  nur fürs freie Spiel: `faults` ist die Stufe der
    *   Zufallsstörungen (siehe freeEvents.js FAULT_LEVELS). Vorgabe ist 'off',
    *   damit ein Aufruf ohne Angabe -- Tests, Wiedergabe -- dieselbe
-   *   störungsfreie Runde bekommt wie vor 0.6.6.
+   *   störungsfreie Runde bekommt wie vor 0.6.6. `faultSeed` setzt den
+   *   Würfel fest; im Spiel bleibt er ungesetzt (jede Runde soll anders
+   *   verlaufen), ein Test braucht dagegen eine Folge, die sich wiederholt.
    */
   constructor(engine, scenarioDef, opts = {}) {
     this.engine = engine;
@@ -105,7 +107,8 @@ export class Session {
     // zwischendurch gewuerfelt hat, und eine Aenderung an der einen Mechanik
     // verschoebe lautlos die andere.
     this.faults = this.free
-      ? new FreeFaults(engine, opts.faults || 'off', (Date.now() >>> 0) ^ 0x9e3779b9) : null;
+      ? new FreeFaults(engine, opts.faults || 'off', Number.isFinite(opts.faultSeed)
+        ? opts.faultSeed : ((Date.now() >>> 0) ^ 0x9e3779b9)) : null;
   }
 
   start() {

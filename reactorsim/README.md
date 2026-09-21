@@ -99,8 +99,10 @@ Zeitplan kommt aus einem gesäten Würfel statt aus einer Szenariodatei. Eine
 Störung kommt frühestens nach einer Einfahrzeit von 10–30 Minuten, nie bei
 stehendem oder abgeschaltetem Reaktor und nie zweimal dieselbe, solange ihre
 Wirkung noch ansteht. Was während eines Stillstands fällig gewesen wäre,
-verfällt und staut sich nicht auf. Der Spielstand sichert den Würfelzustand,
-die Stufe selbst gilt aus der aktuellen Auswahl.
+verfällt und staut sich nicht auf; nach dem Wiederanfahren beginnt die
+Einfahrzeit von vorn, damit die nächste Störung nicht in den Wiederanlauf
+hineinschlägt. Der Spielstand sichert den Würfelzustand, die Stufe selbst
+gilt aus der aktuellen Auswahl.
 
 **Kernalter.** Der Abbrand zu Rundenbeginn ist wählbar: frisch beladen,
 Zyklusmitte oder Zyklusende. Er senkt die Überschussreaktivität, aus der sich

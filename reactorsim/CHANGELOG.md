@@ -30,7 +30,10 @@
   letzte laufende Hauptkühlmittelpumpe fällt nicht aus. Nichts kommt vor
   Ablauf der Einfahrzeit von 10–30 Minuten, nichts bei stehendem oder
   abgeschaltetem Reaktor, und was während eines Stillstands fällig gewesen
-  wäre, verfällt, statt sich aufzustauen.
+  wäre, verfällt, statt sich aufzustauen. Nach dem Wiederanfahren beginnt die
+  Einfahrzeit von vorn: sonst schlüge die nächste Störung mitten in den
+  Wiederanlauf, weil ihr Zeitpunkt noch während der Abschaltung gezogen
+  worden war.
 
 - ✨ **Der Kern darf älter sein als neu.** `createEngine()` kennt den Abbrand
   seit je als Anfangswert, aber gesetzt hat ihn nur ein Spielstand: jedes neue
