@@ -15,6 +15,7 @@ import { Session, freeDemandFrac } from '../static/js/game/session.js';
 import { Dispatch, DISPATCH_LEVELS, DISPATCH_LEVEL_IDS, dispatchLevel } from '../static/js/game/dispatch.js';
 import { ShiftLog, SHIFT_SECONDS } from '../static/js/game/shift.js';
 import { pack, apply } from '../static/js/net/persist.js';
+import { readFileSync } from 'node:fs';
 
 const DT = 0.05;
 
@@ -355,5 +356,32 @@ test('Eine echt gerechnete Anlage hält ihren ersten Auftrag', () => {
     assert.equal(session.run.ordersMet, 1, `${reactor}: Auftrag nicht erfuellt`);
     assert.equal(engine.state.scram.active, false, `${reactor}: RESA unterwegs`);
     assert.equal(engine.state.destroyed, false, `${reactor}: Anlage verloren`);
+  }
+});
+
+test('Jeder Reaktortyp hat einen Hilfetext, der sein Stellmittel nennt', () => {
+  // Der Auftrag steht im Netz-Panel, aber WAS zu tun ist, steht nur im
+  // Hilfetext -- und es ist je Typ etwas anderes. Beim SWR genuegt der
+  // Umwaelzstrom nicht, solange die Stabregelung auf Automatik gegenhaelt;
+  // darauf kommt von allein niemand. Geprueft wird deshalb, dass es den Text
+  // gibt und dass er das richtige Stellmittel benennt.
+  const de = JSON.parse(readFileSync(new URL('../locales/de.json', import.meta.url), 'utf-8'));
+  const en = JSON.parse(readFileSync(new URL('../locales/en.json', import.meta.url), 'utf-8'));
+  for (const table of [de, en]) {
+    assert.ok(table.order_help, 'gemeinsamer Hilfetext fehlt');
+    for (const id of ['pwr', 'bwr', 'rbmk']) {
+      const text = table['order_help_' + id];
+      assert.ok(text, `order_help_${id} fehlt`);
+      // Jeder Text nennt das Stellmittel SEINES Typs, in Anfuehrungszeichen --
+      // test_locales.py prueft zusaetzlich, dass es die Bedienelemente wirklich
+      // gibt.
+      const lever = { pwr: 'ctl_rod_auto', bwr: 'ctl_rod_auto', rbmk: 'ctl_power_auto' }[id];
+      assert.ok(text.includes(table[lever]),
+        `order_help_${id} nennt "${table[lever]}" nicht`);
+    }
+    // Und der SWR-Text muss den Umwaelzstrom ausdruecklich als das NICHT
+    // ausreichende Mittel benennen, sonst fehlt genau die Einsicht.
+    assert.ok(table.order_help_bwr.includes(table.ctl_recirc));
+    assert.ok(table.order_help_bwr.includes(table.ctl_rods));
   }
 });

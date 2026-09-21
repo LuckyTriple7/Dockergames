@@ -17,12 +17,30 @@
 import { $, setText } from './dom.js';
 import { t, num, clock, clockOfDay } from './i18n.js';
 
-export function buildDispatch(session, render) {
+export function buildDispatch(session, render, showHelp = null) {
   const host = $('#rs-dispatch');
   if (!host) return;
   const dispatch = session.dispatch;
   host.hidden = !(dispatch && dispatch.active);
   if (host.hidden) return;
+
+  // Die Ueberschrift ist ein Knopf: sie oeffnet dasselbe Hilfefenster wie ein
+  // Rundinstrument (buildPanels() gibt showGaugeHelp dafuer heraus). Der Text
+  // hat zwei Teile -- die Mechanik des Auftrags, die fuer alle gilt, und was
+  // an DIESEM Reaktortyp zu tun ist. Das ist der wichtigere Teil: beim SWR
+  // etwa genuegt der Umwaelzstrom nicht, solange die Stabregelung auf
+  // Automatik gegenhaelt, und darauf kommt von allein niemand.
+  //
+  // .onclick statt addEventListener, wie in ui/tutorial.js: diese Funktion
+  // laeuft je Runde erneut auf denselben festen Knoten, eine Zuweisung
+  // ersetzt den Handler der Vorrunde statt einen zweiten daraufzustapeln.
+  const helpBtn = $('#rs-order-help');
+  if (helpBtn) {
+    helpBtn.onclick = showHelp
+      ? () => showHelp(t('order_title'), 'order_help', 'order_help_' + session.engine.spec.id)
+      : null;
+    helpBtn.disabled = !showHelp;
+  }
 
   const target = $('#rs-order-target');
   const deadline = $('#rs-order-deadline');

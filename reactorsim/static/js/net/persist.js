@@ -12,7 +12,11 @@ import { decaySum, equilibriumDecay } from '../sim/decayheat.js';
 import { TrendHistory } from '../game/trendHistory.js';
 
 const CONTEXT_NUMBERS = ['controlAcc', 'decayFrac', 'nPrev', 'period', 'substeps',
-  'tAvgPrev', 'pPrev', 'decayRatio', 'displayLevel'];
+  'tAvgPrev', 'pPrev', 'decayRatio', 'displayLevel',
+  // Nur der DWR setzt ihn (plants/pwr.js: _limitedDemand) -- bei den anderen
+  // beiden bleibt er undefined und faellt durch den isFinite-Filter unten
+  // heraus, wie tAvgPrev/pPrev auch.
+  'powerLimitMw'];
 const NESTED_STATE = ['zTop', 'zBot', 'az5'];
 
 // Additive fields preserve compatibility with older saves. Missing historical

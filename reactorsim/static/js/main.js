@@ -2276,7 +2276,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
   const built = buildPanels(app.engine, app.render,
     app.prefs.helper !== false && scenarioDef?.guidance?.auto_helper !== false);
   buildTutorial(app.session, app.render);
-  buildDispatch(app.session, app.render);
+  buildDispatch(app.session, app.render, built.showHelp);
   app.horn = built.horn;
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;

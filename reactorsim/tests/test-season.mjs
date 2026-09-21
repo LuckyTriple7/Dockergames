@@ -88,22 +88,38 @@ test('SWR und RBMK: der Sommer kostet Megawatt, Volllast wird knapp', () => {
   }
 });
 
-test('DWR: der Sommer kostet Reserve statt Leistung', () => {
+test('DWR: der Sommer kostet erst Reserve, dann Leistung', () => {
   // Der Druckwasserreaktor faehrt turbinengefuehrt: das Regelventil holt sich
-  // den fehlenden Dampf, und die Klemmenleistung bleibt stehen. Bezahlt wird
-  // im Kern -- mehr thermische Leistung, heisserer Brennstoff, weniger
-  // Abstand zur Siedekrise. Kein Schoenheitsfehler, sondern die Folge des
-  // Regelkonzepts; ein Begrenzer auf die thermische Leistung ist hier NICHT
-  // modelliert (siehe plants/pwr.js, trips: power_high faengt erst bei 112 %).
+  // den fehlenden Dampf, und der Kern zieht nach. Bis 0.6.7 bezahlte der
+  // Sommer damit AUSSCHLIESSLICH im Kern -- 101,9 % der thermischen
+  // Nennleistung bei unveraenderter Klemmenleistung, lautlos, weil die
+  // Leistungsausloesung erst bei 112 % greift. Seit 0.6.8 haelt der
+  // Leistungsbegrenzer (plants/pwr.js _limitedDemand) den Kern bei 101 %, und
+  // was darueber hinaus fehlt, fehlt an der Klemme.
+  //
+  // Der Sommer kostet hier also BEIDES, nur in dieser Reihenfolge: zuerst das
+  // eine Prozent Kernreserve bis zur Schwelle, danach Megawatt. Bei SWR und
+  // RBMK fehlen die Megawatt von der ersten Kilowattstunde an, weil ihr Kern
+  // der Anforderung gar nicht nachzieht.
   const cold = steady('pwr', 'winter');
   const warm = steady('pwr', 'summer');
-  assert.ok(Math.abs(warm.s.P_e - cold.s.P_e) < 1, 'DWR gibt doch Leistung ab');
+  // Erst die Reserve: mehr thermische Leistung, heisserer Brennstoff, weniger
+  // Abstand zur Siedekrise.
   assert.ok(warm.s.P_th > cold.s.P_th, 'Kern zieht nicht nach');
   assert.ok(warm.d.dnbr < cold.d.dnbr, 'Abstand zur Siedekrise unveraendert');
   assert.ok(warm.s.T_f > cold.s.T_f, 'Brennstoff nicht heisser');
-  // Und der Aufschlag bleibt innerhalb dessen, was die Anlage aushaelt: die
-  // Leistungsausloesung darf der Sommer allein nicht ziehen.
+  // Aber nur bis zur Schwelle des Begrenzers, nicht bis zur Ausloesung.
+  assert.ok(warm.s.P_th / warm.spec.P0_th < 1.011,
+    `Kern steht bei ${(warm.s.P_th / warm.spec.P0_th * 100).toFixed(2)} % -- Begrenzer greift nicht`);
   assert.ok(warm.s.n < 1.12, `Sommer allein loest aus: n = ${warm.s.n.toFixed(3)}`);
+  // Und dann die Megawatt. Weniger als beim SWR und RBMK (dort ueber 2 %),
+  // weil der Kern das erste Prozent abfaengt -- aber die Volllast ist auch
+  // hier nicht mehr zu halten.
+  assert.ok(warm.s.P_e < cold.s.P_e, 'Sommer gibt keine Leistung ab');
+  assert.ok(warm.s.P_e < warm.spec.P0_e, 'Volllast im Sommer noch erreichbar');
+  const loss = (cold.s.P_e - warm.s.P_e) / cold.spec.P0_e;
+  assert.ok(loss > 0.003 && loss < 0.02,
+    `${(loss * 100).toFixed(2)} % Verlust ist keine glaubhafte Groessenordnung`);
 });
 
 test('Die gewählte Jahreszeit überlebt den Spielstand', () => {

@@ -394,9 +394,14 @@ export function buildPanels(engine, render, helperEnabled) {
   // -- ein Rundinstrument ist kein anstehender Fehler, den man quittiert,
   // sondern ein Wert, den man nachschlaegt. helpDef bleibt dabei unberuehrt:
   // der Fix-Knopf hat so nichts zu tun, ganz gleich was zuletzt offen war.
-  const showGaugeHelp = (label, helpKey) => {
+  const showGaugeHelp = (label, ...helpKeys) => {
     setText($('#rs-alarm-help-title'), label);
-    renderHelpText($('#rs-alarm-help-text'), has(helpKey) ? t(helpKey) : t('alarm_help_none'));
+    // Mehrere Schluessel werden aneinandergehaengt: der Netzauftrag erklaert
+    // erst seine Mechanik und dann, was an DIESEM Reaktortyp zu tun ist
+    // (siehe ui/dispatch.js). Ein fehlender Teil faellt heraus statt seinen
+    // Schluesselnamen ins Fenster zu schreiben.
+    const text = helpKeys.filter((key) => has(key)).map((key) => t(key)).join('\n\n');
+    renderHelpText($('#rs-alarm-help-text'), text || t('alarm_help_none'));
     fixResult.hidden = true;
     fixList.replaceChildren();
     setText(fixMsg, '');
@@ -412,9 +417,16 @@ export function buildPanels(engine, render, helperEnabled) {
     node.setAttribute('role', 'button');
     node.setAttribute('tabindex', '0');
     const label = node.querySelector('.rs-gauge-label').textContent;
-    node.addEventListener('click', () => showGaugeHelp(label, x.key));
+    // Zweiter, typeigener Schluessel: <key>_<reaktortyp>. Er ist optional --
+    // has() laesst ihn weg, wo es ihn nicht gibt --, und er loest ein Problem,
+    // das der gemeinsame Text nicht loesen kann: dieselbe Kachel bedeutet je
+    // Typ etwas anderes. Der Leistungsbegrenzer etwa (plants/pwr.js
+    // _limitedDemand) gilt nur fuer den turbinengefuehrten Druckwasserreaktor,
+    // stuende aber im gemeinsamen Text bei allen drei.
+    const keys = [x.key, `${x.key}_${sp.id}`];
+    node.addEventListener('click', () => showGaugeHelp(label, ...keys));
     node.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); showGaugeHelp(label, x.key); }
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); showGaugeHelp(label, ...keys); }
     });
   }
 
@@ -670,6 +682,11 @@ export function buildPanels(engine, render, helperEnabled) {
   // selbst startet immer mit leerem DOM (siehe Annunciator-Konstruktor).
   return { horn, jogRod, rodSound, annun,
     sampleTrends: trendView.sampleTrends,
+    // Dasselbe Hilfefenster, das ein Rundinstrument oeffnet -- damit
+    // ui/dispatch.js den Netzauftrag erklaeren kann, ohne sich ein zweites
+    // Fenster zu bauen. Uebergabe statt Import: die Funktion lebt in dieser
+    // Closure (sie kennt helperEnabled und die Dialogknoten).
+    showHelp: showGaugeHelp,
   };
 }
 

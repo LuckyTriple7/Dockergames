@@ -191,6 +191,28 @@ ihre Reaktorleistung und folgen keiner Anforderung von allein: dort ist der
 Auftrag echte Arbeit, über den Leistungsregler beim RBMK und über die Stäbe von
 Hand beim SWR (der Umwälzstrom allein genügt nicht, solange die Stabregelung
 auf Automatik die Moderatortemperatur hält und die Wirkung wieder aufhebt).
+Genau das steht auch im Spiel: die Überschrift „Netzleitstelle" im Panel
+„Generator und Netz" öffnet einen Hilfetext, dessen zweiter Teil je
+Reaktortyp das Stellmittel benennt, mit dem dort zu fahren ist.
+
+**Leistungsbegrenzer (nur DWR).** Weil dieser Typ turbinengeführt fährt, holte
+er sich bei warmem Kühlwasser einfach mehr Dampf: im Sommer stand der Kern bei
+101,9 % der thermischen Nennleistung und lieferte unverändert volle
+Klemmenleistung. Der Sommer kostete dort also nicht Leistung, sondern
+Kernreserve — und zwar lautlos, denn die Leistungsauslösung greift erst bei
+112 %. Seit 0.6.8 nimmt ein Begrenzer der Anforderung so viel weg, dass der
+Kern bei 101 % bleibt.
+
+Die Schwelle liegt mit Bedacht bei 101 % und nicht bei 100 %: bei der
+Auslegungstemperatur von 15 °C steht die Anlage bei voller Klemmenleistung auf
+100,02 % der thermischen Nennleistung, die beiden Nennwerte sind genau
+aufeinander abgestimmt. Eine Schwelle bei 100 % griffe damit im
+Auslegungspunkt selbst, also in jedem Szenario. So bleiben Auslegungspunkt,
+Winter, Frühjahr und Herbst unberührt, und im Sommer fehlen an der Klemme rund
+11 MW. Der Begrenzer darf höchstens 2 % der Nennleistung wegnehmen — weniger
+als das Toleranzband der Lastfolgebewertung —, damit ein Überschwingen bei
+einem gewöhnlichen Lastwechsel ihn nicht hochzieht und anschließend die Rampe
+verbiegt.
 
 ## Szenarien
 

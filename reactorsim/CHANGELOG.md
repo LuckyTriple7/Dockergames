@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.6.9
+
+- ✨ **Der Druckwasserreaktor bekommt einen Leistungsbegrenzer.** Weil dieser
+  Typ turbinengeführt fährt, holte sich das Regelventil bei warmem Kühlwasser
+  einfach mehr Dampf: im Sommer (0.6.7) stand der Kern bei 101,9 % der
+  thermischen Nennleistung und lieferte unverändert volle Klemmenleistung. Der
+  Sommer kostete dort also nicht Leistung, sondern Kernreserve — lautlos, denn
+  die Leistungsauslösung greift erst bei 112 %. Neu nimmt ein Begrenzer der
+  Anforderung so viel weg, dass der Kern bei 101 % bleibt
+  (`plants/pwr.js: _limitedDemand`). Damit kostet der Sommer auch hier
+  Megawatt, rund 11 an der Klemme — dasselbe, was er SWR und RBMK schon immer
+  kostete, nur weniger, weil der Kern das erste Prozent abfängt.
+
+  Die Schwelle liegt mit Bedacht bei 101 % und nicht bei 100 %: bei der
+  Auslegungstemperatur von 15 °C steht die Anlage bei voller Klemmenleistung
+  auf 100,02 % der thermischen Nennleistung, die beiden Nennwerte sind genau
+  aufeinander abgestimmt. Eine Schwelle bei 100 % griffe damit im
+  Auslegungspunkt selbst, also in JEDEM Szenario. Auslegungspunkt, Winter,
+  Frühjahr und Herbst bleiben unberührt.
+
+- 🔧 **Zwei verworfene Entwürfe, beide im Kommentar festgehalten.** Rein
+  proportional (Beiwert 3) pendelte: die Strecke vom Regelventil über den
+  Dampferzeuger in die thermische Leistung hat mehrere hundert Sekunden
+  Totzeit, und daraus wurde ein Grenzzyklus von 22 MW mit etwa 2000 s Periode
+  — dieselbe Falle, in die der erste Entwurf des Turbinenreglers schon einmal
+  gelaufen ist. Ein Integrator ohne Obergrenze regelte sauber, zog sich aber
+  bei einem gewöhnlichen Lastwechsel im Auslegungspunkt (60 auf 100 %) auf
+  99 MW hoch und verbog danach minutenlang jede Rampe. Geblieben ist der
+  Integrator mit einer Obergrenze von 2 % der Nennleistung — 28 MW, weniger
+  als das Toleranzband der Lastfolgebewertung, und der stationäre Bedarf des
+  wärmsten Sommers sind 11,4 MW.
+
+- 📖 **Hilfetexte für den Netzauftrag, je Reaktortyp.** Der Auftrag stand
+  seit 0.6.8 im Netz-Panel, aber WAS zu tun ist, stand nirgends — und es ist
+  je Typ etwas anderes. Die Überschrift „Netzleitstelle" ist jetzt ein Knopf
+  und öffnet dasselbe Hilfefenster wie ein Rundinstrument: erst die Mechanik
+  des Auftrags (Ablauf, Band, Nachfrist, RESA-Ausnahme), dann der Teil, auf den
+  von allein niemand kommt. Beim SWR etwa genügt der „Umwälzstrom" NICHT,
+  solange die „Stabregelung" auf Automatik die Moderatortemperatur hält und
+  jede Leistungsänderung wieder aufhebt — gefahren wird dort über die
+  „Steuerstäbe" von Hand. Beim RBMK reicht der Sollwert des
+  „Leistungsreglers", beim DWR ist nichts zu tun.
+
+- 🔧 **Rundinstrumente können einen typeigenen Hilfetext-Zusatz bekommen.**
+  `showGaugeHelp()` nimmt jetzt mehrere Schlüssel und hängt an, was es gibt;
+  jede Kachel sucht zusätzlich `<key>_<reaktortyp>`. Das löst ein Problem, das
+  ein gemeinsamer Text nicht lösen kann: dieselbe Kachel bedeutet je Typ etwas
+  anderes. Erster Nutzer ist `gauge_power_th_help_pwr` — der Leistungsbegrenzer
+  gilt nur für den turbinengeführten Druckwasserreaktor, stünde im gemeinsamen
+  Text aber bei allen drei.
+
 ## 0.6.8
 
 - ✨ **Die Netzleitstelle gibt Aufträge.** Die Tageslastkurve seit 0.6.6 ist

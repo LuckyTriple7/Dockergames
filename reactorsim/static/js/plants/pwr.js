@@ -297,6 +297,13 @@ export const hooks = {
     ctx.govCtl = new GovernorController({
       mode: 'load', P0: sp.P0_e, posNominal: 0.79,
     });
+    // Leistungsbegrenzer -- wie viele MW er der Lastanforderung gerade
+    // wegnimmt (siehe _limitedDemand() unten). Gehoert zu ctx und nicht in den
+    // Zustandsvektor: das Gedaechtnis eines Reglers, wie ctx.controlAcc oder
+    // ctx.tAvgPrev, keine physikalische Groesse. net/persist.js nimmt ihn
+    // ueber CONTEXT_NUMBERS mit -- ohne das begaenne er nach jedem Laden bei
+    // null und liesse die Anlage kurz ueber die Schwelle laufen.
+    ctx.powerLimitMw = 0;
 
     // Was net/persist.js in den Spielstand mitpackt und beim Laden
     // zurueckschreibt -- ohne diese Liste "erinnerte" sich ein geladener
@@ -532,7 +539,7 @@ export const hooks = {
 
     s.W_fw = ctx.fwCtl.step(s.L_sg, s.W_steam, dt);
 
-    s.gov = ctx.govCtl.step(s.P_e, s.P_demand, s.p_sg, dt);
+    s.gov = ctx.govCtl.step(s.P_e, _limitedDemand(s, sp, ctx, dt), s.p_sg, dt);
 
     // Umleitstation: nimmt den Dampf auf, den die Turbine nicht mehr nimmt.
     // Ohne sie endet jeder Turbinenschnellschluss am Sicherheitsventil.
@@ -642,6 +649,80 @@ export const hooks = {
 };
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
+
+// ── Leistungsbegrenzer ───────────────────────────────────────────────────────
+//
+// Dieser Reaktortyp faehrt turbinengefuehrt: das Regelventil holt sich den
+// Dampf, den die Lastanforderung verlangt, und der Kern zieht nach. Das ist
+// richtig so und macht ihn zum besten Lastfolger der drei -- es hatte aber
+// eine Luecke, die erst mit der Jahreszeit (0.6.7) sichtbar wurde.
+//
+// Warmes Kuehlwasser verschlechtert das Vakuum im Kondensator, das nutzbare
+// Enthalpiegefaelle sinkt, und fuer dieselben Megawatt an der Klemme braucht
+// die Turbine mehr Dampf. Ohne Begrenzer holte der Regler ihn sich einfach:
+// im Sommer stand die Anlage bei 101,9 % der thermischen Nennleistung und
+// lieferte unveraendert 1401 MW. Der Sommer kostete also nicht Leistung,
+// sondern Kernreserve -- und zwar lautlos, denn die Leistungsausloesung
+// greift erst bei 112 % (siehe trips: power_high). Ein wirkliches Kraftwerk
+// hat dafuer einen Begrenzer, dieses Modell hatte keinen.
+//
+// Er nimmt der ANFORDERUNG etwas weg, nicht der Ventilstellung. Am Ventil zu
+// klemmen hiesse gegen den PI des Turbinenreglers zu arbeiten, der dann
+// weiter aufintegriert -- der Begrenzer muss dem Regler ein kleineres Ziel
+// geben, kein grosses Ziel verweigern.
+//
+// Die Schwelle ist mit Bedacht 101 % und nicht 100 %: bei der
+// Auslegungstemperatur des Kuehlwassers (15 °C) steht die Anlage bei voller
+// Klemmenleistung auf 100,02 % der thermischen Nennleistung -- die beiden
+// Nennwerte sind genau aufeinander abgestimmt. Eine Schwelle bei 100 % griffe
+// damit im Auslegungspunkt selbst, also in JEDEM Szenario, deren Zeitplan und
+// Wertung auf eben diesem Punkt beruhen. 101 % laesst den Auslegungspunkt und
+// den Herbst (100,5 %) in Ruhe und greift im Sommer.
+const POWER_LIMIT_FRAC = 1.01;
+// Ein Integrator auf den thermischen Fehler, mit knapper Vollmacht.
+//
+// Zwei Entwuerfe davor sind gescheitert, und beide Fehlschlaege stehen hier,
+// weil sie die Bauart erklaeren:
+//
+// REIN PROPORTIONAL (Beiwert 3) pendelte. Die Strecke vom Regelventil ueber
+// den Dampferzeuger in die thermische Leistung hat mehrere hundert Sekunden
+// Totzeit; ein kraeftiger P-Anteil darueber ergab einen Grenzzyklus von 22 MW
+// mit etwa 2000 s Periode -- dieselbe Falle, in die der erste Entwurf des
+// Turbinenreglers schon einmal gelaufen ist (siehe GovernorController in
+// sim/controllers.js). Ein schwacher P-Anteil haette dagegen gar nicht mehr
+// begrenzt: um die 11 MW zu stellen, die der Sommer braucht, muesste er die
+// Anlage bei 101,8 % stehen lassen, also genau dort, wo sie ohne Begrenzer
+// schon stand.
+//
+// EIN INTEGRATOR OHNE OBERGRENZE regelte sauber (kein Pendeln, genau 101,0 %),
+// zog sich aber bei einem gewoehnlichen Lastwechsel im Auslegungspunkt (60 auf
+// 100 %) auf 99 MW hoch: die thermische Leistung ueberschwingt dabei kurz ueber
+// die Schwelle, und der Integrator merkte sich das minutenlang, obwohl die
+// Anlage laengst wieder im Auslegungspunkt stand.
+//
+// Der Integrator bleibt also, bekommt aber eine Obergrenze, die sich an dem
+// bemisst, was er UEBERHAUPT stellen muss. Damit ist das Aufziehen nach oben
+// beschraenkt, statt es mit einem asymmetrischen Beiwert wegzuregeln -- der
+// waere der naechste Grenzzyklus.
+const POWER_LIMIT_GAIN = 0.05;
+// Der stationaere Bedarf ist klein: die waermste angebotene Jahreszeit
+// (Sommer, 26 °C Kuehlwasser) braucht 11,4 MW, um die Anlage von 101,9 % auf
+// die Schwelle zu holen. Zwei Prozent der Nennleistung lassen dafuer reichlich
+// Luft und begrenzen zugleich, wie weit ein Ueberschwinger den Begrenzer
+// hochziehen kann: 28 MW auf 1400, also weniger als das Toleranzband der
+// Lastfolgebewertung (50 MW, siehe game/scenario.js FREE_TOLERANCE_MW).
+const POWER_LIMIT_MAX_FRAC = 0.02;
+
+/**
+ * Lastanforderung, wie der Turbinenregler sie sehen darf.
+ * @returns {number} MW -- die Anforderung, vermindert um den Begrenzeranteil
+ */
+function _limitedDemand(s, sp, ctx, dt) {
+  const over = s.P_th / sp.P0_th - POWER_LIMIT_FRAC;
+  ctx.powerLimitMw = clamp((ctx.powerLimitMw || 0) + POWER_LIMIT_GAIN * over * sp.P0_e * dt,
+    0, POWER_LIMIT_MAX_FRAC * sp.P0_e);
+  return Math.max(0, s.P_demand - ctx.powerLimitMw);
+}
 
 /** Enthalpie des Speisewassers. */
 function _hfw(sp) {
