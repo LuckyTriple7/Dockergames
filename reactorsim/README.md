@@ -82,6 +82,7 @@ Das freie Spiel ist eine Schicht ohne Auftrag und ohne Wertung: sie endet
 nicht von selbst, nur ein Brennstoffschaden beendet sie. Seit 0.6.6 stellst du
 vor dem Start ein, wie unruhig sie werden soll; seit 0.6.7 auch, welche
 Jahreszeit draußen ist, und alle acht Stunden legt die Schicht Rechenschaft ab.
+Seit 0.6.8 gibt die Netzleitstelle dazu Aufträge mit Frist.
 
 **Netzanforderung.** Die Last folgt einer Tageskurve statt einem
 Zufallsspaziergang: Nachttal bei 55 %, Morgenrampe, Mittagsplateau,
@@ -147,6 +148,49 @@ eine Summe wird mit jeder Schicht träger und sagt irgendwann nur noch, wie
 lange gespielt wurde. Der Bericht ist eine Protokollzeile und kein Dialog, er
 unterbricht also nichts. Gewertet wird davon weiterhin nichts — eine Runde
 ohne vorgesehenes Ende hat kein Ergebnis und keinen Bestenlisteneintrag.
+
+**Netzaufträge.** Drei Stufen: *aus*, *selten* (alle 75 bis 120 Minuten),
+*normal* (alle 40 bis 75 Minuten). Ein Auftrag lautet „auf 600 MW bis 14:20,
+dann 30 Minuten halten" und läuft in fünf Phasen: angekündigt (3 bis 7 Minuten
+Vorlauf, in denen noch der Fahrplan gilt), Rampe, Haltefenster, Rückfahrt auf
+den Fahrplan, erledigt.
+
+Wichtig für das Verständnis: **der Auftrag ist kein zweiter Sollwertgeber, der
+gegen die Tageskurve antritt.** Eine Netzleitstelle kämpft nicht gegen einen
+Fahrplan — sie ist die Quelle des Sollwerts, und die Tageskurve ist nur, was
+sie fährt, wenn nichts Besonderes ist. Es bleibt deshalb bei einem
+Sollwertgeber, der seine Vorgabe entweder aus der Kurve oder aus dem laufenden
+Auftrag nimmt; beides durchläuft dieselbe Rampengrenze, an keinem Übergang
+springt etwas. Während eines Auftrags entfällt das Lastrauschen: ein
+Leitstellen-Sollwert ist sauber, und daran merkt man, dass gerade einer läuft.
+Die Rückfahrt gehört zum Auftrag und nicht der Kurve, sonst bekäme der Spieler
+eine Rampe aufgeladen, die er nicht verursacht hat und die voll in seinen
+Lastfolgefehler einginge.
+
+Bewertet wird nicht, ob der Sollwert bekannt ist — er steht im Netz-Panel —,
+sondern ob die Anlage ihn halten konnte. Die Haltezeit läuft, solange die
+Klemmenleistung im Band von 3 % der Nennleistung bleibt, und fällt bei einer
+Verletzung auf null; gefordert ist die ungebrochene Zeit, das Fenster hat
+dafür 25 % Nachfrist. Eine Verletzung kostet Nachfrist, zwei größere kosten
+den Auftrag. Erfüllte und gescheiterte Aufträge stehen im Schichtbericht.
+
+Ein Auftrag muss fahrbar sein, sonst ist er kein Schwierigkeitsgrad, sondern
+kaputt. Er liegt deshalb immer zwischen 40 und 92 % der Nennleistung — die
+Obergrenze lässt Luft für warmes Kühlwasser —, ist mindestens 8 % von der
+aktuellen Anforderung entfernt und rampt mit 3 % der Nennleistung je Minute,
+einem Viertel dessen, was die Anforderung selbst dürfte. Nichts kommt vor
+Ablauf einer Einfahrzeit, bei abgeschaltetem Reaktor oder bei offenem
+Netzschalter. Eine Schnellabschaltung *zieht einen laufenden Auftrag zurück*,
+statt ihn als gescheitert zu zählen: wer auf eine Auslösemeldung hin richtig
+abschaltet, darf dafür nicht bestraft werden.
+
+Was der Auftrag dem Spieler abverlangt, hängt am Regelkonzept des Typs. Beim
+Druckwasserreaktor erfüllt ihn die Anlage von selbst — das Regelventil holt
+sich den Dampf, der Kern zieht nach, es ist nichts zu tun. SWR und RBMK halten
+ihre Reaktorleistung und folgen keiner Anforderung von allein: dort ist der
+Auftrag echte Arbeit, über den Leistungsregler beim RBMK und über die Stäbe von
+Hand beim SWR (der Umwälzstrom allein genügt nicht, solange die Stabregelung
+auf Automatik die Moderatortemperatur hält und die Wirkung wieder aufhebt).
 
 ## Szenarien
 

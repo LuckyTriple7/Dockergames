@@ -161,6 +161,14 @@
         </select>
       </label>
       <label class="rs-choice">
+        <span>{{ t.opt_dispatch }}</span>
+        <select id="rs-dispatch-level">
+          <option value="off">{{ t.opt_dispatch_off }}</option>
+          <option value="rare">{{ t.opt_dispatch_rare }}</option>
+          <option value="normal">{{ t.opt_dispatch_normal }}</option>
+        </select>
+      </label>
+      <label class="rs-choice">
         <span>{{ t.opt_season }}</span>
         <select id="rs-season">
           <option value="spring">{{ t.opt_season_spring }}</option>
@@ -369,6 +377,16 @@
             <div class="rs-row"><span>{{ t.val_deviation }}</span><b data-v="deviation">—</b></div>
             <div class="rs-row"><span>{{ t.val_frequency }}</span><b data-v="freq">—</b></div>
             <div class="rs-row"><span>{{ t.val_breaker }}</span><b data-v="breaker">—</b></div>
+          </div>
+          <!-- Netzleitstelle: nur im freien Spiel mit Auftragsstufe sichtbar
+               (ui/dispatch.js blendet ein). Ein Szenario bringt seine
+               Bedarfskurve selbst mit, da gibt es keine Auftraege. -->
+          <div class="rs-group" id="rs-dispatch" hidden>
+            <h3 class="rs-help-h">{{ t.order_title }}</h3>
+            <div class="rs-row"><span>{{ t.order_target }}</span><b id="rs-order-target">—</b></div>
+            <div class="rs-row"><span>{{ t.order_deadline }}</span><b id="rs-order-deadline">—</b></div>
+            <div class="rs-row"><span>{{ t.order_hold }}</span><b id="rs-order-hold">—</b></div>
+            <p class="rs-tutorial-hint" id="rs-order-state" role="status"></p>
           </div>
           <div class="rs-group">
             <div id="rs-grid-ctl"></div>

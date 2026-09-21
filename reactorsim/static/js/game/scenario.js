@@ -191,6 +191,15 @@ export class RunState {
     // Rein fuer die Anzeige, geht nie in die Punkteformel und nie zum Server.
     this.causeSeconds = new Map();
     this.scramCount = 0;
+    // Erfuellte und gescheiterte Netzauftraege (siehe game/dispatch.js). Nur
+    // im freien Spiel je ungleich null; in einem Szenario fuehrt die
+    // Bedarfskurve, da gibt es keine Auftraege. Stehen hier und nicht in der
+    // Dispatch selbst, weil der Schichtbericht sie alle acht Stunden gegen
+    // seine Bezugslinie bilanziert und dafuer EINE Quelle braucht, die schon
+    // im Spielstand liegt. Gehen NICHT in summary() ein -- das ist der
+    // Server-Payload, und das freie Spiel reicht nie etwas ein.
+    this.ordersMet = 0;
+    this.ordersFailed = 0;
     this.maxFuelK = 0;
     this.minDnbr = Infinity;
     this.minOrm = Infinity;
@@ -250,6 +259,8 @@ export class RunState {
       violationSeconds: { ...this.violationSeconds },
       causeSeconds: [...this.causeSeconds],
       scramCount: this.scramCount,
+      ordersMet: this.ordersMet,
+      ordersFailed: this.ordersFailed,
       maxFuelK: this.maxFuelK,
       minDnbr: Number.isFinite(this.minDnbr) ? this.minDnbr : null,
       minOrm: Number.isFinite(this.minOrm) ? this.minOrm : null,
@@ -275,6 +286,8 @@ export class RunState {
       }
     }
     if (Number.isFinite(d.scramCount)) this.scramCount = d.scramCount;
+    if (Number.isFinite(d.ordersMet) && d.ordersMet >= 0) this.ordersMet = d.ordersMet;
+    if (Number.isFinite(d.ordersFailed) && d.ordersFailed >= 0) this.ordersFailed = d.ordersFailed;
     if (Number.isFinite(d.maxFuelK)) this.maxFuelK = d.maxFuelK;
     if (Number.isFinite(d.minDnbr)) this.minDnbr = d.minDnbr;
     if (Number.isFinite(d.minOrm)) this.minOrm = d.minOrm;

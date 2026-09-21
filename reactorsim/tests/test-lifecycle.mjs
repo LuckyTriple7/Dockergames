@@ -81,6 +81,7 @@ function harness(readSave = async () => ({ ok: false })) {
     },
     setSpeed(v) { app.loop.setSpeed(v); },
     loadScores() {}, renderLearning() {}, buildTutorial() {}, renderTutorialResult() {}, renderObjectiveResult() {},
+    buildDispatch() {},
     closeSaveSlots() {}, resetSaveStatus() {},
     renderGuidance(host, def) { host.hidden = !def?.guidance; },
   });

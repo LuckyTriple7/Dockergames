@@ -16,6 +16,7 @@ import { ScenarioObjectives } from './objectives.js';
 import { TrendHistory } from './trendHistory.js';
 import { FreeFaults } from './freeEvents.js';
 import { ShiftLog } from './shift.js';
+import { Dispatch } from './dispatch.js';
 
 // Freies Spiel ohne Bedarfskurve hiesse: "folge der Netzanforderung" waere
 // nichts als "lass die Anforderung, wie sie ist" -- kein Unterschied zum
@@ -79,6 +80,9 @@ export class Session {
    *   störungsfreie Runde bekommt wie vor 0.6.6. `faultSeed` setzt den
    *   Würfel fest; im Spiel bleibt er ungesetzt (jede Runde soll anders
    *   verlaufen), ein Test braucht dagegen eine Folge, die sich wiederholt.
+   *   `dispatch`/`dispatchSeed` sind dasselbe fuer die Netzleitstelle (siehe
+   *   game/dispatch.js DISPATCH_LEVELS); eigenes Auswahlfeld im Startdialog,
+   *   nicht an `faults` gekoppelt.
    */
   constructor(engine, scenarioDef, opts = {}) {
     this.engine = engine;
@@ -124,6 +128,12 @@ export class Session {
     this.faults = this.free
       ? new FreeFaults(engine, opts.faults || 'off', Number.isFinite(opts.faultSeed)
         ? opts.faultSeed : ((Date.now() >>> 0) ^ 0x9e3779b9)) : null;
+    // Dritter eigener Wuerfel, gleiche Begruendung wie beim zweiten: haengen
+    // Auftraege am selben Wuerfel wie die Stoerungen, verschiebt eine
+    // Aenderung an der einen Mechanik lautlos die andere.
+    this.dispatch = this.free
+      ? new Dispatch(engine, opts.dispatch || 'off', Number.isFinite(opts.dispatchSeed)
+        ? opts.dispatchSeed : ((Date.now() >>> 0) ^ 0x85ebca6b), this.run) : null;
   }
 
   start() {
@@ -162,6 +172,7 @@ export class Session {
         this.faults.onAlert = () => { if (this.onAlert) this.onAlert(); };
         this.faults.begin(s.t_sim);
       }
+      if (this.dispatch) this.dispatch.begin(s.t_sim);
     }
     this.engine.ctx.trends.sample();
   }
@@ -172,6 +183,7 @@ export class Session {
     return this.free ? { demandNoise: this.demandNoise,
       demandNextChangeT: this.demandNextChangeT, rng: this.demandRng.snapshot(),
       faults: this.faults ? this.faults.snapshot() : undefined,
+      dispatch: this.dispatch ? this.dispatch.snapshot() : undefined,
       shift: this.shift.snapshot() } : {};
   }
 
@@ -186,6 +198,7 @@ export class Session {
     if (Number.isFinite(data.demandNextChangeT)) this.demandNextChangeT = data.demandNextChangeT;
     this.demandRng.restore(data.rng);
     if (this.faults) this.faults.restore(data.faults);
+    if (this.dispatch) this.dispatch.restore(data.dispatch);
     // Nach der RunState: persist.js spielt sie vor dieser Stelle ein (siehe
     // apply() dort), und der Schichtbericht braucht ihren wiederhergestellten
     // Stand als Bezugslinie, nicht den leeren vom Rundenbau.
@@ -203,7 +216,15 @@ export class Session {
       this.demandNextChangeT = s.t_sim + this.demandRng.range(...FREE_DEMAND_NOISE_INTERVAL_S);
     }
     const frac = freeDemandFrac(FREE_SHIFT_START_S + s.t_sim) + this.demandNoise;
-    const target = Math.max(0, frac) * p0;
+    const schedule = Math.max(0, frac) * p0;
+    // Ein Auftrag der Netzleitstelle ist kein zweiter Schreiber, der gegen
+    // die Kurve antritt -- er ist dieselbe Quelle, die ihre Meinung aendert
+    // (siehe game/dispatch.js). Ohne Auftrag fuehrt der Fahrplan. Waehrend
+    // eines Auftrags gilt der Sollwert ohne Rauschen: ein
+    // Leitstellen-Sollwert ist sauber, und genau daran merkt man, dass gerade
+    // einer laeuft.
+    const ordered = this.dispatch ? this.dispatch.targetMw(schedule) : null;
+    const target = ordered === null ? schedule : ordered;
     const maxStep = FREE_DEMAND_RAMP_FRAC_PER_S * p0 * dt;
     const diff = target - s.P_demand;
     s.P_demand += Math.max(-maxStep, Math.min(maxStep, diff));
@@ -226,6 +247,9 @@ export class Session {
     stepEvents(this.engine, dt);
 
     if (!this.scenario) {
+      // VOR _stepFreeDemand(): erst die Zustandswechsel dieses Takts, dann
+      // die Zielvorgabe, die sich daraus ergibt.
+      if (this.dispatch) this.dispatch.step();
       this._stepFreeDemand(s, dt);
       // Nach stepEvents(): eine Stoerung soll in demselben Takt wirken, in
       // dem sie ausgeloest wird, nicht erst im naechsten ueber die laufenden

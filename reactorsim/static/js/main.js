@@ -12,6 +12,7 @@ import { Session, PHASE } from './game/session.js';
 import { FAULT_LEVEL_IDS } from './game/freeEvents.js';
 import { CORE_AGE_IDS, coreAgeBurnup } from './game/coreAge.js';
 import { SEASON_IDS, DEFAULT_SEASON, seasonCoolingWater } from './game/season.js';
+import { DISPATCH_LEVEL_IDS } from './game/dispatch.js';
 import { gridDeviationTrips } from './game/scenario.js';
 import { api } from './net/api.js';
 import { pack as packSave, apply as applySave } from './net/persist.js';
@@ -26,6 +27,7 @@ import { renderLearning } from './ui/debrief.js';
 import { buildTutorial, renderTutorialResult } from './ui/tutorial.js';
 import { renderGuidance } from './ui/guidance.js';
 import { renderObjectiveResult } from './ui/objectives.js';
+import { buildDispatch } from './ui/dispatch.js';
 
 // Panel-Buchstaben fuer die Fenster-Tastenkuerzel (siehe initControls():
 // Tastatur am Rechner). Ungewandeltes Zeichen statt Kachel-Position, damit
@@ -137,10 +139,12 @@ function readFreeSetup() {
   const faults = $('#rs-faults');
   const coreAge = $('#rs-core-age');
   const season = $('#rs-season');
+  const dispatch = $('#rs-dispatch-level');
   return {
     faults: faults && FAULT_LEVEL_IDS.includes(faults.value) ? faults.value : 'off',
     coreAge: coreAge && CORE_AGE_IDS.includes(coreAge.value) ? coreAge.value : 'fresh',
     season: season && SEASON_IDS.includes(season.value) ? season.value : DEFAULT_SEASON,
+    dispatch: dispatch && DISPATCH_LEVEL_IDS.includes(dispatch.value) ? dispatch.value : 'off',
   };
 }
 
@@ -210,6 +214,12 @@ function initStart() {
   // nahe am Auslegungspunkt der Anlage, damit ein freies Spiel ohne bewusste
   // Wahl nicht ploetzlich anders faehrt als vor dieser Einstellung.
   wireChoice($('#rs-season'), 'season', SEASON_IDS, DEFAULT_SEASON);
+  // Netzauftraege: eigenes Feld, NICHT an die Stoerungsstufe gekoppelt. Eine
+  // ruhige Schicht mit Auftraegen (reines Lastfolgen) und eine wilde ohne
+  // (Stoerungen abarbeiten, ohne zugleich eine Zusage zu halten) sind beide
+  // sinnvoll -- und wer die Stoerungen abschaltet, will nicht stillschweigend
+  // auch die Auftraege verlieren.
+  wireChoice($('#rs-dispatch-level'), 'dispatch', DISPATCH_LEVEL_IDS, 'normal');
 
   for (const card of cards) {
     const id = card.dataset.reactor;
@@ -2227,7 +2237,10 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
   // Sprung auf einen gespeicherten Zustand lässt sich nicht aus Schritten
   // plus Protokoll nachrechnen.
   attachRecorder(app.engine);
-  app.session = new Session(app.engine, scenarioDef, { faults: freeSetup ? freeSetup.faults : 'off' });
+  app.session = new Session(app.engine, scenarioDef, {
+    faults: freeSetup ? freeSetup.faults : 'off',
+    dispatch: freeSetup ? freeSetup.dispatch : 'off',
+  });
   app.session.onEnd = (result, failed) => showDebrief(result, failed);
   // Akustische Vorwarnung, 2-5 Minuten vor einem geplanten Ereignis -- nur
   // bei Szenarien relevant, dueAlerts() bleibt im freien Spiel leer.
@@ -2263,6 +2276,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
   const built = buildPanels(app.engine, app.render,
     app.prefs.helper !== false && scenarioDef?.guidance?.auto_helper !== false);
   buildTutorial(app.session, app.render);
+  buildDispatch(app.session, app.render);
   app.horn = built.horn;
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;

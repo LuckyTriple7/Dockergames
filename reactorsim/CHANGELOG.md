@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.6.8
+
+- ✨ **Die Netzleitstelle gibt Aufträge.** Die Tageslastkurve seit 0.6.6 ist
+  ein Fahrplan, den niemand ausspricht: man fährt hinterher und erfährt nur im
+  Schichtbericht, ob das gut war. Neu kommt alle 40 bis 120 Minuten eine
+  Zusage mit Frist — „auf 600 MW bis 14:20, dann 30 Minuten halten" — in fünf
+  Phasen: angekündigt (3 bis 7 Minuten Vorlauf zum Vorbereiten), Rampe,
+  Haltefenster, Rückfahrt auf den Fahrplan, erledigt (`game/dispatch.js`).
+  Eigenes Auswahlfeld im Startdialog, *aus* / *selten* / *normal*, bewusst
+  NICHT an die Störungsstufe gekoppelt: eine ruhige Schicht mit Aufträgen und
+  eine wilde ohne sind beide sinnvoll.
+
+  Der Auftrag ist **kein zweiter Sollwertgeber**, der gegen die Kurve antritt.
+  Eine Netzleitstelle kämpft nicht gegen einen Fahrplan, sie IST die Quelle des
+  Sollwerts. Es bleibt deshalb bei einem Schreiber auf `s.P_demand`, der seine
+  Vorgabe entweder aus der Kurve oder aus dem Auftrag nimmt; beides durchläuft
+  dieselbe Rampengrenze, an keinem Übergang springt etwas. Während eines
+  Auftrags entfällt das Lastrauschen — ein Leitstellen-Sollwert ist sauber.
+  Die Rückfahrt gehört zum Auftrag, nicht der Kurve: sonst bekäme der Spieler
+  eine Rampe aufgeladen, die er nicht verursacht hat und die über
+  `RunState.accumulate()` voll in seinen Lastfolgefehler einginge.
+
+  Bewertet wird nicht, ob der Sollwert bekannt ist, sondern ob die Anlage ihn
+  halten konnte. Die Haltezeit läuft im Band von 3 % der Nennleistung und
+  fällt bei einer Verletzung auf null — dieselbe Regel wie bei den
+  Szenariozielen in `objectives.js` —, gefordert ist die ungebrochene Zeit, das
+  Fenster hat 25 % Nachfrist. Erfüllt und gescheitert zählt der Schichtbericht
+  mit (eigener Protokollschlüssel, damit eine Runde ohne Aufträge nicht in
+  jeder Schicht „0/0" lesen muss). Der laufende Auftrag steht im Netz-Panel,
+  neben Klemmenleistung, Anforderung und Abweichung — also den drei Zahlen,
+  gegen die er gelesen wird.
+
+- 🔒 **Ein Auftrag muss fahrbar sein.** Sonst ist er kein Schwierigkeitsgrad,
+  sondern kaputt. Er liegt deshalb zwischen 40 und 92 % der Nennleistung (die
+  Obergrenze lässt Luft für warmes Kühlwasser, siehe 0.6.7), ist mindestens
+  8 % von der aktuellen Anforderung entfernt und rampt mit 3 % der
+  Nennleistung je Minute. Letzteres kam aus einer Messung: die bestehende
+  Rampengrenze der Anforderung erlaubt 0,2 % je SEKUNDE, beim DWR also
+  168 MW/min — drei- bis viermal schneller, als eine Anlage folgen kann. Bei
+  der Tageskurve fällt das nicht auf, die ist ohnehin langsam; ein Auftrag, der
+  die Grenze ausschöpfte, wäre unfahrbar gewesen. Nichts kommt vor Ablauf
+  einer Einfahrzeit, bei abgeschaltetem Reaktor oder offenem Netzschalter, und
+  eine Schnellabschaltung ZIEHT einen laufenden Auftrag ZURÜCK statt ihn als
+  gescheitert zu zählen — dieselbe Ausnahme, die `grid_deviation` in
+  `checkFail()` schon macht. Ein Test fährt alle drei Typen mit echter Physik
+  und verlangt, dass der erste Auftrag erfüllt wird.
+
+- 📋 **Was der Auftrag abverlangt, hängt am Regelkonzept.** Beim DWR erfüllt
+  ihn die Anlage ohne jeden Eingriff: das Regelventil holt sich den Dampf, der
+  Kern zieht nach. Dem DWR-Spieler verlangt ein Auftrag damit nichts ab — die
+  Kehrseite derselben Eigenschaft, die ihn in 0.6.7 den Sommer mit Kernleistung
+  statt mit Megawatt bezahlen liess. SWR und RBMK halten ihre Leistung und
+  folgen keiner Anforderung von allein: dort ist der Auftrag echte Arbeit, über
+  den Leistungsregler beim RBMK und über die Stäbe von Hand beim SWR. Beim SWR
+  genügt der Umwälzstrom allein nicht, solange die Stabregelung auf Automatik
+  die Moderatortemperatur hält und die Wirkung wieder aufhebt.
+
 ## 0.6.7
 
 - ✨ **Das freie Spiel legt Rechenschaft ab.** Eine Runde ohne Szenario bekam

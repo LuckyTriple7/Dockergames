@@ -49,6 +49,8 @@ export class ShiftLog {
       // ihre Summe zaehlt deshalb keine Sekunde doppelt.
       alarm: v[1] + v[2] + v[3],
       scram: r.scramCount,
+      ordersMet: r.ordersMet || 0,
+      ordersFailed: r.ordersFailed || 0,
     };
   }
 
@@ -75,6 +77,9 @@ export class ShiftLog {
         deviation_mwh: now.deviation - this.base.deviation,
         alarm_seconds: now.alarm - this.base.alarm,
         scram_count: now.scram - this.base.scram,
+        orders_met: now.ordersMet - this.base.ordersMet,
+        orders_total: (now.ordersMet - this.base.ordersMet)
+          + (now.ordersFailed - this.base.ordersFailed),
       };
       this.base = now;
       this.last = report;
@@ -87,18 +92,25 @@ export class ShiftLog {
    *  kein Zahlenformat, und ui/i18n.js formatiert nur, was es selbst
    *  gerechnet hat. */
   static logEntry(report) {
-    return {
-      t: report.t,
-      key: 'log_shift_report',
-      severity: 1,
-      params: {
-        n: report.n,
-        mwh: Math.round(report.delivered_mwh),
-        dev: Math.round(report.deviation_mwh),
-        min: Math.round(report.alarm_seconds / 60),
-        scram: report.scram_count,
-      },
+    const params = {
+      n: report.n,
+      mwh: Math.round(report.delivered_mwh),
+      dev: Math.round(report.deviation_mwh),
+      min: Math.round(report.alarm_seconds / 60),
+      scram: report.scram_count,
     };
+    // Zwei Schluessel statt eines mit "Auftraege 0/0": wer ohne Netzauftraege
+    // spielt (Stufe aus, siehe game/dispatch.js), soll in jeder Schicht keine
+    // Zahl lesen muessen, die immer dieselbe ist.
+    if (report.orders_total > 0) {
+      return {
+        t: report.t,
+        key: 'log_shift_report_orders',
+        severity: 1,
+        params: { ...params, met: report.orders_met, total: report.orders_total },
+      };
+    }
+    return { t: report.t, key: 'log_shift_report', severity: 1, params };
   }
 
   snapshot() {
