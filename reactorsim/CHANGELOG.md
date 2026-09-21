@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.10
+
+- ✨ **Die Hintergrundfotos sind wieder zu erkennen.** Splash, Uebersicht
+  und die drei Reaktorseiten legten einen Schleier von 66 bis 93 % Schwarz
+  ueber Fotos, die selbst schon Nachtaufnahmen sind -- uebrig blieb eine
+  fast schwarze Flaeche. Den Schleier allein zu lichten reicht nicht, dann
+  wandert die Schrift ins Motiv. Stattdessen liegt das Foto jetzt in einer
+  eigenen Ebene (`base.css`: `.rs-splash/.rs-start/.rs-reactor::before`) und
+  wird dort mit `filter: brightness(1.75) saturate(1.12)` aufgehellt; der
+  Schleier sitzt ungefiltert darueber (`::after`) und faellt auf 45-75 %
+  (Splash 60-80 %, weil dort Schrift ohne Karte direkt auf dem Foto steht).
+  Unter dem Strich kommt vom Motiv oben rund das Dreifache, unten rund das
+  Sechsfache an.
+
+  Der Filter gehoert auf das Pseudoelement, nicht auf den Container -- dort
+  wuerde er Karten, Schrift und Knoepfe mit aufhellen. Beide Ebenen sind
+  `position: fixed` und nicht `absolute`, weil Uebersicht und Reaktorseite
+  scrollen (`overflow-y: auto`) und eine absolute Ebene mit `inset: 0` nur
+  die Hoehe des Padding-Bereichs bekaeme. Die Inhalte (`*-inner`) stehen mit
+  `z-index: 1` darueber, die Ebenen mit `pointer-events: none` fangen keine
+  Klicks ab. Die Bildpfade bleiben fest in der CSS-Datei verdrahtet, aus
+  demselben CSP-Grund wie vorher.
+
 ## 0.6.9
 
 - ✨ **Der Druckwasserreaktor bekommt einen Leistungsbegrenzer.** Weil dieser

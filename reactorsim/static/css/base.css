@@ -130,13 +130,58 @@ button {
      geblockt. url() in einer externen CSS-Datei faellt unter img-src, nicht
      style-src, und /static/... liefert dasselbe Bild wie /s/<ver>/... nur
      ohne Versions-Cachebust (fuer ein selten getauschtes Hintergrundfoto
-     kein Verlust). Dunkler Schleier drueber, sonst versinken Logo/Text im
-     Foto. */
-  background:
-    linear-gradient(#080b10a8, #080b10e6),
-    url("/static/img/splash.jpg") center/cover no-repeat,
-    var(--rs-bg);
+     kein Verlust). Foto und Schleier liegen in eigenen Ebenen, siehe
+     "Hintergrundfotos" weiter unten. */
+  background: var(--rs-bg);
   cursor: pointer;
+}
+
+/* -- Hintergrundfotos ------------------------------------------------------
+   Die fuenf Fotos (Splash, Uebersicht, drei Reaktortypen) sind selbst schon
+   Nachtaufnahmen. Mit dem frueheren Schleier von 66-93 % Schwarz obendrauf
+   war vom Motiv praktisch nichts mehr zu erkennen. Den Schleier allein zu
+   lichten reicht nicht -- dann wandert die Schrift ins Foto. Deshalb liegt
+   das Foto jetzt in einer eigenen Ebene (::before) und wird DORT aufgehellt,
+   der Schleier sitzt ungefiltert darueber (::after) und haelt die Schrift
+   lesbar.
+
+   filter gehoert auf das Pseudoelement, nicht auf den Container: dort wuerde
+   es Karten, Schrift und Knoepfe mit aufhellen.
+
+   Beide Ebenen sind position:fixed, nicht absolute -- .rs-start und
+   .rs-reactor scrollen (overflow-y:auto); eine absolute Ebene mit inset:0
+   bekaeme nur die Hoehe des Padding-Bereichs. Der Container ist selbst
+   position:fixed und damit ein eigener Stapelkontext, die z-index hier
+   wirken also nur innerhalb des jeweiligen Bildschirms. */
+.rs-splash::before, .rs-splash::after,
+.rs-start::before,  .rs-start::after,
+.rs-reactor::before, .rs-reactor::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  /* Der Splash ist als Ganzes anklickbar, Uebersicht und Reaktorseite tragen
+     Knoepfe -- die Ebenen duerfen davon nichts abfangen. */
+  pointer-events: none;
+}
+.rs-splash::before, .rs-start::before, .rs-reactor::before {
+  background: center/cover no-repeat;
+  filter: brightness(1.75) saturate(1.12);
+}
+.rs-splash::after, .rs-start::after, .rs-reactor::after {
+  background: linear-gradient(#080b1073, #080b10bf);
+}
+/* Auf dem Splash steht die Schrift ohne Karte direkt auf dem Foto, dort
+   deshalb ein kraeftigerer Schleier als auf den beiden anderen Seiten. */
+.rs-splash::after { background: linear-gradient(#080b1099, #080b10cc); }
+
+.rs-splash::before  { background-image: url("/static/img/splash.jpg"); }
+.rs-start::before   { background-image: url("/static/img/background.jpg"); }
+
+/* Inhalt ueber beide Ebenen heben, sonst liegt er unter dem Schleier. */
+.rs-splash-inner, .rs-start-inner, .rs-reactor-inner {
+  position: relative;
+  z-index: 1;
 }
 .rs-splash-inner { text-align: center; }
 .rs-splash-logo {
@@ -190,11 +235,9 @@ button {
   position: fixed;
   inset: 0;
   overflow-y: auto;
-  /* Siehe Kommentar bei .rs-splash: fester Pfad statt Inline-Style wegen CSP. */
-  background:
-    linear-gradient(#080b10b8, #080b10ee),
-    url("/static/img/background.jpg") center/cover no-repeat,
-    var(--rs-bg);
+  /* Foto und Schleier liegen in .rs-start::before/::after, siehe
+     "Hintergrundfotos" oben. */
+  background: var(--rs-bg);
   padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
 }
 
@@ -390,12 +433,13 @@ button {
   overflow-y: auto;
   padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
   /* Kein Bild hier direkt -- der Typ entscheidet erst zur Laufzeit, welches.
-     fillReactorScreen() (main.js) setzt eine der drei Klassen unten. */
-  background: linear-gradient(#080b10b8, #080b10ee), var(--rs-bg);
+     fillReactorScreen() (main.js) setzt eine der drei Klassen unten. Ohne
+     Klasse bleibt die Fotoebene leer, der Schleier liegt dann auf --rs-bg. */
+  background: var(--rs-bg);
 }
-.rs-reactor-bg-pwr  { background: linear-gradient(#080b10b8, #080b10ee), url("/static/img/pwr.jpg")  center/cover no-repeat, var(--rs-bg); }
-.rs-reactor-bg-bwr  { background: linear-gradient(#080b10b8, #080b10ee), url("/static/img/bwr.jpg")  center/cover no-repeat, var(--rs-bg); }
-.rs-reactor-bg-rbmk { background: linear-gradient(#080b10b8, #080b10ee), url("/static/img/rbmk.jpg") center/cover no-repeat, var(--rs-bg); }
+.rs-reactor-bg-pwr::before  { background-image: url("/static/img/pwr.jpg"); }
+.rs-reactor-bg-bwr::before  { background-image: url("/static/img/bwr.jpg"); }
+.rs-reactor-bg-rbmk::before { background-image: url("/static/img/rbmk.jpg"); }
 
 .rs-reactor-inner { max-width: 800px; margin: 0 auto; }
 .rs-reactor-back { margin-bottom: 20px; }
