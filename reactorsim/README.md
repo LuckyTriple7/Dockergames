@@ -76,6 +76,44 @@ unvollständiger Versuch ohne Erfolg. Speichern und Fortsetzen erhalten auch
 das Lernziel und seine Haltezeit. Die Übung hat eine Auswertung mit erreichten
 Lernzielen und Schichtverlauf, aber keine Punkte oder Bestenlisteneinträge.
 
+## Freies Spiel
+
+Das freie Spiel ist eine Schicht ohne Auftrag und ohne Wertung: sie endet
+nicht von selbst, nur ein Brennstoffschaden beendet sie. Seit 0.6.6 stellst du
+vor dem Start ein, wie unruhig sie werden soll.
+
+**Netzanforderung.** Die Last folgt einer Tageskurve statt einem
+Zufallsspaziergang: Nachttal bei 55 %, Morgenrampe, Mittagsplateau,
+Abendspitze bei 100 % der elektrischen Nennleistung, dazu ein kleines
+Rauschen von höchstens 4 %. Die Schicht beginnt um 22:00 Uhr; die Statuskachel
+„Uhrzeit" zeigt sie an, sodass die nächste Rampe absehbar ist. Bei 60× dauert
+ein ganzer Tag 24 Minuten. Die Anforderung ändert sich nie sprunghaft, sondern
+mit höchstens 0,2 % der Nennleistung je Sekunde. Die Kurve ist eine
+plausible Form, keine nachgerechnete Lastprognose eines realen Netzgebiets.
+
+**Zufallsstörungen.** Vier Stufen: *aus*, *selten* (angekündigt, nur milde
+Störungen, alle 45–90 Minuten), *normal* (alle 20–40 Minuten) und *hart*
+(alle 10–20 Minuten, zusätzlich Erdbeben und Notstromfall). Gezogen wird aus
+derselben Störungsbibliothek, aus der auch die Szenarien schöpfen; nur der
+Zeitplan kommt aus einem gesäten Würfel statt aus einer Szenariodatei. Eine
+Störung kommt frühestens nach einer Einfahrzeit von 10–30 Minuten, nie bei
+stehendem oder abgeschaltetem Reaktor und nie zweimal dieselbe, solange ihre
+Wirkung noch ansteht. Was während eines Stillstands fällig gewesen wäre,
+verfällt und staut sich nicht auf. Der Spielstand sichert den Würfelzustand,
+die Stufe selbst gilt aus der aktuellen Auswahl.
+
+**Kernalter.** Der Abbrand zu Rundenbeginn ist wählbar: frisch beladen,
+Zyklusmitte oder Zyklusende. Er senkt die Überschussreaktivität, aus der sich
+Xenon, Temperaturrückwirkung und Lastwechsel bedienen — am Zyklusende bleibt
+davon wenig übrig, und eine Xenonvergiftung nach dem Nachttal lässt sich
+womöglich nicht mehr ausfahren. Die Stufen sind je Reaktortyp andere Anteile
+der Zykluslänge, weil die drei Typen ihren Überschuss unterschiedlich
+niederhalten (DWR mit Bor, SWR und RBMK mit Stäben); gemessen sind sie an der
+verbleibenden Stell- bzw. Borreserve bei Nennleistung, nicht an einer
+Brennstoffbilanz. Abbrennbare Gifte im Brennelement und das Nachladen im
+Betrieb beim RBMK rechnet das Modell nicht. Der Abbrand wächst während einer
+Runde nicht weiter; er ist ein Anfangswert.
+
 ## Szenarien
 
 Neben dem freien Spiel gibt es Schichten mit Auftrag: eine Bedarfskurve, die du

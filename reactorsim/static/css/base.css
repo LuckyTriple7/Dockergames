@@ -292,6 +292,38 @@ button {
 }
 .rs-cold-start input { accent-color: var(--rs-value); width: 16px; height: 16px; }
 
+/* Rundenaufbau des freien Spiels: Störungsstufe und Kernalter. Zwei Spalten,
+   solange die Karte breit genug ist -- auf dem Handy untereinander. */
+.rs-free-setup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+.rs-choice {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--rs-fg-dim);
+  font-size: 13px;
+}
+.rs-choice select {
+  padding: 7px 8px;
+  border: 1px solid var(--rs-line);
+  border-radius: var(--rs-radius);
+  background: var(--rs-panel);
+  color: var(--rs-fg);
+  font: inherit;
+  cursor: pointer;
+}
+.rs-choice select:focus-visible { outline: 2px solid var(--rs-value); outline-offset: 1px; }
+.rs-free-setup-hint {
+  margin: 8px 0 0;
+  color: var(--rs-fg-mute);
+  font-size: 12px;
+}
+
 .rs-start-actions {
   display: flex;
   flex-wrap: wrap;

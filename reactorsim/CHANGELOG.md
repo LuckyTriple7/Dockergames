@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.6.6
+
+- ✨ **Das freie Spiel hat jetzt einen Tag.** Die Netzanforderung folgte
+  bisher einem Zufallsspaziergang: alle 5–15 Minuten ein neues Ziel, aus dem
+  Nichts gezogen. Der war nie in Ruhe, aber auch nie vorhersehbar — kein
+  Punkt des Tages sagte etwas über den nächsten, und ohne Planung bleibt vom
+  Lastfolgen nur Hinterherfahren. Neu führt eine Tageslastkurve mit Nachttal
+  bei 55 %, Morgenrampe, Mittagsplateau und Abendspitze bei 100 %
+  (`session.js: freeDemandFrac`). Die Schicht beginnt um 22:00 Uhr, und die
+  Statuskachel „Uhrzeit" zeigt sie an — das freie Spiel war bisher die einzige
+  Betriebsart ohne Uhr. Damit wird die Xenonvergiftung zu einem Gegner, den
+  man kommen sieht: wer nachts weit heruntergefahren ist, fährt die
+  Morgenrampe gegen das aufgebaute Xenon. Bei 60× dauert ein ganzer Tag 24
+  Minuten. Die Kurve ist eine plausible Form, keine nachgerechnete
+  Lastprognose.
+
+- ✨ **Und Zufallsstörungen, in vier Stufen.** Die Störungsbibliothek gibt es
+  seit langem, aber nur Szenarien haben sie je aufgerufen: im freien Spiel
+  lief `stepEvents()` jeden Takt über einen leeren Satz Merker. Es war damit
+  die einzige Betriebsart, in der nie etwas ausfiel. Neu wählst du vor dem
+  Start *aus*, *selten* (angekündigt, nur milde Störungen, alle 45–90 Minuten),
+  *normal* (20–40 Minuten) oder *hart* (10–20 Minuten, dazu Erdbeben und
+  Notstromfall). Gezogen wird aus derselben Bibliothek wie im Szenario; neu
+  ist nur, dass der Zeitplan aus einem gesäten Würfel kommt statt aus einer
+  JSON-Datei (`game/freeEvents.js`). Die Auswahl prüft jedes Mal, ob die
+  Störung im aktuellen Zustand überhaupt etwas bewirkt — eine schon
+  geschlossene Frischdampfabsperrung schließt nicht noch einmal, und die
+  letzte laufende Hauptkühlmittelpumpe fällt nicht aus. Nichts kommt vor
+  Ablauf der Einfahrzeit von 10–30 Minuten, nichts bei stehendem oder
+  abgeschaltetem Reaktor, und was während eines Stillstands fällig gewesen
+  wäre, verfällt, statt sich aufzustauen.
+
+- ✨ **Der Kern darf älter sein als neu.** `createEngine()` kennt den Abbrand
+  seit je als Anfangswert, aber gesetzt hat ihn nur ein Spielstand: jedes neue
+  freie Spiel begann frisch beladen. Dabei ist das der billigste
+  Schwierigkeitsregler, den das Modell hergibt — die Überschussreaktivität
+  wird jeden Rechenschritt frisch aus `s.burnup` gebildet (`reactivity.js`,
+  Teil `excess`), und mit ihr schrumpft der Vorrat, aus dem sich Xenon,
+  Temperaturrückwirkung und Lastwechsel bedienen. Neu sind drei Stufen:
+  frisch beladen, Zyklusmitte, Zyklusende. Am Zyklusende bleibt beim DWR noch
+  rund 145 ppm Bor und beim RBMK eine Stabstellung von 0,15 — genug für
+  Nennleistung, wenig für eine Xenonvergiftung nach dem Nachttal.
+
+  Die Stufen sind je Reaktortyp andere Anteile der Zykluslänge, und das ist
+  keine Willkür: der DWR hält seinen Überschuss mit Bor nieder und kommt über
+  zwei Drittel des Zyklus, der SWR hält alles mit Stäben und ist nach einem
+  Fünftel am Ende seiner Reserve, der RBMK wird in Wirklichkeit im Betrieb
+  nachgeladen und steht dauerhaft nahe seinem Gleichgewichtskern. Ein Test
+  hält fest, worauf es dabei ankommt: auch der älteste angebotene Kern muss
+  sich noch auf Nennleistung bringen lassen, sonst ist die Stufe kein
+  Schwierigkeitsgrad, sondern ein kaputter Start. Abbrennbare Gifte rechnet
+  das Modell nicht, und der Abbrand wächst während einer Runde nicht weiter.
+
 ## 0.6.5
 
 - ✨ **Die Anlage endet nicht mehr mit „Brennstoff zerstört" — beim RBMK hebt

@@ -9,6 +9,8 @@ import { Loop } from './loop.js';
 import { createEngine } from './sim/engine.js';
 import { getPlant, isAvailable, PLANT_IDS } from './plants/index.js';
 import { Session, PHASE } from './game/session.js';
+import { FAULT_LEVEL_IDS } from './game/freeEvents.js';
+import { CORE_AGE_IDS, coreAgeBurnup } from './game/coreAge.js';
 import { gridDeviationTrips } from './game/scenario.js';
 import { api } from './net/api.js';
 import { pack as packSave, apply as applySave } from './net/persist.js';
@@ -111,6 +113,34 @@ function toggleMute() {
 
 // ── Startbildschirm ──────────────────────────────────────────────────────────
 
+/** Auswahlfeld an eine gemerkte Einstellung haengen. `allowed` faengt einen
+ *  Wert ab, den es nicht mehr gibt (umbenannte Stufe, fremder Spielstand,
+ *  von Hand bearbeitete Einstellungen) -- sonst stuende das Feld leer da und
+ *  die Runde startete mit undefined. */
+function wireChoice(node, prefKey, allowed, fallback) {
+  if (!node) return;
+  const pick = (value) => (allowed.includes(value) ? value : fallback);
+  node.value = fallback;
+  app.prefsPromise.then((prefs) => { node.value = pick(prefs[prefKey]); });
+  node.addEventListener('change', () => {
+    node.value = pick(node.value);
+    app.prefs[prefKey] = node.value;
+    api.writePrefs(app.prefs);
+  });
+}
+
+/** Was der Spieler fuer diese Runde eingestellt hat. Aus dem DOM gelesen,
+ *  nicht aus app.prefs: die Auswahlfelder sind die Wahrheit des Augenblicks,
+ *  prefs ist nur ihr Gedaechtnis ueber Besuche hinweg. */
+function readFreeSetup() {
+  const faults = $('#rs-faults');
+  const coreAge = $('#rs-core-age');
+  return {
+    faults: faults && FAULT_LEVEL_IDS.includes(faults.value) ? faults.value : 'off',
+    coreAge: coreAge && CORE_AGE_IDS.includes(coreAge.value) ? coreAge.value : 'fresh',
+  };
+}
+
 function initStart() {
   // Startbanner: liegt nur optisch ueber dem Startbildschirm (siehe
   // rs-splash in base.css), der baut sich im Hintergrund unveraendert auf.
@@ -166,6 +196,13 @@ function initStart() {
     api.writePrefs(app.prefs);
   });
 
+  // Störungsstufe und Kernalter des freien Spiels. Beides bleibt gemerkt wie
+  // das Kaltstart-Haekchen -- wer einmal "hart" gewaehlt hat, meint das auch
+  // beim naechsten Mal. Vorgabe ist 'normal': ein freies Spiel ganz ohne
+  // Stoerung war bis 0.6.5 der einzige Zustand, und genau der war zu ruhig.
+  wireChoice($('#rs-faults'), 'faults', FAULT_LEVEL_IDS, 'normal');
+  wireChoice($('#rs-core-age'), 'coreAge', CORE_AGE_IDS, 'fresh');
+
   for (const card of cards) {
     const id = card.dataset.reactor;
     card.setAttribute('aria-pressed', 'false');
@@ -216,7 +253,7 @@ function initStart() {
   go.addEventListener('click', () => {
     if (!app.reactor) return;
     if (app.chosen) loadScenario(app.chosen);
-    else boot(app.reactor, null, null, $('#rs-cold-start').checked);
+    else boot(app.reactor, null, null, $('#rs-cold-start').checked, null, readFreeSetup());
   });
 
   $('#rs-brief-go').addEventListener('click', () => {
@@ -516,7 +553,10 @@ function refreshResumeList() {
       // kam. Derselbe Fetch wie in loadScenario() oben, nur ohne Einweisung
       // dazwischen: wer fortsetzt, hat sie schon gesehen.
       btn.addEventListener('click', () => {
-        if (!sv.scenario) { boot(sv.reactor, null, sv.slot, false, sv); return; }
+        // Der Abbrand kommt beim Fortsetzen aus dem Stand selbst, die
+        // Stoerungsstufe dagegen aus der aktuellen Auswahl -- wer einen
+        // Stand mit anderer Einstellung fortsetzt, meint die neue.
+        if (!sv.scenario) { boot(sv.reactor, null, sv.slot, false, sv, readFreeSetup()); return; }
         const scn2 = app.scenarios.find((x) => x.id === sv.scenario)
           || { id: sv.scenario, reactor: sv.reactor };
         loadScenario(scn2, sv);
@@ -1697,7 +1737,7 @@ function showAftermath(a) {
  *  vorn -- ohne den Umweg über Menü, Typwahl und Einweisung. */
 function restart() {
   if (!app.lastReactor) { toMenu(); return; }
-  boot(app.lastReactor, app.lastScenarioDef, null, app.lastCold);
+  boot(app.lastReactor, app.lastScenarioDef, null, app.lastCold, null, app.lastFreeSetup);
 }
 
 /** Zwei-Klick-Knopf UND Strg+Z gehalten (siehe initStart()) rufen dieselbe
@@ -2059,7 +2099,7 @@ function applyStatusSelection(keys) {
   });
 }
 
-async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
+async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, freeSetup = null) {
   cancelScenarioLoad();
   app.briefDef = scenarioDef || null;
   resetSaveStatus();
@@ -2085,6 +2125,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
   app.lastReactor = reactorId;
   app.lastScenarioDef = scenarioDef || null;
   app.lastCold = isColdStart;
+  app.lastFreeSetup = freeSetup;
 
   // Eine laufende Schleife MUSS stehen, bevor eine neue entsteht. app.loop
   // zeigt danach auf ein neues Objekt, aber die alte Schleife lief bis dahin
@@ -2149,8 +2190,14 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
     slot: loadSlot || null }).then((res) => {
     if (app.bootId === runTokenFor && res.ok && res.data) app.runToken = res.data.run || null;
   });
+  // Kernalter nur bei einem NEUEN freien Spiel: ein Spielstand bringt
+  // seinen eigenen Abbrand mit (applySave() setzt ihn gleich noch einmal,
+  // aber createEngine() braucht ihn schon hier -- beta_eff haengt daran und
+  // wird nur einmal gebildet), ein Szenario startet stets frisch beladen.
+  const freeBurnup = !scenarioDef && !loadSlot && freeSetup
+    ? coreAgeBurnup(plant.spec, freeSetup.coreAge) : undefined;
   app.engine = createEngine(plant, {
-    burnup: saved?.state?.burnup,
+    burnup: saved?.state?.burnup !== undefined ? saved.state.burnup : freeBurnup,
     n: isColdStart ? 1e-6 : 1.0, cold: isColdStart, seed: scenarioDef ? scenarioDef.seed : 1,
     // Meldetafel-Vorwarnung fuer die szenarioeigene Fail-Bedingung
     // 'grid_deviation' (siehe game/scenario.js) -- ohne sie fiel eine Runde
@@ -2165,7 +2212,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null) {
   // Sprung auf einen gespeicherten Zustand lässt sich nicht aus Schritten
   // plus Protokoll nachrechnen.
   attachRecorder(app.engine);
-  app.session = new Session(app.engine, scenarioDef);
+  app.session = new Session(app.engine, scenarioDef, { faults: freeSetup ? freeSetup.faults : 'off' });
   app.session.onEnd = (result, failed) => showDebrief(result, failed);
   // Akustische Vorwarnung, 2-5 Minuten vor einem geplanten Ereignis -- nur
   // bei Szenarien relevant, dueAlerts() bleibt im freien Spiel leer.

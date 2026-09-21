@@ -138,6 +138,31 @@
       {{ t.opt_helper }}
     </label>
 
+    <!-- Beides gilt wie das Kaltstart-Haekchen nur fuer das freie Spiel: ein
+         Szenario bringt seinen Zeitplan selbst mit (events in der JSON) und
+         startet stets mit frischem Kern. Siehe game/freeEvents.js und
+         game/coreAge.js. -->
+    <div class="rs-free-setup">
+      <label class="rs-choice">
+        <span>{{ t.opt_faults }}</span>
+        <select id="rs-faults">
+          <option value="off">{{ t.opt_faults_off }}</option>
+          <option value="rare">{{ t.opt_faults_rare }}</option>
+          <option value="normal">{{ t.opt_faults_normal }}</option>
+          <option value="hard">{{ t.opt_faults_hard }}</option>
+        </select>
+      </label>
+      <label class="rs-choice">
+        <span>{{ t.opt_core_age }}</span>
+        <select id="rs-core-age">
+          <option value="fresh">{{ t.opt_core_age_fresh }}</option>
+          <option value="mid">{{ t.opt_core_age_mid }}</option>
+          <option value="late">{{ t.opt_core_age_late }}</option>
+        </select>
+      </label>
+    </div>
+    <p class="rs-free-setup-hint">{{ t.opt_free_setup_hint }}</p>
+
     <div class="rs-start-actions">
       <button class="rs-btn rs-btn-primary" id="rs-start-go" type="button" disabled>{{ t.start_free_play }}</button>
       <button class="rs-btn" id="rs-start-retry" type="button" hidden>{{ t.btn_retry }}</button>
