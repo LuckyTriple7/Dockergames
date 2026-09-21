@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.6.4
+
+- ✨ **Der Speisewasserschwall um 01:19 wird in der Chernobyl-Übung gefahren.**
+  Er stand seit 0.5.10 auf der Liste der nicht nachgebildeten Vorgänge der
+  Nacht — dabei brauchte es dafür keine neue Physik: die Kette steckt in
+  `rbmk.js` vollständig drin. Mehr kaltes Speisewasser hebt die Unterkühlung,
+  das lässt die Dampfblasen zusammenfallen, und über den positiven
+  Blasenkoeffizienten zieht das Reaktivität ab. Gefahren wird deshalb die
+  **Handlung** — Speisewasserregler auf Hand, 15 % des Nennstroms, 30
+  Sekunden —, alles Weitere macht die Anlage: Unterkühlung 1,2 → 2,6 K,
+  Blasenanteil 5,3 → 1,9 %, Leistung −0,3 Prozentpunkte. Die zweite Hälfte des
+  historischen Vorgangs — erst zu viel Wasser, dann zu wenig — fährt die
+  Automatik von selbst: sie nimmt den Strom zurück, um den Trommelpegel wieder
+  herunterzuholen, und die Blasen kommen mit einem Überschwinger auf das
+  Doppelte zurück. Der Schwall steht als Ereignis in der Zeitleiste, die
+  Schritttafel zeigt währenddessen Unterkühlung und Speisestrom.
+
+  Nachgebildet ist der Vorgang, **nicht seine Dauer**, und das steht auch so
+  im Code: real lief der Schwall bis kurz vor den Versuch; so lange gehalten,
+  fährt er den zusammengefassten Trommelpegel dieses Modells in seinen
+  Anschlag bei 1,00 m und lässt die Anlage in einem Zustand in den Test gehen,
+  auf den die AZ-5-Wirkung nicht kalibriert ist. Beim Auslaufbeginn steht die
+  Anlage deshalb wieder dort, wo sie ohne ihn stünde (Blasenanteil 5,16 statt
+  5,19 %), und AZ-5 zerstört den Kern weiterhin — eine Sekunde später und mit
+  295 statt 300 % Spitze. Mit 120 s Schwall zerstört er ihn gar nicht mehr;
+  auch das steht als Fall im Messwerkzeug.
+
+- ✨ **Die Uhr springt nicht mehr — die fehlende halbe Stunde wird gerechnet.**
+  Bis 0.6.3 machte sie genau einen Sprung, am Ende des Schritts „Der
+  Leistungseinbruch": der Einbruch selbst wurde seit 0.6.1 wirklich gefahren,
+  die Erholung danach dauerte hier aber Minuten statt der realen guten halben
+  Stunde. Jetzt hält der Schritt bis zur Pumpenzuschaltung um 01:07, genau wie
+  die zweite Haltephase bis zum Testbeginn hält — beide zielen auf eine
+  Uhrzeit statt auf eine feste Zahl. Damit ist die Uhr durchgehend die
+  Betriebszeit plus einem festen Versatz, von der Schichtübernahme bis zur
+  Zerstörung.
+
+  Nachgemessen kostet das nichts und bringt etwas: alle dokumentierten Zeiten
+  treffen weiter (Pumpen 01:07, Testbeginn 01:23:04, AZ-5 01:23:40,
+  Zerstörung 01:23:46), die Spitze liegt bei 294 statt 300 %, und die
+  Abschaltreserve sinkt über die zusätzlichen 38 gerechneten Minuten von 81,7
+  auf 72,2 — das Xenon baut sich wirklich auf, statt mit dem Sprung
+  auszufallen. Weil die Übung damit rund 3400 statt 1200 Sekunden rechnet,
+  stellt sie den Zeitraffer jetzt selbst: 60× durch die beiden langen
+  Haltephasen, 1× für die Pumpenzuschaltung um 01:07, 4× für den
+  Speisewasserschwall samt Nachschwingen, 1× für den Auslauf, ¼× ab vier
+  Sekunden vor AZ-5. Umgeschaltet wird nur an den Flanken
+  — wer selbst am Zeitraffer dreht, behält ihn.
+
+- 📝 **Die Rotorzeitkonstante τ = 15 s ist keine Kalibrierung mehr, an der die
+  Nacht hängt.** Herleiten lässt sie sich nicht — τ = J·ω₀²/(2·P₀) bräuchte
+  die Rotorträgheit von TG-8, für die es keine nachschlagbare Quelle gibt.
+  Gemessen wurde deshalb das Gegenteil einer Herleitung
+  (`tests/tools/chernobyl_tau_sweep.mjs`): Über τ = 8 bis 30 s — Faktor vier —
+  fällt AZ-5 unverändert auf 01:23:40, der Kern ist fünf bis sechs Sekunden
+  später zerstört, und die historischen 36 s liegen jedes Mal im Wirkfenster;
+  nur dessen unterer Rand wandert mit τ. Empfindlicher ist die Pumpenzahl:
+  drei bis fünf am auslaufenden Generator tragen den Mechanismus, bei sechs
+  zerstört derselbe Ablauf den Kern nicht mehr. Die historischen vier liegen
+  mittig im tragenden Bereich, nicht an seinem Rand. Details:
+  `audit/CHERNOBYL-2026-09-21.md`.
+
 ## 0.6.3
 
 - ✨ **Der Xenon-Zeitsprung meldet sich beim Server an.** Die Spielhistorie

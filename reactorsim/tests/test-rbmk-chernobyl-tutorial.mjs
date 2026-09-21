@@ -21,6 +21,13 @@ const DEF = {
   demand: [{ t: 0, mw: 0 }, { t: 7200, mw: 0 }], events: [], fail: [{ type: 'fuel_damage' }],
 };
 
+// Seit 0.6.4 ueberspringt die Uebung nichts mehr: zwischen Schichtuebernahme
+// und Auslaufbeginn liegen rund 3400 wirklich gerechnete Sekunden statt der
+// 1200 von vorher (die fehlende halbe Stunde machte bis dahin ein Uhrensprung
+// wett). Alle Zeitbudgets hier zielen deshalb auf diese Groessenordnung.
+const TO_PUMPS_S = 2600;
+const TO_COASTDOWN_S = 3400;
+
 function boot() {
   const engine = createEngine(rbmk, { seed: DEF.seed });
   const session = new Session(engine, DEF);
@@ -111,7 +118,7 @@ test('full guided sequence runs itself: handover, dip, recovery, pumps, hold, co
   // den spaeteren AZ-5-Ausgang). Seit 0.6.1 laeuft dieser erste Abschnitt nur
   // bis zur Pumpenzuschaltung um 01:07, nicht mehr ueber die ganzen 19
   // Minuten -- der Rest steht im Schritt 'hold' dahinter.
-  advanceTo({ engine, session }, 3, 400);
+  advanceTo({ engine, session }, 3, TO_PUMPS_S);
   assert.equal(tut.index, 3, `recover step did not complete (n=${(s.n * 100).toFixed(2)}%, orm=${engine.derive().orm.toFixed(1)})`);
 
   // 3 pumps -- KEIN Handgriff mehr: seit dem Vorfuehrmodus schaltet das
@@ -119,7 +126,7 @@ test('full guided sequence runs itself: handover, dip, recovery, pumps, hold, co
   // hier nichts gestartet wird, IST der Test.
   assert.equal(c.mcp.filter(p => p.running).length, 6, 'six pumps before the script acts');
   let pumpGuard = 0;
-  while (tut.index === 3 && pumpGuard < Math.round(60 / DT)) { step({ engine, session }, 1); pumpGuard++; }
+  while (tut.index === 3 && pumpGuard < Math.round(TO_PUMPS_S / DT)) { step({ engine, session }, 1); pumpGuard++; }
   assert.equal(tut.index, 4, 'pumps step did not complete');
   assert.equal(c.mcp.filter(p => p.running && p.speed >= 0.9).length, 8);
   // Und der Auslauf laeuft hier noch NICHT -- er haengt seit 0.6.1 am Ende
@@ -129,7 +136,7 @@ test('full guided sequence runs itself: handover, dip, recovery, pumps, hold, co
 
   // 4 hold -- die zweite Haelfte der Haltephase, jetzt mit acht Pumpen. Ihre
   // Dauer steht nicht fest, sondern zielt auf die Uhr (siehe holdSeconds()).
-  advanceTo({ engine, session }, 5, 1400);
+  advanceTo({ engine, session }, 5, TO_COASTDOWN_S);
   assert.equal(tut.index, 5, `hold step did not complete (n=${(s.n * 100).toFixed(2)}%)`);
 
   // 5 test -- completeStep('hold') muss den Auslauf gestartet haben. Der
@@ -188,49 +195,51 @@ test('full guided sequence runs itself: handover, dip, recovery, pumps, hold, co
   t.diagnostic(`n peaked and destroyed at t_sim=${s.t_sim.toFixed(2)}s`);
 });
 
-// Die zweite Zeitanzeige (siehe chernobylTutorial.js: WALL_DIP_S). Sie ist
-// eine Behauptung ueber die Nacht -- "AZ-5 um 01:23:40" steht sogar im
+// Die zweite Zeitanzeige (siehe chernobylTutorial.js: WALL_HANDOVER_S). Sie
+// ist eine Behauptung ueber die Nacht -- "AZ-5 um 01:23:40" steht sogar im
 // Schritttext (tut_chernobyl_az5_instruction) -- und gehoert deshalb
 // nachgemessen, nicht nur hingeschrieben. Aendert sich eine der Drehbuchzeiten
 // (Haltephase, Pumpenhochlauf, AUTO_SCRAM_S), faellt dieser Test um, nicht die
 // Glaubwuerdigkeit der Anzeige.
-// Der Sprungwert selbst steht NICHT mehr fest in chernobylTutorial.js: er
-// ergibt sich rueckwaerts aus 01:07 minus Vorlauf und Haltezeit des ersten
-// Abschnitts (WALL_PUMPS_S - AUTO_PUMPS_S - RECOVER_HOLD_S = 01:04:05). Hier
-// steht er als Zahl, damit eine stille Verschiebung auffaellt.
+//
+// Seit 0.6.4 gibt es keinen Uhrensprung mehr: die Uhr ist die Betriebszeit
+// plus einem festen Versatz, von der Schichtuebernahme bis zur Zerstoerung.
+// Genau das prueft dieser Test jetzt zusaetzlich -- an jeder Marke, nicht nur
+// am Ende.
 const WALL_HANDOVER = 27 * 60;            // 00:27:00
-const WALL_DIP = 1 * 3600 + 4 * 60 + 5;   // 01:04:05
 const WALL_PUMPS = 1 * 3600 + 7 * 60;     // 01:07:00
 const WALL_TEST = 1 * 3600 + 23 * 60 + 4; // 01:23:04
 const WALL_AZ5 = 1 * 3600 + 23 * 60 + 40; // 01:23:40
-test('the clock hits the historical marks: dip jump, pumps at 01:07, AZ-5 at 01:23:40', t => {
+test('the clock runs 1:1 and hits the historical marks: pumps 01:07, test 01:23:04, AZ-5 01:23:40', t => {
   const { engine, session } = boot();
   const s = engine.state;
   const tut = session.tutorial;
   const hms = (sec) => new Date(Math.round(sec) * 1000).toISOString().slice(11, 19);
 
-  // 0 handover -- vor dem Sprung laeuft die Uhr mit festem Versatz zur
-  // Betriebszeit: Schichtuebernahme um 00:27, kurz vor dem Einbruch.
+  // 0 handover -- die Uhr laeuft mit festem Versatz zur Betriebszeit:
+  // Schichtuebernahme um 00:27, kurz vor dem Einbruch.
   step({ engine, session }, Math.round(6 / DT));
   assert.equal(tut.view().wall, s.t_sim + WALL_HANDOVER);
   assert.equal(engine.ctx.wallClock, WALL_HANDOVER);
   assert.ok(tut.confirmInspect());
 
-  // 1 dip -- der einzige Sprung. Er ueberbrueckt nur noch den Rest: der
-  // Einbruch selbst wird gefahren (Minuten), real dauerte die Erholung eine
-  // gute halbe Stunde.
-  const beforeJump = tut.view().wall;
-  assert.ok(beforeJump >= WALL_HANDOVER && beforeJump < WALL_HANDOVER + 600,
-    `the shift starts shortly before the dip at 00:28, got ${hms(beforeJump)}`);
+  // 1 dip -- bis 0.6.2 sprang die Uhr an dieser Stelle um gut eine halbe
+  // Stunde vor. Jetzt laeuft sie durch: der Einbruch beginnt kurz nach 00:28,
+  // die Erholung danach wird wirklich gefahren (siehe holdSeconds()).
+  const beforeDip = tut.view().wall;
+  assert.ok(beforeDip >= WALL_HANDOVER && beforeDip < WALL_HANDOVER + 600,
+    `the shift starts shortly before the dip at 00:28, got ${hms(beforeDip)}`);
   let dipGuard = 0;
   while (tut.index === 1 && dipGuard < Math.round(600 / DT)) { step({ engine, session }, 1); dipGuard++; }
   assert.equal(tut.index, 2, 'dip step did not complete');
-  const afterJump = tut.view().wall;
-  assert.equal(afterJump, WALL_DIP, `dip must end on 01:04:08, got ${hms(afterJump)}`);
-  assert.equal(tut.completed.at(-1).w, WALL_DIP,
-    'the dip entry carries the time AFTER the jump -- that step IS the missing hour');
-  assert.equal(tut.completed[0].w, tut.completed[0].t + WALL_HANDOVER,
-    'handover was stamped before the jump, so it carries only the shift offset');
+  const afterDip = tut.view().wall;
+  assert.equal(afterDip, s.t_sim + WALL_HANDOVER,
+    `no jump any more: the clock stays operating time plus the shift, got ${hms(afterDip)}`);
+  assert.ok(afterDip < WALL_HANDOVER + 600,
+    `the dip ends shortly after 00:28, got ${hms(afterDip)}`);
+  assert.equal(tut.completed.at(-1).w, tut.completed.at(-1).t + WALL_HANDOVER,
+    'every step entry carries the same offset -- there is no hour to bridge any more');
+  assert.equal(tut.completed[0].w, tut.completed[0].t + WALL_HANDOVER);
 
   // Speichern/Laden: ohne den Versatz im Snapshot liefe die Uhr nach dem Laden
   // wieder ab Mitternacht, waehrend die Schrittliste schon 01:04 zeigt.
@@ -239,7 +248,7 @@ test('the clock hits the historical marks: dip jump, pumps at 01:07, AZ-5 at 01:
   const reSession = new Session(reEngine, DEF);
   reSession.start();
   assert.equal(apply(blob, reEngine, reSession.run, reSession), null);
-  assert.equal(reSession.tutorial.view().wall, tut.view().wall, 'the jump must survive a save/reload');
+  assert.equal(reSession.tutorial.view().wall, tut.view().wall, 'the clock must survive a save/reload');
   assert.equal(reEngine.ctx.wallClock, engine.ctx.wallClock,
     'the status-tile channel (ctx.wallClock) must be republished after a load');
 
@@ -248,18 +257,20 @@ test('the clock hits the historical marks: dip jump, pumps at 01:07, AZ-5 at 01:
   // stand. Seit die Haltephase an dieser Stelle geteilt ist, faellt sie auf
   // die historische Minute.
   let pumpGuard = 0;
-  const pumpLimit = Math.round(400 / DT);
+  const pumpLimit = Math.round(TO_PUMPS_S / DT);
   while (engine.ctx.mcp.filter(p => p.running).length < 8 && pumpGuard < pumpLimit) {
     step({ engine, session }, 1); pumpGuard++;
   }
   const pumpsOn = tut.view().wall;
   assert.ok(Math.abs(pumpsOn - WALL_PUMPS) <= 2,
     `the two extra pumps should start on 01:07:00, got ${hms(pumpsOn)}`);
+  assert.equal(pumpsOn, s.t_sim + WALL_HANDOVER,
+    'and they get there by running, not by a jump');
 
   // Ab hier laeuft die Uhr 1:1 mit -- durch die zweite Haelfte der Haltephase
   // und den Auslauf bis zum Knopfdruck.
   let guard = 0;
-  const limit = Math.round(1400 / DT);
+  const limit = Math.round(TO_COASTDOWN_S / DT);
   while (!s.scram.active && guard < limit) { step({ engine, session }, 1); guard++; }
   assert.equal(s.scram.active, true, 'script never pressed AZ-5');
   const az5 = tut.view().wall;
@@ -282,8 +293,119 @@ test('the clock hits the historical marks: dip jump, pumps at 01:07, AZ-5 at 01:
   const az5Entry = session.result.tutorial.completed.find(e => e.id === 'az5');
   assert.ok(!az5Entry || Math.abs(az5Entry.w - WALL_AZ5) <= 3);
   assert.equal(session.result.tutorial.wallOffset, engine.ctx.wallClock);
-  t.diagnostic(`dip ${hms(afterJump)} · pumps ${hms(pumpsOn)} · AZ-5 ${hms(az5)} `
+  t.diagnostic(`dip ${hms(afterDip)} · pumps ${hms(pumpsOn)} · AZ-5 ${hms(az5)} `
     + `· destroyed ${hms(end)}`);
+});
+
+// ── Speisewasserschwall um 01:19 ────────────────────────────────────────────
+//
+// Historisch die einzige Handlung zwischen Pumpenzuschaltung und Versuch. Die
+// Wirkkette gab es in rbmk.js laengst (mehr kaltes Speisewasser -> mehr
+// Unterkuehlung -> weniger Dampfblasen -> negative Reaktivitaet); neu ist nur,
+// dass die Uebung sie faehrt. Geprueft wird beides: dass der Schwall wirkt --
+// und dass die Anlage danach wieder so in den Versuch geht wie vorher, denn
+// darauf ist die AZ-5-Wirkung kalibriert.
+
+const WALL_SURGE = 1 * 3600 + 19 * 60;    // 01:19:00
+
+test('the feedwater surge at 01:19 is really driven -- and the test still starts from the same plant', t => {
+  const f = boot();
+  const { engine, session } = f;
+  const s = engine.state;
+  const tut = session.tutorial;
+  const fw = engine.ctx.fwCtl;
+  const hms = (sec) => new Date(Math.round(sec) * 1000).toISOString().slice(11, 19);
+
+  step(f, Math.round(6 / DT));
+  assert.ok(tut.confirmInspect());
+
+  // Bis kurz vor den Schwall -- dort steht die Anlage ruhig auf ihrem
+  // Haltezustand.
+  let guard = 0;
+  const limit = Math.round(TO_COASTDOWN_S / DT);
+  while (tut.view().wall < WALL_SURGE - 5 && guard < limit) { step(f, 1); guard++; }
+  assert.equal(tut.steps[tut.index], 'hold', 'the surge belongs into the second half of the hold');
+  const before = { sub: s.dTsub, void: s.alphaBar, fw: s.W_fw, level: s.L_drum, n: s.n };
+  assert.equal(fw.auto, true, 'feedwater is on automatic before the surge');
+
+  // Der Schwall selbst.
+  while (fw.auto && guard < limit) { step(f, 1); guard++; }
+  const started = tut.view().wall;
+  assert.ok(Math.abs(started - WALL_SURGE) <= 2,
+    `the surge should start on 01:19:00, got ${hms(started)}`);
+  assert.ok(fw.manual > 0.1, `feedwater goes to hand, got ${fw.manual}`);
+  assert.equal(tut.hint(), 'tut_chernobyl_hint_feed_surge',
+    'while it runs, the hint says what is happening');
+  assert.ok(engine.ctx.log.some(e => e.key === 'event_chernobyl_feed_surge'),
+    'the surge belongs into the timeline, not only into the numbers');
+
+  // Speichern/Laden mitten im Schwall: ohne die beiden Merker im Snapshot
+  // finge er nach dem Laden wieder von vorn an.
+  const blob = JSON.parse(JSON.stringify(pack(engine, DEF.id, session.run, session)));
+  const reEngine = createEngine(rbmk, { seed: DEF.seed });
+  const reSession = new Session(reEngine, DEF);
+  reSession.start();
+  assert.equal(apply(blob, reEngine, reSession.run, reSession), null);
+  assert.equal(reSession.tutorial.hint(), 'tut_chernobyl_hint_feed_surge',
+    'a save taken during the surge comes back inside it');
+
+  let subMax = s.dTsub;
+  let voidMin = s.alphaBar;
+  let levelMax = s.L_drum;
+  let nMin = s.n;
+  while (!fw.auto && guard < limit) {
+    step(f, 1); guard++;
+    subMax = Math.max(subMax, s.dTsub);
+    voidMin = Math.min(voidMin, s.alphaBar);
+    levelMax = Math.max(levelMax, s.L_drum);
+    nMin = Math.min(nMin, s.n);
+  }
+  // Wirkung, nicht Behauptung: Unterkuehlung hoch, Blasen weg, Leistung sackt.
+  // Gemessen wird gegen den Zustand DAVOR, nicht gegen feste Zahlen: auf
+  // welchem Niveau die Haltephase laeuft, haengt daran, welche Leistung die
+  // Anlage bei der Schichtuebernahme hatte (siehe _triggerDip: der Sollwert
+  // ist der Wert von damals) -- gemessen zwischen 6,4 und 7,4 %.
+  assert.ok(subMax > before.sub + 1, `subcooling must climb, ${before.sub} -> ${subMax}`);
+  assert.ok(voidMin < before.void / 2, `voids must collapse, ${before.void} -> ${voidMin}`);
+  assert.ok(nMin < before.n - 0.002,
+    `power dips while the voids go, ${(before.n * 100).toFixed(2)} -> ${(nMin * 100).toFixed(2)}%`);
+  // Und der Trommelpegel bleibt unter der Meldung "hoch" (rbmk.js: 0,78 m).
+  assert.ok(levelMax < 0.78, `drum level must stay below the alarm, got ${levelMax}`);
+
+  // Die zweite Haelfte des Vorgangs faehrt die Automatik: sie nimmt den
+  // Speisestrom zurueck, um den Pegel wieder auf den Sollwert zu bringen, die
+  // Blasen kommen wieder, und die Leistung schwingt kurz ueber den
+  // Ausgangswert. Auch das steht so in den Aufzeichnungen der Nacht -- die
+  // Kopplung laeuft in beide Richtungen.
+  let nMax = s.n;
+  let voidMax = s.alphaBar;
+  const after = tut.view().wall + 90;
+  while (tut.view().wall < after && guard < limit) {
+    step(f, 1); guard++;
+    nMax = Math.max(nMax, s.n);
+    voidMax = Math.max(voidMax, s.alphaBar);
+  }
+  assert.ok(nMax > before.n + 0.002,
+    `power swings back up after the cutback, ${(before.n * 100).toFixed(2)} -> ${(nMax * 100).toFixed(2)}%`);
+  assert.ok(voidMax > before.void * 1.3, `voids overshoot, ${before.void} -> ${voidMax}`);
+
+  // Beim Auslaufbeginn steht die Anlage wieder da, wo sie ohne den Schwall
+  // stuende -- sonst waere die AZ-5-Wirkung eine andere Messung.
+  while (tut._runbackT0 == null && guard < limit) { step(f, 1); guard++; }
+  assert.ok(Math.abs(s.alphaBar - before.void) < 0.005,
+    `voids are back at the test, ${before.void} -> ${s.alphaBar}`);
+  assert.ok(Math.abs(s.L_drum - before.level) < 0.05,
+    `drum level is back at the test, ${before.level} -> ${s.L_drum}`);
+  assert.equal(fw.auto, true, 'feedwater is back on automatic for the test');
+
+  while (session.phase === PHASE.RUNNING && guard < limit) { step(f, 1); guard++; }
+  assert.equal(s.destroyed, true, 'the surge must not cost the exercise its outcome');
+  const end = s.t_sim + engine.ctx.wallClock;
+  assert.ok(Math.abs(end - (WALL_AZ5 + 5)) <= 5, `destruction near 01:23:45, got ${hms(end)}`);
+  t.diagnostic(`surge ${hms(started)} · subcooling ${before.sub.toFixed(1)} -> ${subMax.toFixed(1)} K `
+    + `· voids ${(before.void * 100).toFixed(2)} -> ${(voidMin * 100).toFixed(2)} -> ${(voidMax * 100).toFixed(2)} % `
+    + `· power ${(nMin * 100).toFixed(2)} / ${(before.n * 100).toFixed(2)} / ${(nMax * 100).toFixed(2)} % `
+    + `· level max ${levelMax.toFixed(2)} m · destroyed ${hms(end)}`);
 });
 
 // ── Turbogenerator als Schwungmasse ─────────────────────────────────────────
@@ -352,33 +474,71 @@ test('only the pumps on the coasting generator lose speed -- the rest stay on th
 
 // ── Zeitlupe ────────────────────────────────────────────────────────────────
 
-test('the exercise asks for slow motion only around AZ-5, not during the hold', () => {
-  const { engine, session } = boot();
+test('the exercise drives the time factor: fast through the holds, real time for the coastdown, slow motion for AZ-5', t => {
+  const f = boot();
+  const { engine, session } = f;
   const s = engine.state;
   const tut = session.tutorial;
-  // Vor dem Auslauf entscheidet der Spieler ueber den Zeitraffer.
+  // Vor der Schichtuebernahme und waehrend des Einbruchs entscheidet der
+  // Spieler -- der Einbruch ist der Teil, den man sehen soll.
   assert.equal(tut.speedHint, null);
 
-  step({ engine, session }, Math.round(6 / DT));
-  tut.confirmInspect();
-  step({ engine, session }, Math.round(5 / DT));
-  tut.confirmInspect();
-  advanceTo({ engine, session }, 5, 1400);
-  assert.equal(tut.speedHint, null, 'the hold and the coastdown start run at normal speed');
+  step(f, Math.round(6 / DT));
+  assert.ok(tut.confirmInspect());
+  assert.equal(tut.speedHint, null, 'the dip itself runs at whatever the player chose');
 
-  // Kurz vor dem Knopfdruck schaltet die Uebung selbst auf Zeitlupe -- im
+  // Die lange Erholung: hoechster Zeitraffer, sonst sitzt der Spieler eine
+  // halbe Stunde vor einer ruhigen Anzeige (seit 0.6.4 wird sie gerechnet).
+  advanceTo(f, 2, 600);
+  assert.equal(tut.steps[tut.index], 'recover');
+  assert.equal(tut.speedHint, 60, 'the recovery hold asks for the highest time factor');
+
+  // Die Pumpenzuschaltung um 01:07 gehoert gesehen -- der Schritttext bittet
+  // ausdruecklich darum, dem Kernstrom zuzusehen.
+  let guard = 0;
+  const limit = Math.round(TO_COASTDOWN_S / DT);
+  while (tut.speedHint === 60 && guard < limit) { step(f, 1); guard++; }
+  assert.equal(tut.steps[tut.index], 'pumps');
+  assert.equal(tut.speedHint, 1, 'the pumps come on in real time');
+
+  // Danach wieder Zeitraffer, bis der Speisewasserschwall um 01:19 kommt --
+  // die einzige Handlung in den Haltephasen, bei 60x ein Wimpernschlag.
+  while (tut.speedHint === 1 && guard < limit) { step(f, 1); guard++; }
+  assert.equal(tut.speedHint, 60, 'the second half of the hold is fast again');
+  while (tut.speedHint === 60 && guard < limit) { step(f, 1); guard++; }
+  assert.equal(tut.speedHint, 4, 'the surge is shown at a speed one can follow');
+  assert.equal(tut.steps[tut.index], 'hold');
+  assert.ok(engine.ctx.log.some(e => e.key === 'event_chernobyl_feed_surge'));
+
+  // Danach wieder Zeitraffer bis zum Testbeginn.
+  while (tut.speedHint === 4 && guard < limit) { step(f, 1); guard++; }
+  assert.equal(tut.speedHint, 60, 'after the surge the hold is fast again');
+
+  // Der Auslauf selbst laeuft in Echtzeit ...
+  while (tut._runbackT0 == null && guard < limit) { step(f, 1); guard++; }
+  assert.equal(tut.speedHint, 1, 'the coastdown runs in real time');
+
+  // ... und kurz vor dem Knopfdruck schaltet die Uebung auf Zeitlupe: im
   // Vorfuehrmodus koennte der Spieler den Moment sonst nicht sehen, und die
   // Stellteile sind ohnehin gesperrt.
-  let guard = 0;
-  while (tut.speedHint === null && guard < Math.round(60 / DT)) {
-    step({ engine, session }, 1); guard++;
-  }
+  while (tut.speedHint === 1 && guard < limit) { step(f, 1); guard++; }
   const since = s.t_sim - tut._runbackT0;
-  assert.ok(typeof tut.speedHint === 'number' && tut.speedHint > 0 && tut.speedHint < 1,
-    `slow motion must be a real factor below 1, got ${tut.speedHint}`);
+  const SLOWMO = tut.speedHint;
+  assert.ok(typeof SLOWMO === 'number' && SLOWMO > 0 && SLOWMO < 1,
+    `slow motion must be a real factor below 1, got ${SLOWMO}`);
   assert.ok(since > 25 && since < 36,
     `slow motion should start a few seconds before AZ-5 at t+36s, got t+${since.toFixed(1)}s`);
   assert.equal(s.scram.active, false, 'the switch must land BEFORE the press, not inside it');
+
+  // Und am Ende bleibt es langsam: die Runde endet nicht damit, dass die
+  // Uebung ihren letzten Schritt abhakt, sondern damit, dass der Kern
+  // zerstoert ist (RunState.checkFail greift vor tutorial.done). Genau
+  // dieser Nachlauf ist der Teil, den man sehen soll.
+  while (session.phase === PHASE.RUNNING && guard < limit) { step(f, 1); guard++; }
+  assert.equal(s.destroyed, true);
+  assert.equal(tut.done, false, 'the physics ended the round, not the step list');
+  assert.equal(tut.speedHint, SLOWMO, 'the last seconds stay in slow motion');
+  t.diagnostic(`slow motion from t+${since.toFixed(1)}s after the coastdown started`);
 });
 
 // Der zweite Befund, den der Abschlusstext dem Spieler als Tatsache hinstellt
@@ -406,7 +566,7 @@ test('the debrief note must stay true: power flat without AZ-5, destroyed withou
     tut.confirmInspect();
     // Bis zum Beginn des Auslaufs (Schritt 'test', Index 5) -- er haengt seit
     // 0.6.1 am Ende von 'hold', nicht mehr am Ende von 'pumps'.
-    advanceTo({ engine, session }, 5, 1400);
+    advanceTo({ engine, session }, 5, TO_COASTDOWN_S);
     assert.equal(tut.index, 5);
     engine.scram = () => {};
     let peak = s.n; let tPeak = 0;
@@ -451,7 +611,7 @@ test('flat power before AZ-5 is a balance, not calm -- void rises while the trim
   engine.scram = () => {};      // nur das Drehbuch aushebeln
   step({ engine, session }, Math.round(6 / DT));
   tut.confirmInspect();
-  advanceTo({ engine, session }, 5, 1400);
+  advanceTo({ engine, session }, 5, TO_COASTDOWN_S);
 
   const voidStart = s.alphaBar;
   const nStart = s.n;
@@ -486,7 +646,7 @@ test('AZ-5 pressed too early in the same coastdown does not destroy the core', t
     tut.confirmInspect();
     step({ engine, session }, Math.round(5 / DT));
     tut.confirmInspect();
-    advanceTo({ engine, session }, 5, 1400);
+    advanceTo({ engine, session }, 5, TO_COASTDOWN_S);
     let pressed = false;
     for (let i = 0, n = Math.round(180 / DT); i < n && session.phase === PHASE.RUNNING; i++) {
       step({ engine, session }, 1);
@@ -514,7 +674,7 @@ test('pressing AZ-5 too early (no coastdown) does not destroy the core -- the co
   tut.confirmInspect();
   // Durch den gefahrenen Einbruch (siehe _triggerDip) und die Haltephase bis
   // zur Pumpenzuschaltung -- beides laeuft von selbst ab.
-  advanceTo({ engine, session }, 3, 1400);
+  advanceTo({ engine, session }, 3, TO_PUMPS_S);
   assert.equal(tut.index, 3);
 
   // AZ-5 sofort, OHNE Pumpen/Auslauf -- die Kombination aus niedriger ORM
@@ -567,7 +727,7 @@ test('saving and reloading mid-coastdown must not lose the narrow AR trim', () =
     // Index 6 ('window') heisst: Haltephase, Pumpen und der Schritt 'test'
     // sind durch, der Auslauf laeuft -- genau der Zustand, in dem der Fehler
     // auftrat.
-    advanceTo({ engine, session }, 6, 1400);
+    advanceTo({ engine, session }, 6, TO_COASTDOWN_S);
     assert.equal(tut.index, 6, 'coastdown was not reached');
     let curEngine = engine, curSession = session;
     if (reloadAfterTest) {

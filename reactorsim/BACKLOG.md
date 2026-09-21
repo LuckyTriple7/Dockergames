@@ -157,7 +157,6 @@ Offen bzw. bewusst so:
   Marke ist nur so frisch wie ihr letztes Schreiben). Lieber ein paar Sekunden
   zu wenig gutschreiben als eine fremde Minute zu viel.
 
-
 ### Chernobyl-Tutorial „Block 4 – Die Nacht des 26. April“
 
 Umgesetzt: geführter RBMK-Nachbau der Nacht vom 26. April 1986 ab
@@ -234,14 +233,55 @@ Das hat drei weitere Punkte mit umgeworfen, die vorher als unlösbar galten:
   vorher fest hinterlegt hat. Xenon spielt dabei kaum eine Rolle, ein Einbruch
   von Minuten ist gegen die Jod-Halbwertszeit zu kurz. Der Schritt `dip` fährt
   die Regelung jetzt auf Hand, die Stäbe ein, hält, und lässt dieselbe Regelung
-  die Leistung zurückholen. Die Uhr springt danach nur noch über den Rest der
-  Erholung, die real bis kurz nach 01:00 dauerte.
+  die Leistung zurückholen. Den Rest der Erholung, die real bis kurz nach 01:00
+  dauerte, übersprang die Uhr bis 0.6.3 — seit 0.6.4 wird auch er gefahren.
 - **Zeitlupe.** `loop.js` konnte Faktoren unter 1 immer schon, es gab nur keine
   Bedienung dafür. Neu sind ¼×- und ½×-Knöpfe in der Statusleiste sowie `-`
   und `+`, die die ganze Leiter von ¼× bis 60× entlanggehen. Die Chernobyl-
   Übung fordert von sich aus ¼× an, vier Sekunden vor AZ-5
   (`tutorial.speedHint`) -- im Vorführmodus könnte der Spieler den Moment sonst
   nicht sehen, und die Stellteile sind gesperrt.
+
+**Seit 0.6.4 zusätzlich umgesetzt — drei der vier bekannten Grenzen sind
+abgearbeitet.** Nachweise: [Chernobyl-Audit 0.6.4](audit/CHERNOBYL-2026-09-21.md).
+
+- **Die Rotorzeitkonstante bleibt gesetzt — aber nachweislich unkritisch.**
+  Herleiten lässt sie sich nicht (τ = J·ω₀²/(2·P₀) bräuchte die Rotorträgheit
+  von TG-8, die nirgends nachschlagbar ist). Gemessen wurde deshalb das
+  Gegenteil einer Herleitung
+  ([`tests/tools/chernobyl_tau_sweep.mjs`](tests/tools/chernobyl_tau_sweep.mjs)):
+  Über τ = 8 bis 30 s — Faktor vier — fällt AZ-5 unverändert auf 01:23:40, der
+  Kern ist fünf bis sechs Sekunden später zerstört, und die historischen 36 s
+  liegen jedes Mal im Wirkfenster. Nur dessen unterer Rand wandert mit τ
+  (10 s bei τ = 8 s, 25 s bei τ = 30 s). Empfindlicher ist die *Pumpenzahl*:
+  drei bis fünf am auslaufenden Generator tragen den Mechanismus, bei sechs
+  zerstört der geskriptete Lauf den Kern nicht mehr. Die historischen vier
+  liegen mittig im tragenden Bereich.
+- **Der Speisewasserschwall um 01:19 wird gefahren.** Neue Physik brauchte es
+  dafür nicht — die Kette steckte in `rbmk.js` vollständig drin: mehr kaltes
+  Speisewasser, höhere Unterkühlung (`_subcooling`), weniger Dampfblasen
+  (`_void`), negative Reaktivität über den positiven Blasenkoeffizienten.
+  Gefahren wird die Handlung (Speisewasserregler auf Hand, 15 % des
+  Nennstroms, 30 s), alles Weitere macht die Anlage: Unterkühlung 1,2 → 2,6 K,
+  Blasenanteil 5,3 → 1,9 %, Leistung −0,3 Prozentpunkte. Die zweite Hälfte des
+  historischen Vorgangs — erst zu viel Wasser, dann zu wenig — fährt die
+  Automatik von selbst, samt Blasen-Überschwinger auf das Doppelte.
+  Nachgebildet ist der Vorgang, **nicht seine Dauer**: real lief der Schwall
+  bis kurz vor den Versuch, so lange gehalten fährt er den zusammengefassten
+  Trommelpegel dieses Modells in seinen Anschlag bei 1,00 m — und dann
+  zerstört AZ-5 den Kern gar nicht mehr. Beim Auslaufbeginn steht die Anlage
+  deshalb wieder dort, wo sie ohne den Schwall stünde.
+- **Der Zeitmaßstab des Einbruchs ist nicht mehr gerafft.** Der Uhrensprung am
+  Ende von `dip` ist ersatzlos weg: `recover` hält jetzt bis zur
+  Pumpenzuschaltung um 01:07, genau wie `hold` bis zum Testbeginn hält. Damit
+  ist die Uhr durchgehend die Betriebszeit plus festem Versatz. Die
+  zusätzlichen 38 gerechneten Minuten kosten nichts an Genauigkeit — alle
+  dokumentierten Zeiten treffen weiter, die Spitze liegt bei 294 statt 300 % —
+  und bringen etwas: die Abschaltreserve sinkt über die Strecke von 81,7 auf
+  72,2, weil das Xenon sich wirklich aufbaut. Damit die Übung nicht zur
+  Stunde am Schirm wird, stellt sie den Zeitraffer selbst ein (60× durch die
+  Haltephasen, 1× für die Pumpenzuschaltung, 4× für den Schwall, 1× für den
+  Auslauf, ¼× um AZ-5).
 
 Offen/bekannte Einschränkungen:
 
@@ -260,15 +300,12 @@ Offen/bekannte Einschränkungen:
   ausdrücklich. Eine echte Lösung bräuchte mehr Bänke oder eine axial
   aufgelöste Stabkurve -- ein Umbau am Kern des RBMK-Modells, nicht an dieser
   Übung.
-- **Die Rotorzeitkonstante ist gesetzt, nicht hergeleitet.** τ = 15 s bildet den
-  dokumentierten Auslauf ab (Durchsatz spürbar weg nach einer halben Minute),
-  ohne eine Schwungmasse zu erfinden, für die es keine nachschlagbare Zahl
-  gibt. Welche vier der acht Pumpen am Generator hängen, ist ebenfalls gesetzt.
-- **Der zeitliche Maßstab des Einbruchs bleibt gerafft.** Real dauerte die
-  Erholung auf ~200 MWth über eine halbe Stunde, hier sind es Minuten; der
-  Rest steckt weiterhin im einen Uhrensprung am Ende von `dip`.
-- **Nicht nachgebildet:** Speisewasserschwall um 01:19, blockierte
-  Turbinenschnellabschaltung, ORM-Ausdruck um 01:22:30.
+- **Welche vier der acht Pumpen am auslaufenden Generator hängen, ist
+  gesetzt** — nur ihre ANZAHL ist nachgemessen (siehe oben).
+- **Die Dauer des Speisewasserschwalls ist eine Setzung** (30 s), begründet
+  durch den Pegelanschlag des Modells, nicht durch die Aufzeichnungen.
+- **Nicht nachgebildet:** blockierte Turbinenschnellabschaltung, ORM-Ausdruck
+  um 01:22:30.
 
 ## Weitere Störszenarien
 
