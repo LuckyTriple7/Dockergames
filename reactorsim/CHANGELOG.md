@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.6.13
+
+- ✨ **Debug-Modus: die ganze Schicht wird mitgeschrieben und am Ende
+  heruntergeladen.** Kaestchen in der Fusszeile des Startbildschirms,
+  Standard aus, gilt ab der naechsten Runde. Am Ende jeder Schicht --
+  Debrief, Verlustbildschirm oder Abbruch ins Menue -- entsteht genau eine
+  Datei `reactorsim-<szenario>-<zeit>.ndjson.gz`. Eine Zeile je Datensatz,
+  kein Einruecken, kein CSV: lesbar muss sie nicht sein, durchsuchbar
+  (`zcat … | grep '\"k\":\"event\"'`) schon.
+
+  Warum so wenig neue Mechanik noetig war: der Lauf ist laengst
+  reproduzierbar. `game/recorder.js` schreibt jede Bedienhandlung mit
+  Schrittzahl mit, `game/replay.js` rechnet daraus denselben Lauf unter Node
+  bitgleich nach. Das Protokoll sammelt deshalb zweierlei -- was zum
+  Nachrechnen fehlt (Kopfdaten, Spur, Zustandsabzug) und was beim
+  Nachrechnen NICHT herauskommt: Bildrate, verworfener Rueckstand,
+  Zeitrafferwechsel. Genau diese letzte Gruppe unterscheidet den Satz "bei
+  mir explodiert es, bei dir nicht" von einem Ratespiel.
+
+  Drin sind: Kopf (Version, Typ, Szenario, Seed, Zeitschritt, Browser,
+  Aufloesung), Spaltennamen zu den Zahlenreihen, die volle Zahlenliste des
+  Zustands je Simulationssekunde -- und je SCHRITT, sobald AZ-5/RESA steht
+  oder der Kern zerstoert ist, weil sich dort alles in Sekunden
+  entscheidet --, der Zustandshash alle zehn Sekunden, jeder Eintrag aus
+  Zeitleiste und Lernprotokoll, die Bildraten je Realsekunde, die Spur des
+  Recorders, der Trend-Schnappschuss, der Zustandsabzug und der Befund.
+  Gemessen an einem vollen Chernobyl-Lauf: 7.213 Zeilen, 2,1 MB roh,
+  560 KB gepackt.
+
+  Die Hashkette ist der eigentliche Hebel: sie macht aus "die Nachrechnung
+  sieht anders aus" ein "sie laeuft ab Schritt N auseinander".
+
+  Grenzen, die im Protokoll selbst stehen: bei einem FORTGESETZTEN Stand
+  verwirft `boot()` den Recorder (ein Sprung auf einen gespeicherten Zustand
+  ist aus Schritten plus Spur nicht nachrechenbar) -- `meta.resumed` sagt
+  es, das Protokoll ist dann beobachtend statt reproduzierend. Und bei sehr
+  langen Runden bricht die Aufzeichnung bei 400.000 Zeilen ab, mit Vermerk
+  im Kopf statt stillschweigend.
+
+- 🔧 **`sim/state.js` hat jetzt `numberLabels()` neben `numbers()`.**
+  Ohne die Spaltennamen waere jede Zahlenreihe im Protokoll nur mit dem
+  Quelltext daneben zu lesen. Beide bauen aus denselben Listen, ein Test
+  vergleicht trotzdem ihre Laenge fuer alle drei Reaktortypen -- genau hier
+  koennte eine Aenderung an einer Stelle still danebengehen.
+
+- 🔧 **Gefunden beim Testen des neuen Pfads:** im freien Spiel gibt
+  es gar keine Szenariodatei, und der Protokollkopf griff ungeprueft darauf
+  zu. Der Debug-Modus waere ausgerechnet dort gestorben, wo er am
+  haeufigsten gebraucht wird. Die Lebenszyklus-Tests decken den Fall jetzt
+  ab.
+
 ## 0.6.12
 
 - 🔧 **Die Haltezeit im Uebungsstatus steht wieder in ganzen

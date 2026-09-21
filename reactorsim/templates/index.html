@@ -138,6 +138,14 @@
       {{ t.opt_helper }}
     </label>
 
+    <!-- Debug-Modus: zeichnet die ganze Schicht mit und laedt das Protokoll
+         am Ende herunter (siehe game/debugTape.js). Standard AUS -- die
+         Aufzeichnung kostet Speicher und die Datei will niemand ungefragt. -->
+    <label class="rs-cold-start">
+      <input type="checkbox" id="rs-debug-toggle">
+      {{ t.opt_debug }}
+    </label>
+
     <!-- Beides gilt wie das Kaltstart-Haekchen nur fuer das freie Spiel: ein
          Szenario bringt seinen Zeitplan selbst mit (events in der JSON) und
          startet stets mit frischem Kern. Siehe game/freeEvents.js und
@@ -495,6 +503,7 @@
     <p class="rs-ctl-hint" id="rs-debrief-msg"></p>
     <ol class="rs-scores" id="rs-debrief-scores"></ol>
     <div class="rs-modal-actions">
+      <button type="button" class="rs-btn" id="rs-debrief-debug" hidden>{{ t.btn_debug_log }}</button>
       <button type="button" class="rs-btn rs-btn-primary" id="rs-debrief-restart">{{ t.btn_restart }}</button>
       <button type="button" class="rs-btn" id="rs-debrief-review">{{ t.btn_close }}</button>
       <button type="button" class="rs-btn" id="rs-debrief-close">{{ t.btn_menu }}</button>
@@ -516,6 +525,7 @@
     <p class="rs-modal-detail" id="rs-destroyed-detail"></p>
     <ol class="rs-log" id="rs-destroyed-log"></ol>
     <div class="rs-modal-actions">
+      <button type="button" class="rs-btn" id="rs-destroyed-debug" hidden>{{ t.btn_debug_log }}</button>
       <button type="button" class="rs-btn rs-btn-primary" id="rs-destroyed-restart">{{ t.btn_restart }}</button>
       <button type="button" class="rs-btn" id="rs-destroyed-review">{{ t.btn_close }}</button>
       <button type="button" class="rs-btn" id="rs-destroyed-close">{{ t.btn_menu }}</button>

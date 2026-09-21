@@ -22,8 +22,11 @@ import { MusicLoop, playClip, setMuted } from './ui/music.js';
 import { STATUS_STATS, sanitizeStatusKeys } from './ui/statusStats.js';
 import { enableDragReorder } from './ui/dragReorder.js';
 import { attachRecorder } from './game/recorder.js';
+import { DebugTape } from './game/debugTape.js';
+import { packText, downloadBlob } from './ui/download.js';
 import { record } from './game/coreActions.js';
 import { renderLearning } from './ui/debrief.js';
+import { learningReport } from './game/learning.js';
 import { buildTutorial, renderTutorialResult } from './ui/tutorial.js';
 import { renderGuidance } from './ui/guidance.js';
 import { renderObjectiveResult } from './ui/objectives.js';
@@ -203,6 +206,17 @@ function initStart() {
     api.writePrefs(app.prefs);
   });
 
+  // Debug-Modus: Standard AUS. Er zeichnet jede Schicht mit (siehe
+  // game/debugTape.js) und laedt das Protokoll am Ende von selbst herunter;
+  // beides will niemand ungefragt. Umgeschaltet wirkt er ab der NAECHSTEN
+  // Runde -- die Aufzeichnung haengt am Rundenstart, nicht am Kaestchen.
+  const debugBox = $('#rs-debug-toggle');
+  app.prefsPromise.then((prefs) => { debugBox.checked = !!prefs.debug; });
+  debugBox.addEventListener('change', () => {
+    app.prefs.debug = debugBox.checked;
+    api.writePrefs(app.prefs);
+  });
+
   // Störungsstufe und Kernalter des freien Spiels. Beides bleibt gemerkt wie
   // das Kaltstart-Haekchen -- wer einmal "hart" gewaehlt hat, meint das auch
   // beim naechsten Mal. Vorgabe ist 'normal': ein freies Spiel ganz ohne
@@ -338,6 +352,16 @@ function initStart() {
       }
     });
   });
+
+  // Das Protokoll wird am Rundenende von selbst heruntergeladen (siehe
+  // finishDebugTape()). Diese beiden Knoepfe bieten dieselbe, bereits
+  // gebaute Datei noch einmal an -- fuer den Fall, dass der Browser den
+  // stillen Download geschluckt hat.
+  for (const id of ['#rs-debrief-debug', '#rs-destroyed-debug']) {
+    $(id).addEventListener('click', () => {
+      if (app.debugFile) downloadBlob(app.debugFile.blob, app.debugFile.name);
+    });
+  }
 
   $('#rs-debrief-close').addEventListener('click', () => {
     $('#rs-debrief').hidden = true;
@@ -1706,6 +1730,7 @@ function showFault(detail) {
 function showDestroyed() {
   $('#rs-debrief').hidden = true;
   app.endShown = true;
+  finishDebugTape('destroyed');
   setSpeed(0);
   app.bgMusic.stop();
   if (app.horn) app.horn.meltdown();
@@ -1817,6 +1842,9 @@ function clearEndDialogs() {
 }
 
 function toMenu() {
+  // Auch ein Abbruch ist ein Ende der Schicht -- gerade der interessiert beim
+  // Suchen oft am meisten.
+  finishDebugTape('aborted');
   cancelScenarioLoad();
   closeSaveSlots();
   app.bootId = (app.bootId || 0) + 1;
@@ -1924,6 +1952,54 @@ function runOutcome(failed) {
 }
 
 /** Auswertung am Ende eines Szenarios. */
+/**
+ * Debug-Protokoll abschliessen, packen und anbieten.
+ *
+ * Aufgerufen an jedem Ende einer Schicht -- Debrief, Verlustbildschirm und
+ * Abbruch ins Menue. Der Merker app.debugDownloaded sorgt dafuer, dass das
+ * genau einmal geschieht: showDebriefNow() und showDestroyed() koennen
+ * denselben Lauf nacheinander sehen (siehe deferEnd()).
+ *
+ * Was hier dazukommt und nicht schon Zeile fuer Zeile mitgeschrieben wurde:
+ * die Spur des Recorders (damit der Lauf hier nachrechenbar ist), der
+ * Trend-Schnappschuss, der Zustandsabzug und der Befund. Bei einem
+ * FORTGESETZTEN Stand fehlt die Spur (siehe boot(): der Recorder wird dort
+ * verworfen) -- das Protokoll ist dann beobachtend, nicht reproduzierend,
+ * und `meta.resumed` sagt es.
+ */
+async function finishDebugTape(reason, result = null) {
+  const tape = app.debugTape;
+  if (!tape || app.debugDownloaded) return;
+  app.debugDownloaded = true;
+  try {
+    tape.note('end', { reason });
+    tape.finish({
+      tape: app.engine?.recorder ? app.engine.recorder.serialize() : null,
+      trends: app.engine?.ctx?.trends ? app.engine.ctx.trends.snapshot() : null,
+      journal: app.engine ? learningReport(app.engine) : null,
+      // RunState.summary() nimmt den Zustand als Argument (siehe
+      // game/scenario.js) -- ohne ihn wirft sie, und der ganze
+      // Protokollaufbau liefe in den Fang unten. Nebenwirkungen hat sie
+      // keine, ein zweiter Aufruf ist also unbedenklich.
+      result: result || (app.session?.run && app.engine
+        ? app.session.run.summary(app.engine.state) : null),
+      state: app.engine && app.session
+        ? packSave(app.engine, app.briefDef?.id || null, app.session.run, app.session)
+        : null,
+    });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const what = app.briefDef?.id || 'frei';
+    const { blob, ext } = await packText(tape.toNdjson());
+    app.debugFile = { blob, name: `reactorsim-${what}-${stamp}.ndjson${ext}` };
+    downloadBlob(blob, app.debugFile.name);
+    for (const id of ['#rs-debrief-debug', '#rs-destroyed-debug']) $(id).hidden = false;
+  } catch (err) {
+    // Ein kaputtes Protokoll darf das Rundenende nicht mitreissen -- der
+    // Spieler hat gerade etwas anderes zu tun als einen Debug-Fehler.
+    console.error('[reactorsim] Debug-Protokoll fehlgeschlagen:', err);
+  }
+}
+
 function showDebrief(result, failed) {
   $('#rs-tutorial-modal').hidden = true;
   // Free play has no score: its loss screen is opened after the next render.
@@ -1942,6 +2018,7 @@ function showDebrief(result, failed) {
 
 function showDebriefNow(result, failed) {
   reportRun(runOutcome(failed));
+  finishDebugTape(failed || 'completed', result?.summary || null);
   setSpeed(0);
   app.bgMusic.stop();
   const verdict = $('#rs-debrief-verdict');
@@ -2246,6 +2323,29 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
   // Sprung auf einen gespeicherten Zustand lässt sich nicht aus Schritten
   // plus Protokoll nachrechnen.
   attachRecorder(app.engine);
+  // Debug-Protokoll (siehe game/debugTape.js). Es haengt am Rundenstart, nicht
+  // am Kaestchen: eine Aufzeichnung, die mitten im Lauf beginnt, hat keinen
+  // Anfang und ist damit nicht nachrechenbar.
+  app.debugTape = app.prefs.debug
+    ? new DebugTape({
+      version: (window.RS_CFG && window.RS_CFG.version) || null,
+      reactor: reactorId,
+      // Im freien Spiel gibt es gar keine Szenariodatei -- ohne die Fragezeichen
+      // stirbt das Protokoll genau dort, wo es am haeufigsten gebraucht wird.
+      scenario: scenarioDef?.id || null,
+      tutorial: scenarioDef?.tutorial || null,
+      seed: scenarioDef?.seed ?? null,
+      dt: 0.05,
+      resumed: !!saved,
+      free: freeSetup ? { ...freeSetup } : null,
+      lang: (window.RS_CFG && window.RS_CFG.lang) || null,
+      ua: navigator.userAgent,
+      screen: `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio || 1}`,
+    })
+    : null;
+  app.debugDownloaded = false;
+  app.debugFile = null;
+  for (const id of ['#rs-debrief-debug', '#rs-destroyed-debug']) $(id).hidden = true;
   app.session = new Session(app.engine, scenarioDef, {
     faults: freeSetup ? freeSetup.faults : 'off',
     dispatch: freeSetup ? freeSetup.dispatch : 'off',
@@ -2339,7 +2439,13 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
     app.session.step(dt, app.engine.trips.tiles(), app.engine.trips.unacknowledgedSeconds());
     built.sampleTrends();
     applyTutorialSpeed();
+    if (app.debugTape) app.debugTape.step(app.engine, app.session);
   };
+  // Bildrate, verworfener Rueckstand, Zeitraffer -- genau die Groessen, die
+  // eine Nachrechnung nicht wiederherstellen kann (siehe debugTape.js).
+  app.loop.onFrame = app.debugTape
+    ? (now, info) => { app.debugTape.frame(now, info); app.debugTape.speed(info.speed, 'loop'); }
+    : null;
   app.tutorialSpeed = null;
   app.speedBeforeSlowmo = null;
 

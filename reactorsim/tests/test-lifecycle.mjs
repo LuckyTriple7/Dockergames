@@ -11,6 +11,7 @@ import { pack, apply } from '../static/js/net/persist.js';
 import { attachRecorder } from '../static/js/game/recorder.js';
 import { TrendHistory } from '../static/js/game/trendHistory.js';
 import { Loop } from '../static/js/loop.js';
+import { DebugTape } from '../static/js/game/debugTape.js';
 
 const source = readFileSync(new URL('../static/js/main.js', import.meta.url), 'utf8');
 function deferred() {
@@ -29,7 +30,7 @@ function harness(readSave = async () => ({ ok: false })) {
   // Spielhistorie im Admin-Panel (siehe reportRun()). `runStarts` dasselbe
   // fuer /api/runs/start, mit dem der Server die Dauer selbst misst.
   const counters = { starts: 0, autosaves: 0, samples: 0, panels: 0,
-    runs: [], runStarts: [] };
+    runs: [], runStarts: [], downloads: [] };
   // Aufgezeichnet statt real verzoegert: deferEnd() (siehe main.js) nutzt
   // window.setTimeout fuer die kurze Pause vor der Kernzerstoerungs-Anzeige --
   // der Test loest sie ueber flushTimeouts() gezielt aus, statt drei echte
@@ -84,8 +85,19 @@ function harness(readSave = async () => ({ ok: false })) {
     buildDispatch() {},
     closeSaveSlots() {}, resetSaveStatus() {},
     renderGuidance(host, def) { host.hidden = !def?.guidance; },
+    // Debug-Protokoll (main.js finishDebugTape): die echte Sammelklasse, aber
+    // Packen und Herunterladen als Attrappe -- Blob/CompressionStream gibt es
+    // in diesem VM-Kontext nicht, und geprueft werden soll, DASS am Ende der
+    // Schicht genau eine Datei entsteht, nicht wie sie gepackt ist.
+    DebugTape,
+    packText: async (text) => ({ blob: { size: text.length, text }, ext: '' }),
+    downloadBlob: (blob, name) => { counters.downloads.push({ name, blob }); },
+    learningReport: () => ({ entries: [] }),
+    packSave: () => ({ v: 1 }),
+    navigator: { userAgent: 'harness' },
+    console: { error() {}, warn() {}, log() {} },
   });
-  for (const name of ['cancelScenarioLoad', 'clearEndDialogs', 'toMenu', 'showBriefing', 'deferEnd', 'reportRun', 'runOutcome', 'showDebrief', 'showDebriefNow', 'showAftermath', 'showDestroyed', 'leaveToMenu', 'boot']) {
+  for (const name of ['cancelScenarioLoad', 'clearEndDialogs', 'toMenu', 'showBriefing', 'deferEnd', 'reportRun', 'runOutcome', 'showDebrief', 'showDebriefNow', 'showAftermath', 'showDestroyed', 'leaveToMenu', 'finishDebugTape', 'boot']) {
     const fn = source.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
     assert.ok(fn, name);
     vm.runInContext(fn[0], ctx);
@@ -452,4 +464,42 @@ test('a destroyed core is reported even where free play shows no debrief', async
     reactor: 'rbmk', scenario: null, duration_s: 600, outcome: 'destroyed',
     run: 'token-1',
   }]);
+});
+
+
+test('debug mode writes exactly one log per shift, and only when it is on', async () => {
+  // Der Punkt der Aufzeichnung ist, die Raterei zu beenden -- dazu muss am
+  // Ende der Schicht verlaesslich genau EINE Datei entstehen. Zwei waeren
+  // aergerlich, keine waere der alte Zustand.
+  const off = harness();
+  await off.ctx.boot('pwr', null);
+  off.ctx.toMenu();
+  assert.equal(off.counters.downloads.length, 0, 'no log without the switch');
+  assert.equal(off.app.debugTape, null);
+
+  const on = harness();
+  on.app.prefs = { debug: true };
+  await on.ctx.boot('pwr', null);
+  assert.ok(on.app.debugTape, 'the tape must be created at the start of the round');
+  // Ein paar Schritte, damit ueberhaupt etwas drinsteht.
+  for (let i = 0; i < 60; i++) {
+    on.app.engine.step(0.05);
+    on.app.debugTape.step(on.app.engine, on.app.session);
+  }
+  on.ctx.toMenu();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(on.counters.downloads.length, 1, 'exactly one file at the end of the shift');
+  const { name, blob } = on.counters.downloads[0];
+  assert.match(name, /^reactorsim-.*\.ndjson$/, `unexpected file name: ${name}`);
+  const lines = String(blob.text).trimEnd().split('\n').map((l) => JSON.parse(l));
+  assert.equal(lines[0].k, 'meta');
+  assert.equal(lines[0].reactor, 'pwr');
+  assert.ok(lines.some((l) => l.k === 'sample'), 'the log must carry samples');
+  assert.ok(lines.some((l) => l.k === 'note' && l.what === 'end'), 'the reason for the end is missing');
+
+  // Ein zweites Ende derselben Runde darf keine zweite Datei erzeugen --
+  // showDebriefNow() und showDestroyed() koennen nacheinander kommen.
+  on.ctx.toMenu();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(on.counters.downloads.length, 1, 'the log must be written once, not per exit');
 });

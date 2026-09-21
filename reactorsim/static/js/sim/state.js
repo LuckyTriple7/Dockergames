@@ -183,21 +183,46 @@ export function sanitize(s) {
   return true;
 }
 
+// Die feste Mitte der Zahlenliste -- einmal hier, damit numbers() und
+// numberLabels() nicht auseinanderlaufen koennen (siehe den Test dazu).
+const SCALARS = ['T_f', 'T_cl', 'T_ci', 'T_co', 'T_mod', 'T_gr',
+  'W_core', 'p_prim', 'alphaBar',
+  'I', 'X', 'Pm', 'Sm', 'C_B', 'burnup',
+  'P_th', 'P_e', 'P_demand', 'f_grid', 'rho_ext', 'enthalpy', 'enthalpyBase'];
+// Felder, die es nur bei manchen Typen gibt -- sie haengen hinten an, damit
+// die Reihenfolge der uebrigen sich nie verschiebt.
+const OPTIONAL = ['W_fwDemand', 'W_fwMain', 'W_fwAux', 'fwSupplyMax',
+  'auxFeedDmd', 'auxWaterKg', 'coolantHeatMW', 'tgSpeed'];
+
 /** Alle Zahlen in fester Reihenfolge -- Grundlage von Hash und Spielstand. */
 export function numbers(s) {
   const out = [s.t_sim, s.n];
   for (let i = 0; i < s.c.length; i++) out.push(s.c[i]);
   for (let i = 0; i < s.D.length; i++) out.push(s.D[i]);
-  out.push(s.T_f, s.T_cl, s.T_ci, s.T_co, s.T_mod, s.T_gr,
-           s.W_core, s.p_prim, s.alphaBar,
-           s.I, s.X, s.Pm, s.Sm, s.C_B, s.burnup,
-           s.P_th, s.P_e, s.P_demand, s.f_grid, s.rho_ext, s.enthalpy, s.enthalpyBase);
+  for (const key of SCALARS) out.push(s[key]);
   for (let i = 0; i < s.rod.length; i++) out.push(s.rod[i]);
   for (let i = 0; i < s.rodDmd.length; i++) out.push(s.rodDmd[i]);
-  for (const key of ['W_fwDemand', 'W_fwMain', 'W_fwAux', 'fwSupplyMax',
-    'auxFeedDmd', 'auxWaterKg', 'coolantHeatMW', 'tgSpeed']) {
-    if (s[key] !== undefined) out.push(s[key]);
-  }
+  for (const key of OPTIONAL) if (s[key] !== undefined) out.push(s[key]);
+  return out;
+}
+
+/**
+ * Die Namen zu numbers(), in derselben Reihenfolge.
+ *
+ * Gebraucht vom Debug-Protokoll (game/debugTape.js): dort steht die
+ * Zahlenliste als nackte Reihe je Abtastung, und ohne diese Kopfzeile waere
+ * sie nur mit dem Quelltext daneben zu lesen. Beide Funktionen bauen aus
+ * denselben Listen oben; ein Test vergleicht trotzdem die Laengen, weil
+ * genau hier eine Aenderung an einer Stelle still danebengehen koennte.
+ */
+export function numberLabels(s) {
+  const out = ['t_sim', 'n'];
+  for (let i = 0; i < s.c.length; i++) out.push('c' + i);
+  for (let i = 0; i < s.D.length; i++) out.push('D' + i);
+  out.push(...SCALARS);
+  for (let i = 0; i < s.rod.length; i++) out.push('rod' + i);
+  for (let i = 0; i < s.rodDmd.length; i++) out.push('rodDmd' + i);
+  for (const key of OPTIONAL) if (s[key] !== undefined) out.push(key);
   return out;
 }
 
