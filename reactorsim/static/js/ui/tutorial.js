@@ -91,6 +91,14 @@ export function buildTutorial(session, render) {
     const title = t(prefix + v.id + '_title');
     const heading = t('tut_heading', { n: v.index + 1, total: steps.length, title });
     const held = Math.floor(v.held + 1e-8);
+    // Aufgerundet auf ganze Sekunden. Die Haltezeit ist nicht bei jedem
+    // Schritt eine runde Zahl: 'recover' und 'hold' der Chernobyl-Uebung
+    // zielen auf eine UHRZEIT und rechnen ihre Dauer jedes Mal neu aus
+    // (siehe chernobylTutorial.js: holdSeconds). Roh angezeigt stand da
+    // "0/2289,9500000034 s". Gerechnet wird weiter mit dem vollen Wert --
+    // gerundet wird nur, was auf dem Schirm steht, und aufgerundet, damit
+    // die Anzeige nicht vor dem Schritt fertig ist.
+    const required = Math.ceil(v.required - 1e-8);
     // Eine Nachkommastelle reicht fuer alles -- ausser fuer die
     // Neutronenleistung (die bewegt sich im Promillebereich) und die
     // Einfahrtiefe der Staebe (0,1 m waere dort die halbe Aussage, siehe
@@ -105,7 +113,7 @@ export function buildTutorial(session, render) {
     // die eigentliche Information (warten/jetzt/vorbei).
     const hold = v.inspectReady ? t('tut_inspect_pending')
       : tutorial.liveStatusIndices?.includes(v.index) ? t(v.hint, vars)
-      : t('tut_hold_compact', { held, required: v.required });
+      : t('tut_hold_compact', { held, required });
     const values = t(prefix + v.id + '_values', vars);
     // Uhrzeit des nachgestellten Ablaufs, falls das Tutorial eine fuehrt
     // (bisher nur die Nacht zum 26.04., siehe chernobylTutorial.js). Bewusst
@@ -117,7 +125,7 @@ export function buildTutorial(session, render) {
     setText(status, `${heading} · ${hold}\n${values}${wall}`);
     setText(modalTitle, heading);
     setText(modalInstruction, t(prefix + v.id + '_instruction'));
-    setText(modalHold, t('tut_hold', { held, required: v.required }) + wall);
+    setText(modalHold, t('tut_hold', { held, required }) + wall);
     if (v.index === 0) {
       const lines = t(prefix + 'inspect_checks', { ...vars,
         integrity: t(v.inspectIntact ? 'tut_inspect_intact' : 'tut_inspect_not_intact') }).split('\n');

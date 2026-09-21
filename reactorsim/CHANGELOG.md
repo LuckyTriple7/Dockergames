@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.12
+
+- 🔧 **Die Haltezeit im Uebungsstatus steht wieder in ganzen
+  Sekunden.** Nicht jeder Schritt hat eine runde Haltezeit: 'recover' und
+  'hold' der Chernobyl-Uebung zielen auf eine UHRZEIT und rechnen ihre Dauer
+  in jedem Takt neu aus (`chernobylTutorial.js: holdSeconds`). Roh angezeigt
+  stand da "0/2289,9500000034 s". Gerechnet wird weiter mit dem vollen Wert,
+  gerundet wird nur die Anzeige -- und aufgerundet, damit sie nicht fertig
+  ist, bevor der Schritt es ist. Mit eigenem Test
+  (`tests/test-tutorial-ui.mjs`), der ohne die Rundung auch wirklich
+  fehlschlaegt.
+
+- 🔧 **Die Tastenkuerzel des Leitstands wirken nur noch im
+  Leitstand.** Nach dem Ende einer Schicht oeffneten M, O, V und die
+  uebrigen Panel-Tasten weiter ihre Fenster, obwohl der Spieler laengst
+  wieder auf der Reaktorseite oder in der Uebersicht stand -- Fenster zu
+  einer Runde, die es nicht mehr gibt. Dieselbe Luecke traf Leertaste,
+  Zeitraffer-Ziffern, Stabfahrt und Quittieren. Der Tastaturhaken prueft
+  jetzt zuerst, ob `#rs-app` ueberhaupt sichtbar ist.
+
 ## 0.6.11
 
 - ✨ **Die Chernobyl-Uebung zeigt endlich die dokumentierte

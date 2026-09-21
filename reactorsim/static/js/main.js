@@ -1168,6 +1168,15 @@ function initControls() {
   // Reiter das Panel ohnehin schon voll.
   document.addEventListener('keydown', (ev) => {
     if (ev.target instanceof HTMLInputElement) return;
+    // Alle Tasten hier gehoeren dem Leitstand: Zeitraffer, Staebe,
+    // Quittieren, Panel- und Instrumentenfenster. Ausserhalb duerfen sie
+    // nichts tun -- nach dem Ende einer Schicht steht der Spieler wieder auf
+    // der Reaktorseite oder in der Uebersicht, und dort oeffneten M, O oder V
+    // weiterhin Fenster zu einer Runde, die es nicht mehr gibt. Geprueft wird
+    // die Sichtbarkeit des Leitstands, nicht ein eigener Merker: #rs-app wird
+    // beim Verlassen ohnehin auf hidden gesetzt (siehe toMenu()), und damit
+    // kann sich hier nichts verhaken.
+    if ($('#rs-app').hidden) return;
     if (ev.code === 'Space' && ev.target.closest?.('button, summary, select, textarea, a[href]')) return;
     if (ev.code === 'Space') { ev.preventDefault(); setSpeed(app.xenonSkipping || app.loop.speed > 0 ? 0 : 1); }
     else if (ev.key === '1') setSpeed(1);
