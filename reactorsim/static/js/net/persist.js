@@ -178,6 +178,17 @@ export function apply(blob, engine, runState, session) {
       const weights = equilibriumDecay(1);
       const sum = decaySum(weights);
       cur.set(weights.map((f) => f * total / sum));
+    } else if (s.reactor === 'rbmk' && (k === 'rod' || k === 'rodDmd')
+      && cur instanceof Float64Array && Array.isArray(v)
+      && v.length === 2 && cur.length === 3) {
+      // Staende von vor 0.6.11 kennen zwei Stabgruppen. Die dritte (die 24
+      // verkuerzten, von unten einfahrenden Staebe) wurde aus der
+      // Abschaltgruppe herausgeloest und uebernimmt deshalb deren Stellung --
+      // damit ist der geladene Zustand derselbe wie der gespeicherte:
+      // gleiche Gesamtwirksamkeit, gleiche Stabzahl, gleiche Abschaltreserve.
+      // Ohne diesen Zweig faellt der Wert durch alle Aeste hindurch und die
+      // Staebe stuenden nach dem Laden stumm auf ihrem Anfangswert.
+      cur.set([v[0], v[1], v[1]]);
     } else if (cur instanceof Float64Array && Array.isArray(v) && v.length === cur.length) {
       cur.set(v);
     } else if (typeof cur === 'number' && typeof v === 'number') {
@@ -199,6 +210,12 @@ export function apply(blob, engine, runState, session) {
   }
   if (s.tipArmed && Array.isArray(src.tipArmed) && src.tipArmed.length === s.tipArmed.length) {
     s.tipArmed = [...src.tipArmed];
+  } else if (s.tipArmed && Array.isArray(src.tipArmed)
+    && src.tipArmed.length === 2 && s.tipArmed.length === 3) {
+    // Dieselbe Aufteilung wie bei rod/rodDmd oben. Die verkuerzten Staebe
+    // haben ohnehin keine Graphitspitze (rbmk.js: _tipReactivity ueberspringt
+    // sie), der uebernommene Wert ist also nur Buchhaltung.
+    s.tipArmed = [src.tipArmed[0], src.tipArmed[1], src.tipArmed[1]];
   }
   if (typeof src.destroyedKey === 'string') s.destroyedKey = src.destroyedKey;
 

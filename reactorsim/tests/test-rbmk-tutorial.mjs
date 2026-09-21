@@ -52,7 +52,7 @@ function operate({ engine: e, session }, i) {
 test('RBMK starts hot and subcritical with inserted rods, stopped pumps and closed turbine', () => {
   const { engine: e, session } = start();
   assert.ok(e.derive().rho_pcm < 0);
-  assert.deepEqual([...e.state.rod], [1, 1]);
+  assert.deepEqual([...e.state.rod], [1, 1, 1]);
   assert.equal(e.derive().orm, 211);
   assert.ok(e.ctx.mcp.every(p => !p.running && p.speed === 0));
   assert.equal(e.ctx.govValve.pos, 0);

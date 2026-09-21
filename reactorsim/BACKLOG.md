@@ -316,13 +316,74 @@ Energie. Zwei Sekunden nach dem Brennstoffversagen hebt er im Fließbild
 sichtbar ab, Fahne und offener Schacht inklusive. Zugleich benennt der
 Endbildschirm ausdrücklich, wo das Modell aufhört.
 
+**Seit 0.6.11: drei Stabgruppen, ehrliche Abschaltreserve, echte Exkursion —
+und zwei nachgestellte Handlungen mehr.** Nachweise:
+[Chernobyl-Audit 0.6.11](audit/CHERNOBYL-2026-09-21b.md).
+
+- **Die dokumentierte Abschaltreserve von 6-8 Stabäquivalenten steht jetzt
+  wirklich auf dem Instrument** (gemessen 7,4). Der Grund für die frühere 0,0
+  war weder eine Skalenfrage noch eine falsche Kurve, sondern das
+  Stabmodell: mit EINER Stellung für alle 211 Stäbe lässt sich der Zustand
+  der Nacht gar nicht abbilden. Die 6-8 kamen nicht daher, dass alle Stäbe
+  ein Stück im Kern standen, sondern daher, dass die große Mehrheit ganz oben
+  stand und eine kleine Gruppe drin blieb. Diese Gruppe gibt es jetzt, und
+  sie ist keine Erfindung: der RBMK-1000 hat 24 verkürzte Absorberstäbe
+  (USP), die von UNTEN einfahren. Ihnen fehlt der Graphitverdränger am
+  Kernboden, sie können den positiven Schnellabschalteffekt also gar nicht
+  auslösen — `rbmk.js: _tipReactivity` überspringt sie deshalb. Bei gleicher
+  Stellung aller drei Gruppen ist die Rechnung dieselbe wie vorher
+  (Wirksamkeiten 5600 pcm, Stabzahl 211); nachgemessen weichen die
+  physikalischen Skalare über 1200 Schritte erst in der fünfzehnten
+  Stelle ab, also in der Rundung.
+- **Die Exkursion ist prompt-überkritisch mit Abstand statt auf der Kante.**
+  Vorher: Spitze 295 %, Reaktivität 494 pcm gegen beta = 480 — die
+  Zerstörung hing an vierzehn pcm. Jetzt: Spitze rund 1090 %, Reaktivität
+  850 pcm, also etwa 1,8 beta
+  ([`tests/tools/chernobyl_tip_sweep.mjs`](tests/tools/chernobyl_tip_sweep.mjs)).
+  Die Stellschraube ist die Gesamtwirksamkeit der Graphitverdränger
+  (`tip.worth_pcm_total`, 1150 statt 2 x 320) — eine Kalibrierung, wie sie
+  es immer war, nur an einer anderen Größe: zwischen 1050 und 1400 pcm
+  zerstört AZ-5 den Kern durchgehend.
+- **Der abgeschaltete Reaktorschutz ist modelliert, nicht erzählt.** Neu ist
+  die Auslösung beim Schnellschluss beider Turbosätze (`trip_rbmk_tg_stop`)
+  und der Anlagenzustand „abgeschaltet" daneben
+  (`alarm_rbmk_tg_stop_blocked`). Die Übung schaltet sie beim Auslaufbeginn
+  ab, mit Eintrag in der Zeitleiste. Vorher gab es das Signal gar nicht — die
+  Übung stellte etwas nach, dessen Abschaltung sie nicht zeigen konnte.
+- **Der ORM-Ausdruck um 01:22:30 steht in der Zeitleiste**
+  (`event_chernobyl_orm_printout`), samt eigenem Schritthinweis und
+  Beobachtungstempo. Die wichtigste Nicht-Handlung der Nacht fehlte bis dahin
+  ganz.
+
 Offen/bekannte Einschränkungen:
 
-- **Die Wucht bleibt hinter der Nacht zurück.** Die Exkursion erreicht hier
-  rund 295 % der Nennleistung; Schätzungen der Untersuchungen nennen für die
-  reale ein Vielfaches davon (Größenordnung hundertfache Nennleistung). Das
-  ist keine fehlende Zeile Code, sondern die Kalibrierung des Kernmodells —
-  dieselbe Baustelle wie die Stabkurve unten.
+- **Die Wucht bleibt hinter der Nacht zurück, aber nicht mehr um eine
+  Größenordnung.** Die Exkursion erreicht rund 1090 % der Nennleistung;
+  Schätzungen der Untersuchungen nennen für die reale ein Vielfaches davon
+  (Größenordnung hundertfache Nennleistung). Weiter hoch geht nur über
+  dieselbe Stellschraube, und dann wird die Zerstörung noch früher — siehe
+  den nächsten Punkt.
+- **Die Zerstörung fällt jetzt auf 01:23:42 statt 01:23:45.** Dokumentiert
+  sind für die Explosionen 01:23:44 bis 01:23:47. Eine stärkere Exkursion ist
+  zwangsläufig auch eine schnellere; von Wucht, Abschaltreserve und Zeitpunkt
+  treffen die ersten beiden jetzt besser und der dritte um gut eine Sekunde
+  schlechter. Der Zeitpunkt ist über den ganzen tragenden Bereich der
+  Kalibrierung kaum beeinflussbar (2,0 bis 2,9 s nach AZ-5).
+- **Der Druckzeitpunkt innerhalb des Auslaufs entscheidet nicht mehr.** Bis
+  0.6.10 überstand der Kern AZ-5 in den ersten zwölf Sekunden und starb ab
+  15 s; daraus war eine Lehre der Übung geworden. Neu vermessen zerstört AZ-5
+  von der ersten bis mindestens zur 110. Sekunde. Das schmale Fenster war eine
+  Eigenschaft der Kante bei beta, kein dokumentierter Befund — was bleibt, ist
+  die belegbare Aussage: dieselbe Anlage überlebt AZ-5 mühelos, solange die
+  Stäbe auf Haltestellung stehen.
+- **Die Abschaltreserve erreicht die 6-8 erst mit dem letzten Stabzug um
+  01:23:04**, nicht schon beim ORM-Ausdruck um 01:22:30 — dort steht sie noch
+  bei rund 72. Historisch war sie zum Zeitpunkt des Ausdrucks bereits unten.
+  Der Grund ist unverändert: mit so wenig Reserve hält dieses Modell die
+  19-minütige Haltephase nicht durch. Der Schritthinweis sagt das ausdrücklich.
+- **Die Stellung der USP-Gruppe ist gesetzt** (0,40 des Fahrwegs), nicht
+  überliefert — gewählt so, dass die Anzeige in das dokumentierte Band 6-8
+  fällt. Ihre ANZAHL dagegen ist Anlagentechnik (24 von 211).
 - **Nicht gerechnet und nicht behauptet:** die zweite Explosion (ihre Ursache
   ist bis heute umstritten, INSAG-7 lässt sie offen), der Graphitbrand (das
   Graphit steht im Modell beim Ende bei 309 °C, Zündung bräuchte ~700 °C) und
@@ -331,27 +392,10 @@ Offen/bekannte Einschränkungen:
   Hub als Größenordnung, 2 % Umsetzungsgrad als der in Versuchen genannte
   Bereich. Beide sind so gewählt, dass sie die Aussage eher schwächen als
   stärken — gebraucht würde rund 1 %.
-- **Die Abschaltreserve zeigt weniger an als die dokumentierten 6-8
-  Stabäquivalente** -- vor dem Test 0,0. Das ist, anders als hier bis 0.6.0
-  vermutet, **keine Skalenfrage**. Nachgemessen
-  ([`tests/tools/chernobyl_rod_sweep.mjs`](tests/tools/chernobyl_rod_sweep.mjs)):
-  Bei der historischen Einfahrtiefe von 1,25 m -- also `h = tip.span = 0,179`,
-  wo die Anzeige exakt 7,4 zeigt -- zerstört AZ-5 den Kern gar nicht mehr, die
-  Spitze bleibt bei 40 %. Von allen geprüften Stellungen zwischen 0,02 und 0,22
-  trägt nur 0,02 den Mechanismus, weil `sin(π·h/span)` bei `h = span` null ist
-  und der früher greifende Absorber den Spitzeneffekt dazwischen auffrisst.
-  Dieses Zwei-Bank-Modell braucht die Stäbe also weiter draußen, als sie
-  historisch standen. Statt die Zahl zurechtzubiegen steht jetzt die
-  Einfahrtiefe in Metern daneben, und der Schritttext sagt den Unterschied
-  ausdrücklich. Eine echte Lösung bräuchte mehr Bänke oder eine axial
-  aufgelöste Stabkurve -- ein Umbau am Kern des RBMK-Modells, nicht an dieser
-  Übung.
 - **Welche vier der acht Pumpen am auslaufenden Generator hängen, ist
   gesetzt** — nur ihre ANZAHL ist nachgemessen (siehe oben).
 - **Die Dauer des Speisewasserschwalls ist eine Setzung** (30 s), begründet
   durch den Pegelanschlag des Modells, nicht durch die Aufzeichnungen.
-- **Nicht nachgebildet:** blockierte Turbinenschnellabschaltung, ORM-Ausdruck
-  um 01:22:30.
 
 ## Weitere Störszenarien
 

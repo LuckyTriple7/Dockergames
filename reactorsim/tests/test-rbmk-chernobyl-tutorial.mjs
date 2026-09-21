@@ -753,7 +753,7 @@ test('flat power before AZ-5 is a balance, not calm -- void rises while the trim
 // Der erste Befund, und der Kern der Uebung: derselbe Knopf, zu frueh
 // gedrueckt, ist harmlos. Gemessen (tests/tools/chernobyl_press_window.mjs):
 // bis t+12s haelt der Brennstoff, ab t+15s nicht mehr.
-test('AZ-5 pressed too early in the same coastdown does not destroy the core', t => {
+test('within the coastdown the second no longer decides -- the rod position does', t => {
   function pressAt(target) {
     const { engine, session } = boot();
     const s = engine.state; const tut = session.tutorial;
@@ -765,22 +765,36 @@ test('AZ-5 pressed too early in the same coastdown does not destroy the core', t
     tut.confirmInspect();
     advanceTo({ engine, session }, 5, TO_COASTDOWN_S);
     let pressed = false;
+    let peak = s.n;
     for (let i = 0, n = Math.round(180 / DT); i < n && session.phase === PHASE.RUNNING; i++) {
       step({ engine, session }, 1);
       const since = s.t_sim - tut._runbackT0;
       if (!pressed && since >= target) { realScram('az5'); pressed = true; }
+      peak = Math.max(peak, s.n);
     }
     assert.equal(pressed, true, `AZ-5 was never pressed for t+${target}s`);
-    return s;
+    return { destroyed: s.destroyed, peak };
   }
 
+  // Bis 0.6.10 ueberstand der Kern einen Druck bei t+5s und starb bei t+36s.
+  // Dieser Unterschied war eine Eigenschaft der damaligen Kalibrierung, die
+  // die Reaktivitaet gerade eben auf beta brachte -- in dieser Kante entschied
+  // der kleine Unterschied im Dampfblasenanteil. Seit 0.6.11 steht die
+  // Exkursion nicht mehr auf der Kante (rbmk.js: tip.worth_pcm_total), und
+  // nachgemessen zerstoert AZ-5 den Kern ueber den ganzen Auslauf hinweg
+  // (tests/tools/chernobyl_press_window.mjs: 0 bis 110 s). Ein dokumentierter
+  // Befund, der den einen Zeitpunkt vom anderen unterscheiden wuerde, gibt es
+  // nicht -- die Nacht kennt nur einen Druck, den um 01:23:40.
   const early = pressAt(5);
-  assert.equal(early.destroyed, false,
-    'AZ-5 five seconds into the coastdown must not destroy the core -- the flow is still there');
   const late = pressAt(36);
   assert.equal(late.destroyed, true,
-    'the same button 36 s in must destroy it -- that is the whole point of the exercise');
-  t.diagnostic('AZ-5 at t+5s survived, at t+36s destroyed');
+    'the historical press 36 s in must destroy the core -- that is the exercise');
+  assert.equal(early.destroyed, true,
+    'and so must an earlier one: within the coastdown the plant is already primed');
+  t.diagnostic(`AZ-5 at t+5s: peak ${(early.peak * 100).toFixed(0)}%, `
+    + `at t+36s: peak ${(late.peak * 100).toFixed(0)}%`);
+  // Was den Unterschied wirklich macht, prueft der naechste Test: dieselbe
+  // Anlage mit den Staeben auf Haltestellung ueberlebt AZ-5.
 });
 
 test('pressing AZ-5 too early (no coastdown) does not destroy the core -- the combination matters', () => {
@@ -874,4 +888,149 @@ test('saving and reloading mid-coastdown must not lose the narrow AR trim', () =
   assert.ok(diff < 1,
     `power after reload should track the un-reloaded run closely, got ${diff.toFixed(2)}pp difference `
     + `(baseline n=${(baseline.engine.state.n * 100).toFixed(1)}%, reloaded n=${(reloaded.engine.state.n * 100).toFixed(1)}%)`);
+});
+
+
+// Uhrzeit in Sekunden seit Mitternacht -- dieselbe Skala wie tut.view().wall.
+const WALL_ORM_PRINTOUT = 1 * 3600 + 22 * 60 + 30;   // 01:22:30
+
+/** Laufen lassen, bis die Uhr `wall` erreicht (oder das Budget alle ist). */
+function advanceToWall(f, wall, maxS) {
+  for (let i = 0, n = Math.round(maxS / DT); i < n; i++) {
+    if (f.session.phase !== PHASE.RUNNING) break;
+    if (f.session.tutorial.view().wall >= wall) break;
+    step(f, 1);
+  }
+}
+
+test('the blocked turbine-stop protection is modelled, not just narrated', t => {
+  // Bis 0.6.10 kannte das Modell das Signal gar nicht, das die Mannschaft in
+  // dieser Nacht abgeschaltet hat -- die Uebung konnte seine Abschaltung
+  // deshalb nicht zeigen. Jetzt gibt es beides: die Ausloesung (tg_stop_scram)
+  // und den Zustand "abgeschaltet" (tg_stop_blocked) auf der Meldetafel.
+  const f = boot();
+  step(f, Math.round(6 / DT));
+  f.session.tutorial.confirmInspect();
+  step(f, Math.round(5 / DT));
+  f.session.tutorial.confirmInspect();
+
+  let sawBlockTile = false;
+  let sawStopTrip = false;
+  for (let i = 0, n = Math.round(TO_END_S / DT); i < n; i++) {
+    if (f.session.phase !== PHASE.RUNNING) break;
+    step(f, 1);
+    for (const tile of f.engine.trips.tiles()) {
+      if (tile.id === 'tg_stop_blocked' && tile.tile !== 'normal') sawBlockTile = true;
+      if (tile.id === 'tg_stop_scram' && tile.tile !== 'normal') sawStopTrip = true;
+    }
+  }
+  t.diagnostic(`Kachel abgeschaltet gesehen: ${sawBlockTile}, Ausloesung gesehen: ${sawStopTrip}`);
+  assert.equal(f.engine.state.tgStopBlocked, true,
+    'the protection must be disabled by the time the valves close');
+  assert.ok(sawBlockTile, 'the disabled protection must show up on the annunciator');
+  // Der eigentliche Punkt: das Signal kommt NICHT -- weil es abgeschaltet ist.
+  // Gesetzt wird der Merker vor s.tgCoasting, sonst stuende es einen
+  // Rechenschritt lang an (siehe _triggerCoastdown).
+  assert.equal(sawStopTrip, false,
+    'the turbine-stop trip must never come up -- that is what was disabled');
+  const keys = f.engine.ctx.log.map(e => e.key);
+  assert.ok(keys.includes('event_chernobyl_az5_block'),
+    'the disabling belongs in the timeline, not only in the plant state');
+});
+
+test('the ORM printout at 01:22:30 happens once -- and not a second time after a reload', () => {
+  // Die wichtigste Nicht-Handlung der Nacht: der Ausdruck kam, die Zahl lag
+  // unter dem Minimum, gefahren wurde weiter. Kein Eingriff in die Anlage,
+  // deshalb pruefen wir Zeitpunkt und Einmaligkeit, nicht einen Messwert.
+  const f = boot();
+  step(f, Math.round(6 / DT));
+  f.session.tutorial.confirmInspect();
+  step(f, Math.round(5 / DT));
+  f.session.tutorial.confirmInspect();
+  advanceToWall(f, WALL_ORM_PRINTOUT, TO_COASTDOWN_S);
+  assert.equal(f.session.phase, PHASE.RUNNING, 'the printout time was not reached');
+
+  const printouts = () => f.engine.ctx.log.filter(e => e.key === 'event_chernobyl_orm_printout');
+  assert.equal(printouts().length, 1, 'the printout must be logged exactly once');
+  const at = printouts()[0].t + f.engine.ctx.wallClock;
+  assert.ok(Math.abs(at - WALL_ORM_PRINTOUT) < 1,
+    `printout logged at ${at} s, expected ${WALL_ORM_PRINTOUT} s`);
+  assert.equal(f.session.tutorial.hint(), 'tut_chernobyl_hint_orm_printout',
+    'the step hint must name the printout while it is fresh');
+
+  const blob = JSON.parse(JSON.stringify(pack(f.engine, DEF.id, f.session.run, f.session)));
+  const engine2 = createEngine(rbmk, { seed: DEF.seed });
+  const session2 = new Session(engine2, DEF);
+  session2.start();
+  assert.equal(apply(blob, engine2, session2.run, session2), null, 'reload failed');
+  const g = { engine: engine2, session: session2 };
+  // Die Zeitleiste kommt mit dem Stand zurueck, der Eintrag steht danach also
+  // schon da. Gepruefte Aussage ist deshalb: er bleibt EINER -- der Merker,
+  // dass der Ausdruck schon war, ueberlebt das Laden.
+  assert.equal(engine2.ctx.log.filter(e => e.key === 'event_chernobyl_orm_printout').length, 1,
+    'the reloaded timeline must carry the printout it already had');
+  step(g, Math.round(120 / DT));
+  assert.equal(engine2.ctx.log.filter(e => e.key === 'event_chernobyl_orm_printout').length, 1,
+    'a reloaded run must not print a second time');
+});
+
+
+
+test('the test starts with the documented shutdown margin of 6 to 8 rods', t => {
+  // Bis 0.6.10 zeigte die Uebung an dieser Stelle 0,0 Stabaequivalente und
+  // musste den Unterschied zur dokumentierten Zahl im Text wegerklaeren. Der
+  // Grund war kein Skalenfehler, sondern das Modell: mit EINER Stabstellung
+  // fuer alle 211 Staebe laesst sich der Zustand der Nacht nicht abbilden --
+  // die grosse Mehrheit stand ganz oben, eine kleine Gruppe blieb drin. Seit
+  // 0.6.11 gibt es diese Gruppe (rbmk.js rodBanks: usp, die 24 verkuerzten
+  // von unten einfahrenden Staebe).
+  const f = boot();
+  step(f, Math.round(6 / DT));
+  f.session.tutorial.confirmInspect();
+  step(f, Math.round(5 / DT));
+  f.session.tutorial.confirmInspect();
+  advanceTo(f, 5, TO_COASTDOWN_S);
+  assert.equal(f.session.tutorial.index, 5, 'coastdown was not reached');
+
+  const s = f.engine.state;
+  const orm = f.engine.derive().orm;
+  t.diagnostic(`ORM ${orm.toFixed(1)}, rods [${[...s.rod].map(x => x.toFixed(2)).join(', ')}]`);
+  assert.ok(orm >= 6 && orm <= 8, `shutdown margin should be 6..8 rods, got ${orm.toFixed(1)}`);
+  // Und zwar aus der richtigen Verteilung heraus, nicht aus einer mittleren
+  // Stellung: die Gruppen MIT Graphitspitze stehen fast ganz draussen, die
+  // Gruppe ohne bleibt im Kern.
+  const banks = f.engine.spec.rodBanks;
+  for (let i = 0; i < banks.length; i++) {
+    if (banks[i].fromBelow) assert.ok(s.rod[i] > 0.3, `${banks[i].id} must stay in the core`);
+    else assert.ok(s.rod[i] < 0.05, `${banks[i].id} must be nearly fully withdrawn`);
+  }
+});
+
+test('the excursion is prompt supercritical with margin, not balanced on beta', t => {
+  // Der zweite der beiden Punkte, die bis 0.6.10 als bekannte Grenze im
+  // BACKLOG standen: die Spitze lag bei 295 % der Nennleistung, waehrend die
+  // Untersuchungen fuer die Nacht ein Vielfaches nennen -- und die
+  // Reaktivitaet erreichte gerade eben beta (494 gegen 480 pcm). Ein Modell,
+  // das eine Zerstoerung auf vierzehn pcm genau entscheidet, sagt mehr ueber
+  // seine Kalibrierung als ueber die Anlage.
+  const f = boot();
+  step(f, Math.round(6 / DT));
+  f.session.tutorial.confirmInspect();
+  step(f, Math.round(5 / DT));
+  f.session.tutorial.confirmInspect();
+  const s = f.engine.state;
+  let peak = s.n;
+  let rhoMax = -Infinity;
+  for (let i = 0, n = Math.round(TO_END_S / DT); i < n; i++) {
+    if (f.session.phase !== PHASE.RUNNING) break;
+    step(f, 1);
+    peak = Math.max(peak, s.n);
+    if (s.scram.active) rhoMax = Math.max(rhoMax, f.engine.derive().rho_pcm);
+  }
+  const beta = f.engine.spec.beta.boc * 1e5;
+  t.diagnostic(`peak ${(peak * 100).toFixed(0)} %, rho_max ${rhoMax.toFixed(0)} pcm, beta ${beta} pcm`);
+  assert.equal(s.destroyed, true, 'AZ-5 must still destroy the core');
+  assert.ok(peak > 5, `peak should be several times rated power, got ${(peak * 100).toFixed(0)} %`);
+  assert.ok(rhoMax > beta + 200,
+    `reactivity should clear prompt critical with margin, got ${rhoMax.toFixed(0)} pcm against beta ${beta}`);
 });

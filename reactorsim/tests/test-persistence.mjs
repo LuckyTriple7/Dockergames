@@ -76,3 +76,36 @@ test('debrief retains ranked causes as well as violation totals', () => {
   assert.deepEqual(b.topCauses(), a.topCauses());
   assert.deepEqual(b.violationSeconds, a.violationSeconds);
 });
+
+
+test('a two-bank RBMK save from before 0.6.11 loads into the three-bank model unchanged', () => {
+  // Die dritte Gruppe (die 24 verkuerzten, von unten einfahrenden Staebe)
+  // wurde aus der Abschaltgruppe herausgeloest. Ein alter Stand kennt nur
+  // zwei Zahlen; die dritte uebernimmt die der Abschaltgruppe. Gepruefte
+  // Aussage: der geladene Zustand ist derselbe wie der gespeicherte, nicht
+  // nur formal ladbar.
+  const live = createEngine(getPlant('rbmk'), { n: 1.0 });
+  for (let i = 0; i < 200; i++) live.step(0.05);
+  const blob = json(pack(live));
+  assert.equal(blob.state.rod.length, 3);
+
+  const before = { orm: live.derive().orm, rho: live.derive().rho_pcm, rod: [...live.state.rod] };
+  // Auf das alte Format zurueckbauen: zwei Gruppen, die dritte weg. Der alte
+  // Stand hatte an Index 1 die Abschaltgruppe, aus der die dritte kommt.
+  blob.state.rod = [blob.state.rod[0], blob.state.rod[1]];
+  blob.state.rodDmd = [blob.state.rodDmd[0], blob.state.rodDmd[1]];
+  blob.state.tipArmed = [0, 0];
+
+  const restored = createEngine(getPlant('rbmk'), { n: 1.0 });
+  assert.equal(apply(blob, restored), null);
+  assert.deepEqual([...restored.state.rod], before.rod);
+  assert.equal(restored.state.tipArmed.length, 3);
+  assert.ok(Math.abs(restored.derive().orm - before.orm) < 1e-9,
+    `ORM ${restored.derive().orm} != ${before.orm}`);
+  // Toleranz 1e-3 pcm, nicht null: ein geladener Stand traegt die Filter
+  // ausserhalb von engine.state nicht bitgenau mit (siehe ctx.saveable), das
+  // gilt fuer jeden Stand und hat mit der Stabgruppe nichts zu tun. Gemessen
+  // liegt der Unterschied bei rund 3e-5 pcm.
+  assert.ok(Math.abs(restored.derive().rho_pcm - before.rho) < 1e-3,
+    `rho ${restored.derive().rho_pcm} != ${before.rho}`);
+});

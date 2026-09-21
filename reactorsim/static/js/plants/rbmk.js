@@ -141,9 +141,31 @@ export const spec = {
   // die Teillastfahrt wieder zu zerstoeren. sp.orm.nominal bleibt bei 46:
   // der Blasenkoeffizient klemmt oberhalb davon ohnehin auf seinem besten
   // Wert (siehe _voidCoeff), 85 statt 46 aendert daran nichts.
+  //
+  // DREI Gruppen seit 0.6.11, und die dritte ist keine Aufteilung nach
+  // Geschmack: der RBMK-1000 hat neben den von oben einfahrenden Staeben 24
+  // verkuerzte Absorberstaebe (USP), die von UNTEN einfahren und die
+  // Leistungsverteilung im unteren Kernbereich formen. Fuer diese Uebung ist
+  // ihr Unterschied der entscheidende: ein von unten kommender Stab hat am
+  // Kernboden KEINEN Graphitverdraenger vor sich, er schiebt dort also auch
+  // keine Wassersaeule heraus und kann den positiven Schnellabschalteffekt
+  // gar nicht ausloesen (siehe _tipReactivity, das die Gruppe ueberspringt).
+  //
+  // Solange alle drei Gruppen zusammen fahren (rodBanksMoveTogether, der
+  // Normalfall), aendert die Aufteilung nichts: die Wirksamkeiten summieren
+  // sich weiter auf 5600 pcm, die Stabzahlen auf 211, und die Spitzen-
+  // wirksamkeit wird ueber die tip-faehigen Staebe verteilt statt je Gruppe
+  // gesetzt -- bei gleicher Stellung kommt dieselbe Zahl heraus wie vorher.
+  // Erst wenn eine Gruppe woanders steht, wird der Unterschied sichtbar, und
+  // genau das braucht die Chernobyl-Uebung (siehe USP_ROD dort).
+  //
+  // Wirksamkeit je Stab: die verkuerzten Staebe sind kuerzer (3 m statt 5 m)
+  // und sitzen im unteren Kernbereich, also rund 60 % eines vollen Stabes.
+  // Die 3200 pcm der frueheren Gruppe 'sd' bleiben in der Summe erhalten.
   rodBanks: [
     { id: 'ctrl', worth: 2400, speed: 0.0056, initial: 0.22, rods: 120 },
-    { id: 'sd', worth: 3200, speed: 0.0056, initial: 0.22, rods: 91 },
+    { id: 'sd', worth: 2694, speed: 0.0056, initial: 0.22, rods: 67 },
+    { id: 'usp', worth: 506, speed: 0.0056, initial: 0.22, rods: 24, fromBelow: true },
   ],
   // Motorantrieb, 0,4 m/s über sieben Meter Kern plus Wassersäulen.
   // Der Knopf heißt hier nicht SCRAM und auch nicht RESA, sondern AZ-5 --
@@ -212,8 +234,37 @@ export const spec = {
 
   // Graphitverdränger unter dem Absorber.
   tip: {
-    // Phenomenological worth per bank, not a reconstructed accident curve.
-    worth_pcm: 320,
+    // Phenomenological TOTAL worth of the displacers, not a reconstructed
+    // accident curve. Verteilt wird sie ueber die Staebe, die ueberhaupt
+    // einen Verdraenger haben -- die von unten kommenden USP-Staebe zaehlen
+    // nicht mit (siehe rodBanks oben und _tipReactivity unten). Bis 0.6.10
+    // stand hier 320 JE GRUPPE bei zwei Gruppen; 640 als Summe ist bei
+    // gleicher Stellung dieselbe Zahl.
+    //
+    // 1150 statt der frueheren 2 x 320 seit 0.6.11, und das ist eine
+    // Kalibrierung, keine Herleitung -- so wie die Zahl es immer war. Neu ist
+    // nur, woran sie kalibriert ist. Mit 640 lag die Spitze der Exkursion bei
+    // 295 % der Nennleistung und die Reaktivitaet erreichte gerade eben beta
+    // (494 gegen 480 pcm): der Kern kippte an der Kante ueber prompt-kritisch,
+    // und schon rund hundert pcm zusaetzliche Gegenkopplung liessen die
+    // Zerstoerung ausbleiben. Das ist keine Aussage ueber die Nacht, sondern
+    // eine ueber die Kalibrierung.
+    //
+    // Nachgemessen (tests/tools/chernobyl_tip_sweep.mjs): 1150 pcm bringt die
+    // Reaktivitaet auf rund 858 pcm, also etwa 1,8 beta, die Spitze auf rund
+    // das Zehnfache der Nennleistung. Damit liegt die Uebung in der
+    // Groessenordnung, die die Untersuchungen fuer die Nacht nennen (ein
+    // Vielfaches der Nennleistung), statt eine Groessenordnung darunter -- und
+    // sie steht nicht mehr auf der Kante: zwischen 1050 und 1400 pcm zerstoert
+    // AZ-5 den Kern durchgehend.
+    //
+    // Der Preis steht mit dabei: die Zerstoerung faellt jetzt rund 2,2 s nach
+    // AZ-5 statt 5 s, also auf 01:23:42 statt 01:23:45. Dokumentiert sind fuer
+    // die Explosionen 01:23:44 bis 01:23:47. Eine staerkere Exkursion ist
+    // zwangslaeufig auch eine schnellere; von den drei Groessen (Wucht,
+    // Abschaltreserve, Zeitpunkt) treffen jetzt die ersten beiden besser und
+    // die dritte um gut eine Sekunde schlechter.
+    worth_pcm_total: 1150,
     // Nur Stäbe, die weit draußen stehen, schieben Graphit in die untere
     // Wassersäule. Wer schon halb drin steckt, hat dort längst Absorber.
     outThreshold: 0.12,
@@ -284,6 +335,7 @@ export const spec = {
     rbmk_aux_low: 'drum', rbmk_aux_empty: 'drum',
     mcp_cavitation: 'rcp', mcp_stuck: 'rcp',
     turbine_trip: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
+    tg_stop_scram: 'gen', tg_stop_blocked: 'gen',
   },
 
   // Der Schalter im Kern-Panel heisst hier nach dem, was er wirklich regelt.
@@ -323,6 +375,30 @@ export const spec = {
       test: (s, d) => Math.abs(d.axialOffset) > 0.35, delay_s: 5 },
     { id: 'turbine_trip', key: 'alarm_turbine_trip', severity: SEVERITY.WARN,
       test: (s) => s.turbineTripped, delay_s: 0 },
+    // Reaktorschutz beim Schnellschluss BEIDER Turbosaetze.
+    //
+    // Der RBMK-1000 loeste AZ-5 aus, sobald die Schnellschluss- und
+    // Regelventile beider Turbogeneratoren zufielen -- dann nimmt niemand
+    // mehr Dampf ab. Genau dieses Signal hat die Mannschaft in der Nacht
+    // abgeschaltet, damit der Auslaufversuch bei einem Fehlschlag wiederholbar
+    // blieb; als um 01:23:04 die Ventile zufielen, kam deshalb keine
+    // Abschaltung (INSAG-7). Bis 0.6.10 kannte dieses Modell das Signal gar
+    // nicht -- die Uebung stellte damit etwas nach, dessen Abschaltung sie
+    // nicht zeigen konnte.
+    //
+    // Bedingung ist s.tgCoasting, nicht s.turbineTripped: der Auslauf ist
+    // dieses Modells Entsprechung zu "beide Turbosaetze weg vom Netz". Ein
+    // einzelner Turbinenabwurf im freien Spiel ist NICHT dieses Signal und
+    // bleibt deshalb wie bisher eine Warnung (alarm_turbine_trip darueber).
+    //
+    // Wie jede andere Ausloesung hier greift auch diese nicht selbst ein
+    // (siehe sim/trips.js) -- sie meldet, und der Bediener drueckt.
+    { id: 'tg_stop_scram', key: 'trip_rbmk_tg_stop', severity: SEVERITY.TRIP,
+      test: (s) => !!s.tgCoasting && !s.tgStopBlocked, delay_s: 0, action: 'scram' },
+    // Und die Abschaltung selbst gehoert auf die Meldetafel, nicht in eine
+    // Fussnote: ein stillgelegter Reaktorschutz ist ein Anlagenzustand.
+    { id: 'tg_stop_blocked', key: 'alarm_rbmk_tg_stop_blocked', severity: SEVERITY.WARN,
+      test: (s) => !!s.tgStopBlocked, delay_s: 0, hold_s: 0 },
     { id: 'clad_temp', key: 'trip_clad_temp', severity: SEVERITY.TRIP,
       test: (s) => s.T_cl > 1477, delay_s: 0, action: 'scram' },
     // Eine klemmende Stabgruppe war vorher nur eine Zeile im Protokoll. Der
@@ -383,6 +459,9 @@ export const hooks = {
     // Am Netz gehalten: volle Drehzahl, kein Auslauf (siehe sp.turbogen).
     s.tgSpeed = 1;
     s.tgCoasting = false;
+    // Reaktorschutz beim Schnellschluss beider Turbosaetze -- normal scharf.
+    // Nur der Auslaufversuch der Nacht schaltet ihn ab, siehe trips unten.
+    s.tgStopBlocked = false;
     s.T_gr = sp.graphite.T0;
 
     // Axiales Flussprofil. ao > 0 heißt bodennah -- genau der Zustand, in dem
@@ -398,7 +477,7 @@ export const hooks = {
 
     // Stellung der Stäbe beim Auslösen der Schnellabschaltung -- nur wer weit
     // draußen stand, schiebt Graphit in die untere Wassersäule.
-    s.tipArmed = [0, 0];
+    s.tipArmed = sp.rodBanks.map(() => 0);
     s.az5 = { armed: false, t: 0 };
     s.srv = 0;
 
@@ -521,17 +600,22 @@ export const hooks = {
       for (let i = 0; i < s.rod.length; i++) { s.rod[i] = 1; s.rodDmd[i] = 1; }
       rx.compute(s, sp);
     } else {
-      // Kritisch über die Stabstellung. Beide Gruppen werden gemeinsam
-      // gefahren, damit die Abschaltreserve ein sinnvoller Mittelwert bleibt.
+      // Kritisch über die Stabstellung. ALLE Gruppen werden gemeinsam
+      // gefahren, damit die Abschaltreserve ein sinnvoller Mittelwert bleibt
+      // -- seit 0.6.11 sind es drei (siehe rodBanks), und die Schleife zaehlt
+      // sie ab, statt zwei Indizes hinzuschreiben: mit fest verdrahteten 0/1
+      // blieb die dritte Gruppe auf ihrem Anfangswert stehen, und die Suche
+      // fand eine andere Stellung als vorher.
+      const setAll = (h) => { for (let i = 0; i < s.rod.length; i++) s.rod[i] = h; };
       let lo = 0, hi = 1;
       for (let i = 0; i < 60; i++) {
         const mid = 0.5 * (lo + hi);
-        s.rod[0] = mid; s.rod[1] = mid;
+        setAll(mid);
         if (rx.compute(s, sp) > 0) lo = mid; else hi = mid;
       }
       const h = 0.5 * (lo + hi);
-      s.rod[0] = h; s.rod[1] = h;
-      s.rodDmd[0] = h; s.rodDmd[1] = h;
+      setAll(h);
+      for (let i = 0; i < s.rodDmd.length; i++) s.rodDmd[i] = h;
     }
 
     ctx.powerCtl.setpoint = n;
@@ -688,8 +772,11 @@ export const hooks = {
     if (!s.scram.active) {
       const d = ctx.powerCtl.step(s.n, dt);
       if (d !== 0) {
-        s.rodDmd[0] = clamp(s.rodDmd[0] + d, 0, 1);
-        s.rodDmd[1] = clamp(s.rodDmd[1] + d, 0, 1);
+        // ALLE Gruppen, nicht die ersten zwei: seit 0.6.11 sind es drei
+        // (rodBanks), und mit fest verdrahteten Indizes waere die dritte im
+        // Normalbetrieb stehengeblieben -- die Gruppen waeren auseinander-
+        // gelaufen, obwohl rodBanksMoveTogether das Gegenteil zusagt.
+        for (let i = 0; i < s.rodDmd.length; i++) s.rodDmd[i] = clamp(s.rodDmd[i] + d, 0, 1);
       }
     }
     s.W_fwDemand = ctx.fwCtl.step(s.L_drum, s.W_steam, dt);
@@ -826,7 +913,23 @@ function _voidCoeff(s, sp) {
   // besser -- ohne diese Begrenzung waere er bei vollstaendig eingefahrenen
   // Staeben rechnerisch negativ, und der gefaehrlichste Kennwert dieses
   // Reaktortyps haette sich stillschweigend in eine Sicherheit verwandelt.
-  const f = clamp(orm / sp.orm.nominal, 0, 1);
+  //
+  // Der SCHLECHTESTE Wert steht seit 0.6.11 nicht mehr erst bei ORM = 0,
+  // sondern schon an der Meldeschwelle des Betriebs (sp.orm.alarm = 15).
+  // Genau dort lag die Grenze, unterhalb derer das Reglement die sofortige
+  // Abschaltung verlangte -- nicht bei null, sondern bei 15, weil der
+  // Dampfblasenkoeffizient darunter als nicht mehr beherrschbar galt. Eine
+  // Rampe, die erst bei null ihren Endwert erreicht, behauptet dagegen, ORM 8
+  // sei noch ein Stueck besser als ORM 0; das ist die Aussage, gegen die die
+  // Vorschrift geschrieben wurde.
+  //
+  // Sichtbar wurde der Unterschied erst, als die Uebung die dokumentierte
+  // Abschaltreserve von 6-8 ueberhaupt anzeigen konnte (siehe rodBanks und
+  // chernobylTutorial.js: USP_ROD): mit der alten Rampe wurde der
+  // Blasenkoeffizient in genau dem Moment um ein Zehntel milder, in dem die
+  // Anzeige historisch richtig wurde.
+  const floor = sp.orm.alarm || 0;
+  const f = clamp((orm - floor) / Math.max(1e-6, sp.orm.nominal - floor), 0, 1);
   const a0 = sp.feedback.void_pcm_per_pct_nominal;
   const a1 = sp.feedback.void_pcm_per_pct_depleted;
   return a1 + (a0 - a1) * f;
@@ -868,11 +971,24 @@ function _tipReactivity(s, sp) {
   // whether reached by normal drive or AZ-5. No button-triggered reactivity.
   const span = sp.tip.span;
   const fBot = clamp(1 + s.ao, 0, 2);
+  const banks = sp.rodBanks;
+  // Gewichtet ueber die Staebe MIT Verdraenger. Die von unten einfahrenden
+  // USP-Staebe haben keinen und bleiben draussen -- sie schieben am Kernboden
+  // keine Wassersaeule heraus (siehe rodBanks oben). Bei gleicher Stellung
+  // aller Gruppen ist das Ergebnis dasselbe wie mit der frueheren Rechnung
+  // "worth_pcm je Gruppe", weil sich die Gewichte zu eins summieren.
+  let tipRods = 0;
+  for (const b of banks) if (!b.fromBelow) tipRods += b.rods || 0;
+  if (!tipRods) return 0;
   let tip = 0;
-  for (const h of s.rod) {
-    if (h > 0 && h < span) tip += Math.sin(Math.PI * h / span);
+  for (let i = 0; i < banks.length; i++) {
+    if (banks[i].fromBelow) continue;
+    const h = s.rod[i];
+    if (h > 0 && h < span) {
+      tip += ((banks[i].rods || 0) / tipRods) * Math.sin(Math.PI * h / span);
+    }
   }
-  return sp.tip.worth_pcm * fBot * tip * 1e-5;
+  return sp.tip.worth_pcm_total * fBot * tip * 1e-5;
 }
 
 /**

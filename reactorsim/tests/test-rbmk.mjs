@@ -167,3 +167,35 @@ test('Zufaellige Eingriffe erzeugen kein NaN', async () => {
     assert.ok(Number.isFinite(s.T_gr), `T_gr = ${s.T_gr}`);
   }
 });
+
+
+test('Reaktorschutz beim Schnellschluss beider Turbosaetze -- scharf meldet er, abgeschaltet nicht', () => {
+  // Das Signal, das die Mannschaft in der Nacht zum 26.04.1986 abgeschaltet
+  // hat. Es muss BEIDES koennen, sonst ist seine Abschaltung in der Uebung
+  // eine Behauptung ueber etwas, das ohnehin nie kaeme.
+  const armed = boot();
+  armed.state.tgCoasting = true;
+  run(armed, 1);
+  const armedTile = armed.trips.tiles().find(t => t.id === 'tg_stop_scram');
+  assert.ok(armedTile && armedTile.tile !== 'normal',
+    'scharf muss der Schutz beim Auslauf beider Turbosaetze melden');
+
+  const blocked = boot();
+  blocked.state.tgStopBlocked = true;
+  blocked.state.tgCoasting = true;
+  run(blocked, 1);
+  const blockedTile = blocked.trips.tiles().find(t => t.id === 'tg_stop_scram');
+  assert.ok(blockedTile && blockedTile.tile === 'normal',
+    'abgeschaltet darf er nicht melden -- genau das war der Eingriff');
+  const shown = blocked.trips.tiles().find(t => t.id === 'tg_stop_blocked');
+  assert.ok(shown && shown.tile !== 'normal',
+    'dass er abgeschaltet ist, gehoert auf die Meldetafel');
+
+  // Im gewoehnlichen Betrieb steht keine der beiden Kacheln.
+  const normal = boot();
+  run(normal, 1);
+  for (const id of ['tg_stop_scram', 'tg_stop_blocked']) {
+    const tile = normal.trips.tiles().find(t => t.id === id);
+    assert.ok(tile && tile.tile === 'normal', `${id} darf im Nennbetrieb nicht stehen`);
+  }
+});

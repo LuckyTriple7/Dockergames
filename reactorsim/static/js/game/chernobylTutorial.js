@@ -65,42 +65,45 @@ const HOLD = [5, 10, RECOVER_FALLBACK_S, 3, HOLD_FALLBACK_S, 5, 0.2, 15];
 
 // Sekunden seit Auslaufbeginn, in denen AZ-5 den Kern zerstoert.
 // Sekundenweise nachgemessen ueber den echten prepare()-Pfad
-// (tests/tools/chernobyl_press_window.mjs), NEU seit der Turbinenauslauf eine
-// echte Rotordrehzahl ist (rbmk.js sp.turbogen) statt einer Rampe auf null:
+// (tests/tools/chernobyl_press_window.mjs).
 //
-//   0-12 s : AZ-5 zerstoert den Kern NICHT. Der Rotor hat erst ein Drittel
-//            seiner Drehzahl verloren, der Kern ist noch gut gekuehlt -- die
-//            Graphitspitzen heben die Leistung zwar auf ueber 250 %, aber der
-//            Brennstoff haelt die Enthalpiegrenze (ein integrales Kriterium,
-//            siehe engine.js). Genau das ist die Lehre der Uebung: der Knopf
-//            allein tut es nicht, es ist die KOMBINATION.
-//   13 s   : einzelner Treffer dicht an der Schwelle, 14 s wieder nicht --
-//            der Rand ist keine scharfe Kante, sondern eine Zone.
-//   ab 15 s: zerstoert, durchgehend bis zum Ende des vermessenen Bereichs
-//            (105 s; was darueber steht, faellt schon aus dem Beobachtungs-
-//            fenster der Messung und ist kein Befund).
+// Bis 0.6.10 stand hier ein SCHMALES Fenster: 0-12 s ueberstand der Kern
+// AZ-5, ab 15 s nicht mehr. Daraus war eine Lehre der Uebung geworden -- der
+// Knopf allein tue es nicht, erst die Kombination mit dem gefallenen
+// Kernstrom. Diese Lehre war eine Eigenschaft der Kalibrierung, nicht der
+// Anlage: die Reaktivitaet erreichte damals gerade eben beta (494 gegen
+// 480 pcm), und in dieser Kante entschied der kleine Unterschied im
+// Dampfblasenanteil zwischen Sekunde 5 und Sekunde 36 ueber alles.
 //
-// Verschwunden ist damit der frueher dokumentierte "Ueberlebensstreifen"
-// zwischen 22 und 38 s. Er war eine Eigenschaft der alten, auf NULL
-// gefahrenen Rampe -- die trieb die Anlage schon ohne jeden Knopfdruck auf
-// 133 %.
+// Seit 0.6.11 steht die Exkursion nicht mehr auf der Kante (siehe
+// rbmk.js: tip.worth_pcm_total). Neu vermessen zerstoert AZ-5 den Kern ueber
+// den GANZEN vermessenen Bereich, von 0 bis 110 s nach Auslaufbeginn, mit
+// einer Spitze zwischen 695 und 1181 % -- der Zeitpunkt innerhalb des
+// Auslaufs entscheidet also nicht mehr, und dafuer gibt es auch keinen
+// dokumentierten Befund, der ihn fordern wuerde.
 //
-// Ohne AZ-5 bleibt die LEISTUNG jetzt flach bei rund 7,4 %. Das heisst
-// ausdruecklich NICHT, dass in diesen 36 Sekunden nichts geschieht: der
-// Dampfblasenanteil steigt von 5,9 auf 7,7 %, die Reaktivitaet waechst
-// entsprechend, und die schmale automatische Regelgruppe haelt mit bis zu
-// -111 pcm dagegen (nachgemessen, tests/tools/chernobyl_pre_az5.mjs). Die
-// flache Anzeige ist das Ergebnis dieses Gleichgewichts, nicht sein Fehlen --
-// nimmt man die Regelung weg, ist der Kern bei t+20s zerstoert, ohne dass
-// jemand AZ-5 beruehrt haette. Genau so beschreiben es die Aufzeichnungen der
-// Nacht: Leistung rund 36 s nahezu konstant bei ~200 MWth.
+// Was WEITERHIN entscheidet, und das ist der belegte Teil, sind zwei andere
+// Dinge:
+//   - Die Stabstellung. Dieselbe Anlage ueberlebt AZ-5 muehelos, solange die
+//     Staebe noch auf ihrer Haltestellung stehen (0,44 statt 0,02) -- der
+//     Test dazu drueckt AZ-5 VOR dem letzten Stabzug, siehe
+//     "pressing AZ-5 too early (no coastdown)".
+//   - Die automatische Regelgruppe. Nimmt man ihr die Autoritaet, zerstoert
+//     sich die Anlage 22 s nach Auslaufbeginn selbst, ohne dass jemand AZ-5
+//     beruehrt (gemessen, siehe dieselbe Datei).
 //
-// AZ-5 legt darauf 600 pcm aus den Graphitspitzen -- auf einen Kern, dessen
-// einzige Gegenkopplung zu dem Zeitpunkt 111 pcm sind.
-const DESTROY_WINDOWS = [[13, 13], [15, 105]];
+// Ohne AZ-5 und MIT Regelung bleibt die Leistung flach bei rund 7,4 %. Das
+// heisst ausdruecklich NICHT, dass nichts geschieht: der Dampfblasenanteil
+// steigt in den 36 Sekunden, die Reaktivitaet waechst mit, und die schmale
+// Regelgruppe haelt mit bis zu -111 pcm dagegen (tests/tools/
+// chernobyl_pre_az5.mjs). Die flache Anzeige ist das Ergebnis dieses
+// Gleichgewichts, nicht sein Fehlen -- genau so beschreiben es die
+// Aufzeichnungen der Nacht: Leistung rund 36 s nahezu konstant bei
+// ~200 MWth.
+const DESTROY_WINDOWS = [[0, 110]];
 
 // Das Fenster, in dem AZ-5 tatsaechlich die Ursache ist -- siehe oben.
-const PRESS_WINDOW = DESTROY_WINDOWS[1];
+const PRESS_WINDOW = DESTROY_WINDOWS[0];
 
 // AZ-5 loest in DIESEM Tutorial automatisch aus -- 36 s nach Testbeginn, also
 // genau im historischen Abstand (Testbeginn 01:23:04, AZ-5 01:23:40).
@@ -169,6 +172,27 @@ const AUTO_PUMPS_S = 3;
 const WALL_FEED_SURGE_S = 1 * 3600 + 19 * 60;   // 01:19:00
 const FEED_SURGE_S = 30;
 const FEED_SURGE_MANUAL = 0.15;
+
+// Der ORM-Ausdruck um 01:22:30.
+//
+// Rund eine Minute vor dem Versuch holte die Mannschaft einen Ausdruck des
+// Prozessrechners SKALA (Programm PRIZMA): die Abschaltreserve lag bei etwa
+// 6 bis 8 Stabaequivalenten. Das Betriebsreglement verlangte unterhalb von
+// 15 die sofortige Abschaltung. Der Versuch lief trotzdem weiter -- das ist
+// die Stelle, an der die Nacht noch haette aufhoeren koennen, und sie stand
+// bis 0.6.10 in dieser Uebung gar nicht.
+//
+// Nachgestellt wird das Ereignis, nicht der Messwert: dieses Modell zaehlt
+// die Abschaltreserve auf seiner eigenen Skala (siehe WITHDRAW_ROD unten und
+// rbmk.js: _orm), und was es an dieser Stelle anzeigt, ist NICHT die
+// dokumentierte Zahl. Der Hinweistext stellt deshalb beide nebeneinander,
+// statt eine davon zu verschweigen -- dieselbe Linie wie bei rodDepth.
+const WALL_ORM_PRINTOUT_S = 1 * 3600 + 22 * 60 + 30;   // 01:22:30
+// Wie lange der Hinweis zum Ausdruck stehen bleibt, bevor der Schritt wieder
+// seinen normalen Text zeigt. Reine Anzeige; bei 60x Zeitraffer waere er
+// sonst weg, bevor ihn jemand liest -- deshalb schaltet die Zeitregie
+// zusaetzlich auf Beobachtungstempo (siehe speedHint()).
+const ORM_PRINTOUT_WATCH_S = 25;
 
 // Der Leistungseinbruch der Nacht -- seit 0.6.1 wirklich gefahren, nicht mehr
 // nur im Text erzaehlt.
@@ -268,6 +292,38 @@ const AR_DEADBAND = 0.0005;
 // zurechtzubiegen stellt die Uebung die Einfahrtiefe daneben (siehe view():
 // rodDepth) -- "0,14 m von 7 m" sagt, was "ORM 0,0" verschweigt.
 const WITHDRAW_ROD = 0.02;
+
+// Stellung der 24 von unten einfahrenden verkuerzten Absorberstaebe (USP,
+// rodBanks[2] in rbmk.js) beim Auslaufbeginn -- die einzige Gruppe, die NICHT
+// mit herausgezogen wird.
+//
+// Damit bekommt die Uebung zurueck, was das Zwei-Bank-Modell bis 0.6.10 nicht
+// abbilden konnte: die dokumentierte Abschaltreserve von 6 bis 8
+// Stabaequivalenten. Sie kam in der Nacht nicht daher, dass ALLE Staebe ein
+// Stueck im Kern standen, sondern daher, dass die grosse Mehrheit ganz oben
+// stand und eine kleine Gruppe drin blieb. Ein Modell mit einer einzigen
+// Stabstellung fuer alle 211 Staebe muss sich zwischen beidem entscheiden --
+// und entschied sich fuer die Stellung, bei der die Graphitspitzen wirken,
+// also fuer eine Anzeige von 0,0.
+//
+// Gerechnet (rbmk.js: _orm zaehlt rods * rodWorthCurve(h)):
+//   187 Staebe bei h = 0,02  ->  187 * 0,0000525 = 0,01
+//    24 Staebe bei h = 0,40  ->  24  * 0,3065    = 7,36
+//   ---------------------------------------------------
+//   Abschaltreserve                                7,4  (dokumentiert 6-8)
+//
+// Die Stellung selbst ist der freie Parameter dieser Nachstellung: welche
+// Tiefe die USP-Gruppe in jener Nacht hatte, ist nicht ueberliefert, ihre
+// ANZAHL dagegen ist Anlagentechnik (24 von 211). Gesetzt ist sie deshalb so,
+// dass die Anzeige in das dokumentierte Band faellt -- und das ist eine
+// Kalibrierung an einer dokumentierten Groesse, keine an einer gewuenschten.
+//
+// Auf den Spitzeneffekt wirkt sich das nicht aus: eine Gruppe ohne
+// Graphitverdraenger traegt dort ohnehin nichts bei (rbmk.js:
+// _tipReactivity). Was sie sehr wohl beitraegt, ist Absorber waehrend der
+// Schnellabschaltung, und zwar aus dem steilen Teil ihrer Kurve heraus --
+// das schwaecht die Exkursion messbar ab (siehe Test und CHANGELOG).
+const USP_ROD = 0.40;
 
 // Kernhoehe in Metern -- nur fuer die Anzeige der Einfahrtiefe. Dieselbe
 // Zahl steckt in rbmk.js hinter tip.span (1,25 m von 7 m).
@@ -389,8 +445,10 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     // (siehe 'recover') nicht durch: ein kurzer Anfangsausschlag drueckte n
     // knapp unter die 5,5-%-Grenze und liess die Haltezeit neu anlaufen.
     // 0.44 gibt genug Regelspielraum, um diesen Anfangsausschlag abzufangen.
-    s.rod[0] = s.rod[1] = 0.44;
-    s.rodDmd[0] = s.rodDmd[1] = 0.44;
+    // Alle drei Gruppen auf derselben Tiefe -- bis zum Auslaufbeginn faehrt
+    // die Anlage genau wie vor der Aufteilung in drei Gruppen (siehe
+    // rodBanks in rbmk.js: bei gleicher Stellung ist die Rechnung dieselbe).
+    for (let i = 0; i < s.rod.length; i++) { s.rod[i] = s.rodDmd[i] = 0.44; }
     s.T_f = 585.7547959561184;
     s.T_cl = 558.7573570680994;
     s.T_ci = 556.7348461520972;
@@ -545,6 +603,10 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     if (this._feedSurgeT0 != null && s.t_sim - this._feedSurgeT0 <= SURGE_WATCH_S) {
       return SURGE_WATCH_SPEED;
     }
+    if (this._ormPrintoutT0 != null
+      && s.t_sim - this._ormPrintoutT0 <= ORM_PRINTOUT_WATCH_S) {
+      return SURGE_WATCH_SPEED;
+    }
     const id = this.steps[this.index];
     if (WATCH_STEPS.has(id)) return WATCH_SPEED;
     return FAST_STEPS.has(id) ? FAST_SPEED : null;
@@ -655,6 +717,22 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     }
   }
 
+  /**
+   * Der ORM-Ausdruck um 01:22:30 (siehe WALL_ORM_PRINTOUT_S).
+   *
+   * Kein Eingriff in die Anlage -- die Mannschaft las eine Zahl ab und fuhr
+   * weiter. Genau deshalb steht er hier: eine Uebung, die nur Handlungen
+   * zeigt, laesst die wichtigste Nicht-Handlung der Nacht aus.
+   */
+  _stepOrmPrintout() {
+    const { state: s, ctx: c } = this.engine;
+    if (this._ormPrintoutT0 != null) return;
+    if (this._wallSeconds() < WALL_ORM_PRINTOUT_S) return;
+    this._ormPrintoutT0 = s.t_sim;
+    noteEvent(this.engine, 'event_chernobyl_orm_printout');
+    c.log.push({ t: s.t_sim, key: 'event_chernobyl_orm_printout', severity: 2, kind: 'on' });
+  }
+
   _triggerCoastdown() {
     const { state: s, ctx: c } = this.engine;
     // Der VOLLE Leistungsregler (c.powerCtl, bewegt beide Stabbaenke und
@@ -665,6 +743,17 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     c.powerCtl.auto = false;
     this._withdrawToTipSpan();
     c.arTrim = { rho: s.rho_ext || 0, setpoint: s.n };
+    // Der abgeschaltete Reaktorschutz -- VOR dem Auslauf, sonst stuende das
+    // Signal fuer einen Rechenschritt an (rbmk.js: tg_stop_scram).
+    //
+    // Historisch gehoerte das Abschalten zur Versuchsvorbereitung und lag
+    // damit frueher als 01:23:04; die Minute ist nicht dokumentiert, der
+    // Vorgang selbst schon (INSAG-7). Die Uebung setzt ihn deshalb dorthin,
+    // wo er wirksam wird: in dem Augenblick, in dem die Ventile zufallen und
+    // das Signal kaeme.
+    s.tgStopBlocked = true;
+    noteEvent(this.engine, 'event_chernobyl_az5_block');
+    c.log.push({ t: s.t_sim, key: 'event_chernobyl_az5_block', severity: 2, kind: 'on' });
     // Generator vom Netz: ab hier laeuft der Rotor aus und nimmt die vier an
     // ihm haengenden Hauptumwaelzpumpen mit (rbmk.js stepLoop, sp.turbogen).
     // Seit 0.6.1 eine echte Zustandsgroesse statt einer geskripteten Rampe auf
@@ -686,7 +775,12 @@ export class RbmkChernobylTutorial extends StartupTutorial {
   _withdrawToTipSpan() {
     const { state: s, spec: sp, reactivity } = this.engine;
     const xenonPcm = sp.feedback.xenon_worth_pcm * 1e-5;
-    s.rod[0] = s.rod[1] = s.rodDmd[0] = s.rodDmd[1] = WITHDRAW_ROD;
+    // Von oben einfahrende Gruppen ganz nach draussen, die von unten
+    // einfahrende verkuerzte Gruppe bleibt im Kern (siehe USP_ROD oben).
+    for (let i = 0; i < s.rod.length; i++) {
+      const h = sp.rodBanks[i].fromBelow ? USP_ROD : WITHDRAW_ROD;
+      s.rod[i] = s.rodDmd[i] = h;
+    }
     const rho = reactivity.compute(s, sp);
     const dX = rho / xenonPcm;
     if (Number.isFinite(dX) && dX > 0) {
@@ -709,7 +803,7 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     if (this.steps[this.index] === 'pumps' && this.elapsed >= AUTO_PUMPS_S) {
       for (const p of c.mcp) if (!p.running) p.start();
     }
-    if (this.steps[this.index] === 'hold') this._stepFeedSurge();
+    if (this.steps[this.index] === 'hold') { this._stepFeedSurge(); this._stepOrmPrintout(); }
     // AZ-5 automatisch bei AUTO_SCRAM_S (siehe dort) -- idempotent (siehe
     // engine.scram()).
     if (!s.scram.active && this._sinceRunback(s) >= AUTO_SCRAM_S) {
@@ -742,6 +836,10 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     if (id === 'recover') return 'tut_chernobyl_hint_recover_hold';
     if (id === 'pumps') return 'tut_chernobyl_hint_pumps';
     if (id === 'hold') {
+      if (this._ormPrintoutT0 != null
+        && s.t_sim - this._ormPrintoutT0 <= ORM_PRINTOUT_WATCH_S) {
+        return 'tut_chernobyl_hint_orm_printout';
+      }
       return this._feedSurgeT0 != null && !this._feedSurgeDone
         ? 'tut_chernobyl_hint_feed_surge' : 'tut_chernobyl_hint_hold';
     }
@@ -772,6 +870,8 @@ export class RbmkChernobylTutorial extends StartupTutorial {
       // an -- oder gar nicht mehr, je nachdem, wo der Stand entstand.
       feedSurgeT0: Number.isFinite(this._feedSurgeT0) ? this._feedSurgeT0 : null,
       feedSurgeDone: !!this._feedSurgeDone,
+      // Ohne diesen kaeme der Ausdruck nach dem Laden ein zweites Mal.
+      ormPrintoutT0: Number.isFinite(this._ormPrintoutT0) ? this._ormPrintoutT0 : null,
       // Ohne den Einbruchszustand stuende die Anlage nach dem Laden mitten im
       // Einbruch, waehrend das Drehbuch wieder von vorn anfinge einzufahren.
       dip: this._dip ? { ...this._dip } : null };
@@ -793,6 +893,7 @@ export class RbmkChernobylTutorial extends StartupTutorial {
       ? data.wallOffset : WALL_HANDOVER_S);
     this._feedSurgeT0 = Number.isFinite(data?.feedSurgeT0) ? data.feedSurgeT0 : null;
     this._feedSurgeDone = !!data?.feedSurgeDone;
+    this._ormPrintoutT0 = Number.isFinite(data?.ormPrintoutT0) ? data.ormPrintoutT0 : null;
     const dip = data?.dip;
     this._dip = dip && ['down', 'hold', 'recover'].includes(dip.phase)
       && Number.isFinite(dip.setpoint) && Number.isFinite(dip.t)
@@ -805,7 +906,7 @@ export class RbmkChernobylTutorial extends StartupTutorial {
     // Sekunden seit Auslaufbeginn -- treibt den automatischen Knopfdruck
     // (siehe step()/AUTO_SCRAM_S) und die Anzeige fuer den Spieler, damit der
     // Zeitpunkt des Druckens gegen das gemessene Wirkfenster (PRESS_WINDOW,
-    // 15-105 s) nachvollziehbar bleibt, statt eine Behauptung zu sein.
+    // 0-110 s) nachvollziehbar bleibt, statt eine Behauptung zu sein.
     const sinceRunback = Number.isFinite(this._runbackT0) ? Math.max(0, s.t_sim - this._runbackT0) : null;
     // `wall` steht bewusst NEBEN values, nicht darin: values geht als
     // Zahlenbeutel durch num() in die *_values-Textbausteine (siehe

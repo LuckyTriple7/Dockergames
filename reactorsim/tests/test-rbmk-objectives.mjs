@@ -15,7 +15,7 @@ function fixture() {
     W_core: 5565, T_cl: 570, T_gr: 800, T_ci: 550, T_co: 560, P_th: 100,
     n: 0.001, coolantHeatMW: 200, auxWaterKg: 100000, auxFeedInstalled: true,
     auxFeedAvailable: true, auxFeedOn: true, scram: { active: true },
-    rod: new Float64Array([1, 1]), destroyed: false, fault: null };
+    rod: new Float64Array([1, 1, 1]), destroyed: false, fault: null };
   const markers = [];
   const engine = { state, spec: rbmk.spec, ctx: { trends: { mark: m => markers.push(m) } },
     derive: () => ({ L_sg: 0.5, dnbr: NaN, subcooling: NaN }) };
@@ -102,9 +102,11 @@ test('RBMK actual safety, inventory and flow fields reject nonfinite values, typ
     { n: -1 }, { n: 0.0101 }, { coolantHeatMW: 0 }, { coolantHeatMW: -1 },
     { auxWaterKg: -1 }, { auxWaterKg: 160001 }, { auxFeedInstalled: false },
     { auxFeedAvailable: false }, { scram: { active: false } }, { scram: { active: 1 } },
-    { rod: null }, { rod: [1, 1] }, { rod: new Float64Array([1]) },
-    { rod: new Float64Array([1, NaN]) }, { rod: new Float64Array([1, 0.989]) },
-    { rod: new Float64Array([1, 1.01]) }, { destroyed: true }, { fault: 'bad' }, { reactor: 'pwr' }];
+    // Drei Gruppen seit 0.6.11 (rbmk.js rodBanks: ctrl/sd/usp) -- eine
+    // Stabstellung mit nur zwei Werten ist damit kein gueltiger Zustand mehr.
+    { rod: null }, { rod: [1, 1, 1] }, { rod: new Float64Array([1, 1]) },
+    { rod: new Float64Array([1, 1, NaN]) }, { rod: new Float64Array([1, 1, 0.989]) },
+    { rod: new Float64Array([1, 1, 1.01]) }, { destroyed: true }, { fault: 'bad' }, { reactor: 'pwr' }];
   for (const patch of patches) {
     const f = fixture();
     activate(f);

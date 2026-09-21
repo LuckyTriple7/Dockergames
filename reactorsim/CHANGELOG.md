@@ -1,5 +1,85 @@
 # Changelog
 
+## 0.6.11
+
+- ✨ **Die Chernobyl-Uebung zeigt endlich die dokumentierte
+  Abschaltreserve von 6 bis 8 Stabaequivalenten** (gemessen 7,4) statt der
+  bisherigen 0,0. Der Grund fuer die alte Null war weder eine Skalenfrage
+  noch eine falsche Kurve, sondern das Stabmodell: mit EINER Stellung fuer
+  alle 211 Staebe laesst sich der Zustand der Nacht nicht abbilden. Die 6-8
+  kamen nicht daher, dass alle Staebe ein Stueck im Kern standen, sondern
+  daher, dass die grosse Mehrheit ganz oben stand und eine kleine Gruppe
+  drin blieb.
+
+  Diese Gruppe gibt es jetzt, und sie ist keine Erfindung: der RBMK-1000 hat
+  24 verkuerzte Absorberstaebe (USP), die von UNTEN einfahren. Ihnen fehlt
+  der Graphitverdraenger am Kernboden, sie koennen den positiven
+  Schnellabschalteffekt also gar nicht ausloesen -- `rbmk.js:
+  _tipReactivity` ueberspringt sie deshalb, und im Fliessbild stehen sie
+  sichtbar andersherum. Bei gleicher Stellung aller drei Gruppen ist die
+  Rechnung dieselbe wie vorher (Wirksamkeiten 5600 pcm, Stabzahl 211);
+  nachgemessen weichen die physikalischen Skalare ueber 1200 Schritte erst
+  in der fuenfzehnten Stelle ab, also in der Rundung.
+
+- ✨ **Die Exkursion ist prompt-ueberkritisch mit Abstand statt auf der
+  Kante.** Vorher lag die Spitze bei 295 % der Nennleistung und die
+  Reaktivitaet bei 494 pcm gegen beta = 480 -- die Zerstoerung hing an
+  vierzehn pcm. Jetzt sind es rund 1090 % und 850 pcm, also etwa 1,8 beta.
+  Die Stellschraube ist die Gesamtwirksamkeit der Graphitverdraenger
+  (`tip.worth_pcm_total`, 1150 statt 2 x 320) -- eine Kalibrierung, wie sie
+  es immer war, nur an einer anderen Groesse: zwischen 1050 und 1400 pcm
+  zerstoert AZ-5 den Kern durchgehend
+  (`tests/tools/chernobyl_tip_sweep.mjs`).
+
+  Der Preis steht im Audit: die Zerstoerung faellt jetzt auf 01:23:42 statt
+  01:23:45, dokumentiert sind 01:23:44 bis 01:23:47. Eine staerkere
+  Exkursion ist zwangslaeufig auch eine schnellere. Und der Druckzeitpunkt
+  innerhalb des Auslaufs entscheidet nicht mehr: neu vermessen zerstoert
+  AZ-5 von der ersten bis mindestens zur 110. Sekunde. Das frueher
+  dokumentierte schmale Fenster war eine Eigenschaft der Kante bei beta,
+  kein eigenstaendiger Befund -- was bleibt, ist die belegbare Aussage:
+  dieselbe Anlage ueberlebt AZ-5 muehelos, solange die Staebe auf
+  Haltestellung stehen.
+
+- ✨ **Der abgeschaltete Reaktorschutz ist modelliert, nicht erzaehlt.**
+  Neu sind die Ausloesung beim Schnellschluss beider Turbosaetze
+  (`trip_rbmk_tg_stop`) und der Anlagenzustand daneben
+  (`alarm_rbmk_tg_stop_blocked`). Die Uebung schaltet sie beim Auslaufbeginn
+  ab, mit Eintrag in der Zeitleiste. Bis 0.6.10 kannte das Modell das Signal
+  gar nicht -- die Uebung stellte etwas nach, dessen Abschaltung sie nicht
+  zeigen konnte.
+
+- ✨ **Der ORM-Ausdruck um 01:22:30 steht in der Zeitleiste.** Rund eine
+  Minute vor dem Versuch holte die Mannschaft einen Ausdruck des
+  Prozessrechners: die Abschaltreserve lag weit unter dem Minimum von 15
+  Staeben, das Reglement verlangte die sofortige Abschaltung, der Versuch
+  lief weiter. Die wichtigste Nicht-Handlung der Nacht fehlte bis dahin
+  ganz. Eigener Schritthinweis und Beobachtungstempo dazu; der Hinweis
+  stellt die dokumentierten 6-8 neben die Anzeige dieses Modells, statt eine
+  der beiden Zahlen zu verschweigen.
+
+- 🔧 **Die Uebung wird jetzt durch den ECHTEN Simulationstakt
+  geprueft** (`tests/test-chernobyl-apploop.mjs`). Alle bisherigen Tests
+  dieser Uebung riefen `engine.step`/`session.step` selbst auf -- dieselbe
+  Reihenfolge wie in main.js, aber ein Nachbau. Der Weg, den ein Spieler
+  nimmt (`loop.js` mit Bildtakt, Zeitraffer-Umschaltungen der Uebung und
+  verworfenem Rueckstand bei zu langsamen Bildern), war nicht abgedeckt. Er
+  laeuft jetzt bei 60, 20 und 5 Bildern je Sekunde mit, einschliesslich des
+  Falls mit verworfenem Rueckstand.
+
+- 🔧 **`tests/tools/chernobyl_press_window.mjs` war seit 0.6.4
+  unbrauchbar.** Sein Laufbudget von 2500 s endete, bevor der Auslauf
+  ueberhaupt begann -- der beginnt seit dem Wegfall des Uhrensprungs erst
+  nach rund 3360 s. Jeder Lauf meldete folgerichtig "nicht zerstoert".
+  Budget auf 4200 s angehoben.
+
+- 🔧 **Staende von vor 0.6.11 laden unveraendert weiter.** Ein alter
+  RBMK-Stand kennt zwei Stabgruppen; die dritte wurde aus der
+  Abschaltgruppe herausgeloest und uebernimmt deren Stellung, womit
+  Gesamtwirksamkeit, Stabzahl und Abschaltreserve gleich bleiben
+  (`net/persist.js`, mit eigenem Test). Ohne diesen Zweig waeren die Staebe
+  nach dem Laden stumm auf ihrem Anfangswert stehengeblieben.
+
 ## 0.6.10
 
 - ✨ **Die Hintergrundfotos sind wieder zu erkennen.** Splash, Uebersicht

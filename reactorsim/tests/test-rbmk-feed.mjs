@@ -23,7 +23,12 @@ const FIELDS = ['auxFeedInstalled', 'auxFeedAvailable', 'auxFeedOn', 'auxFeedDmd
 // an der Physik nichts, solange der Generator am Netz haengt: tgSpeed steht
 // dann konstant auf 1, der Pumpensollwert geht unveraendert durch. Getestet
 // wird er in tests/test-rbmk-chernobyl-tutorial.mjs, wo er wirklich laeuft.
-const BASELINE_SKIP = [...FIELDS, 'tgSpeed', 'tgCoasting'];
+// tgSpeed/tgCoasting/tgStopBlocked gehoeren zum Turbinenauslaufversuch und
+// stehen im unbenutzten Zustand still -- sie bleiben deshalb aus dem
+// Gesamthash heraus, statt jedes Mal eine neue Grundlinie zu erzwingen.
+// Genau das zeigt auch, dass ihr Hinzukommen die Physik nicht anfasst: mit
+// ihnen draussen passt die alte Grundlinie unveraendert weiter.
+const BASELINE_SKIP = [...FIELDS, 'tgSpeed', 'tgCoasting', 'tgStopBlocked'];
 const json = value => JSON.parse(JSON.stringify(value));
 const near = (a, b, tol = 1e-7) => assert.ok(Math.abs(a - b) <= tol, `${a} != ${b}`);
 const fire = (e, id, args) => getEvent(id).apply(e, args);
@@ -80,14 +85,30 @@ test('unequipped RBMK retains exact pre-change physics and controller timing', (
   // still matched the previous baseline exactly, and s.T_cw itself held the
   // plant file's own 288.15 K at every one of them. Physics identical, hash
   // different -- that is what a whole-state hash is for and also its price.
+  //
+  // Regenerated again in 0.6.11, when the rod population was split into THREE
+  // groups (rbmk.js rodBanks: ctrl/sd/usp -- the 24 shortened rods that enter
+  // from below now form their own group, see the comment there). Nothing in
+  // the model changed with it: the worths still sum to 5600 pcm, the rod
+  // counts to 211, all three groups still travel together, and the displacer
+  // worth is distributed over the rods that HAVE a displacer instead of being
+  // set per group. Checked, not claimed -- a scalar dump over the same 1200
+  // steps (n, T_f, T_cl, T_gr, p_drum, L_drum, M_drum, x_e, void, Xe, I, Sm,
+  // Pm, ao, W_fw, W_steam, P_th, P_e, rho, ORM, void coefficient and mean rod
+  // position, 15 digits each) is IDENTICAL at steps 0, 1, 4 and 17, and from
+  // step 200 on differs only in the FIFTEENTH significant digit. That is
+  // double-precision round-off from summation order: 2400+2694+506 pcm do not
+  // add up bit-for-bit the same way as 2400+3200. The hash covers the raw
+  // state and cannot tell that apart from a real change -- that is what it is
+  // for and also its price.
   const baseline = {
-    0: 'd2301fb718da3e98809d0366e6d8df5f8702b7979d203abda16fb735f53fdca8',
-    1: '268c589103bbc619013886ea4eacfcfbe5ca4f3c57f455f6c79ff3dacf5bcb4c',
-    4: '43ae54a384ff7c8f50e761d3fa829cae01f41154e61aa9f600d56eda8d1f7ba7',
-    17: 'f760a7c6c41ca6feff9f9ee005feda5d050a2f0da45fb59a44fbaed379e2459b',
-    200: '3817b411249ac9492df8182d07ae8c4c3b94a6ef048932e8a01a8f551d93830a',
-    600: '10632658ed9f5b799fbc01fa1e74a4347dae1bce8b78bd4b2845656bf554da5a',
-    1200: '3a667ca48263c7a8a86cea6f9ff85254493e81ed1da7aa995bc7313720c1141b',
+    0: '6839808870614e5861df2725e2dcf4f1b34abf13201e7ddd6fbfa6334fae30ba',
+    1: '4216c9aa5c063820831597e53ed54c326bb3ee4f935e87d5774ba455b4e51441',
+    4: 'd189f2b90e71a0d9f7d91171880c428fe22b291169426b26c7a1f27dfe6b5baf',
+    17: 'add934b10d5eaf8be1bff65f387a8a94b1877912ba01bc84e8d3cffb41de6c28',
+    200: '380277be3742f5cf60c54f16b7d3ed5ac532e199f9f1d336205d648fb04342a2',
+    600: '16ec92e474eb77ab1a7b3c160d0fbcbe4c116066a4c56639a50f7ab3f3a394a1',
+    1200: '2289929f8b81c2bd515297671873007927e5a8ae8a2398847b0bfa6353e65ef9',
   };
   const e = createEngine(rbmk);
   for (let i = 0; i <= 1200; i++) {

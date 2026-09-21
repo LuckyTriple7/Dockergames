@@ -60,7 +60,12 @@ function run(pressAt, { dropTrim = false, watchS = 120 } = {}) {
   let peak = s.n;
   let tPeak = null;
   let tgAtPress = null;
-  const limit = Math.round(2500 / DT);
+  // 2500 s reichten bis 0.6.3; seit 0.6.4 laeuft die Erholung nach dem
+  // Einbruch wirklich ab (kein Uhrensprung mehr), und der Auslauf beginnt
+  // erst nach rund 3360 s. Mit dem alten Budget brach die Messung ab, BEVOR
+  // ueberhaupt etwas zu messen war -- jeder Lauf meldete dann brav
+  // "nicht zerstoert".
+  const limit = Math.round(4200 / DT);
   for (let i = 0; i < limit && session.phase === PHASE.RUNNING; i++) {
     one(f);
     if (dropTrim && c.arTrim) { c.arTrim = null; s.rho_ext = 0; }

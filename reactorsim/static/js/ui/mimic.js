@@ -132,7 +132,12 @@ function valve(x, y, id, label, side = 'right', pctId) {
  */
 function rodLine(x, yTop, yBottom, bank, fromTop) {
   const anchor = fromTop ? yTop : yBottom;
-  return svg('line', { class: 'rs-rod', x1: x, x2: x, y1: anchor, y2: anchor, 'data-rod': bank });
+  // Die Richtung steht an der Linie, nicht nur am Tracker: der RBMK hat seit
+  // 0.6.11 BEIDES im selben Bild -- die Regel- und Abschaltgruppe faehrt von
+  // oben ein, die 24 verkuerzten Staebe fahren von unten ein (rbmk.js
+  // rodBanks: usp).
+  return svg('line', { class: 'rs-rod', x1: x, x2: x, y1: anchor, y2: anchor,
+    'data-rod': bank, 'data-rod-dir': fromTop ? 'top' : 'bottom' });
 }
 
 /** Sammelt die von rodLine() gebauten Linien und liefert eine update()-
@@ -141,11 +146,14 @@ function rodLine(x, yTop, yBottom, bank, fromTop) {
 function rodTracker(root, yTop, yBottom, fromTop) {
   const lines = [...root.querySelectorAll('.rs-rod')].map((line) => ({
     line, bank: Number(line.dataset.rod), lastFrac: null, moveUntil: 0,
+    // Ohne eigene Angabe gilt die Richtung des Trackers -- so bleiben die
+    // Bilder gueltig, die nur eine Richtung kennen (DWR, SWR).
+    fromTop: line.dataset.rodDir ? line.dataset.rodDir === 'top' : fromTop,
   }));
   return (s, nowMs) => {
     for (const r of lines) {
       const frac = Math.max(0, Math.min(1, (s.rod && s.rod[r.bank]) || 0));
-      const tip = fromTop ? yTop + frac * (yBottom - yTop) : yBottom - frac * (yBottom - yTop);
+      const tip = r.fromTop ? yTop + frac * (yBottom - yTop) : yBottom - frac * (yBottom - yTop);
       setAttr(r.line, 'y2', tip.toFixed(1));
       // Kurz aufblinken, wenn sich die Stellung gerade ändert -- sonst geht
       // eine Stabbewegung im ohnehin vollen Bild leicht unter. moveUntil haelt
@@ -652,6 +660,12 @@ export function buildRbmkMimic(container) {
   // oben ein, in zwei der sieben Kanäle oben gezeichnet.
   coreNodes.push(rodLine(97, 92, 200, 0, true));
   coreNodes.push(rodLine(141, 92, 200, 1, true));
+  // Die dritte Gruppe seit 0.6.11: 24 verkürzte Absorberstäbe, die von UNTEN
+  // einfahren (rbmk.js rodBanks: usp). Dass sie von der anderen Seite kommen,
+  // ist kein Detail -- ihnen fehlt die Graphitspitze, die den anderen
+  // Gruppen beim Einfahren zuerst Reaktivität hinzufügt. Deshalb stehen sie
+  // hier auch sichtbar andersherum.
+  coreNodes.push(rodLine(119, 92, 200, 2, false));
   coreNodes.push(svg('text', { class: 'rs-label', x: 72, y: 230, 'text-anchor': 'start' }, [t('mimic_channels')]));
   // y=94 statt 86: die Steigleitung faellt bei x=118 -- derselben Mitte --
   // bis y=78 herunter, 86 sass ihr noch im Weg. Tiefer stehen ein paar
