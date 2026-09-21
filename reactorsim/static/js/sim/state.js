@@ -33,6 +33,10 @@ export const RANGES = {
   T_co: [250, 4000],
   T_mod: [250, 4000],
   T_gr: [250, 2000],
+  // Kuehlwasser: von arktisch bis "der Fluss steht fast" -- weit genug, um
+  // jede denkbare Jahreszeit zu fassen, eng genug, um einen Rechenfehler zu
+  // fangen, bevor er als Kondensatordruck in der Anzeige landet.
+  T_cw: [250, 340],
   W_core: [0, 1e6],
   W_fwDemand: [0, 1e6],
   W_fwMain: [0, 1e6],
@@ -93,6 +97,14 @@ export function createState(spec, opts = {}) {
     T_co: 599,
     T_mod: 578,
     T_gr: 800,
+    // Kuehlwasser am Kondensatoreintritt. Steht hier im Zustand und nicht
+    // mehr nur als Konstante in der Anlagendatei (sp.condenser.T_cw), weil
+    // das freie Spiel eine Jahreszeit waehlen kann und die Wahl einen ganzen
+    // Lauf lang gilt -- also in den Spielstand muss. Der Auslegungspunkt der
+    // Anlage bleibt der Anfangswert: ein Szenario, das nichts dazu sagt,
+    // rechnet weiter mit genau derselben Zahl wie bisher.
+    T_cw: opts.T_cw !== undefined ? opts.T_cw
+      : (spec.condenser ? spec.condenser.T_cw : 288.15),
 
     // Hydraulik
     W_core: spec.coolant ? spec.coolant.W0 : 0,

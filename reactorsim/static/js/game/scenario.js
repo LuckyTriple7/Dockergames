@@ -157,14 +157,27 @@ export function gridDeviationTrips(def) {
   ];
 }
 
+// Toleranzband des freien Spiels: Abweichungen darunter zaehlen nicht als
+// Lastfolgefehler. Dieselbe Groessenordnung wie die Vorgabe eines Szenarios
+// ohne eigene Angabe (siehe Scenario.tolerance oben) -- eine zweite Zahl
+// waere nur eine zweite Stellschraube fuer denselben Gedanken.
+const FREE_TOLERANCE_MW = 50;
+
 /**
  * Fortschritt eines Laufs. Sammelt Kennzahlen, keine Punkte -- gewertet wird
  * erst am Ende, und zwar an einer Stelle (game/scoring.js), damit Client und
  * Server dieselbe Formel benutzen können.
+ *
+ * `scenario` darf null sein. Bis 0.6.6 war es das nie: das freie Spiel bekam
+ * gar keine RunState, und damit auch keine einzige Kennzahl -- kein Blick auf
+ * gelieferte Energie, keine Alarmzeit, keine SCRAM-Zaehlung. Gerechnet wurde
+ * dort dasselbe wie im Szenario, nur sah es niemand. Ohne Szenario fuehrt die
+ * Netzanforderung im Zustand (s.P_demand) statt der Kurve aus der JSON-Datei,
+ * und das Toleranzband ist FREE_TOLERANCE_MW.
  */
 export class RunState {
   constructor(scenario, spec) {
-    this.scenario = scenario;
+    this.scenario = scenario || null;
     this.P0_e = spec.P0_e;
     this.energyDelivered = 0;    // MWh
     this.energyDemanded = 0;     // MWh
@@ -195,11 +208,17 @@ export class RunState {
    *  Groesse. */
   accumulate(s, d, worstSeverity, tiles, dt) {
     const h = dt / 3600;
-    const demand = this.scenario.def.tutorial ? s.P_demand : this.scenario.demandAt(s.t_sim);
+    // Wer die Anforderung fuehrt: die Kurve des Szenarios, sonst der Zustand.
+    // Tutorial und freies Spiel setzen s.P_demand selbst (tutorial.demand
+    // bzw. _stepFreeDemand() in session.js) -- dort waere demandAt() die
+    // falsche Quelle, im freien Spiel gibt es sie gar nicht.
+    const scripted = this.scenario && !this.scenario.def.tutorial;
+    const demand = scripted ? this.scenario.demandAt(s.t_sim) : s.P_demand;
+    const tolerance = this.scenario ? this.scenario.tolerance : FREE_TOLERANCE_MW;
     this.energyDelivered += s.P_e * h;
     this.energyDemanded += demand * h;
     const dev = Math.abs(s.P_e - demand);
-    if (dev > this.scenario.tolerance) this.deviationMWh += (dev - this.scenario.tolerance) * h;
+    if (dev > tolerance) this.deviationMWh += (dev - tolerance) * h;
     if (worstSeverity > 0) this.violationSeconds[worstSeverity] += dt;
     // Parallel, nicht exklusiv: jede gerade aktive Kachel zaehlt fuer sich,
     // unabhaengig davon, ob noch andere gleichzeitig anstehen.
@@ -290,7 +309,9 @@ export class RunState {
    */
   checkFail(s, d, dt, worstSeverity = 0) {
     if (this.failed) return this.failed;
-    for (const f of this.scenario.def.fail || []) {
+    // Ohne Szenario gibt es keine Fehlbedingungen: das freie Spiel endet
+    // allein am Brennstoffschaden, und den prueft session.js selbst.
+    for (const f of (this.scenario ? this.scenario.def.fail : null) || []) {
       if (f.if === 'difficulty>=3' && this.scenario.difficulty < 3) continue;
       if (f.type === 'fuel_damage' && s.destroyed) return (this.failed = 'fail_fuel_damage');
       if (f.type === 'scram' && s.scram.active) return (this.failed = 'fail_scram');
@@ -335,8 +356,8 @@ export class RunState {
   summary(s) {
     return {
       reactor: s.reactor,
-      scenario: this.scenario.id,
-      difficulty: this.scenario.difficulty,
+      scenario: this.scenario ? this.scenario.id : null,
+      difficulty: this.scenario ? this.scenario.difficulty : 0,
       energy_mwh_delivered: round(this.energyDelivered, 2),
       energy_mwh_demanded: round(this.energyDemanded, 2),
       deviation_mwh: round(this.deviationMWh, 3),

@@ -15,6 +15,7 @@ import { noteEvent, observeAlarms, learningReport } from './learning.js';
 import { ScenarioObjectives } from './objectives.js';
 import { TrendHistory } from './trendHistory.js';
 import { FreeFaults } from './freeEvents.js';
+import { ShiftLog } from './shift.js';
 
 // Freies Spiel ohne Bedarfskurve hiesse: "folge der Netzanforderung" waere
 // nichts als "lass die Anforderung, wie sie ist" -- kein Unterschied zum
@@ -84,7 +85,21 @@ export class Session {
     new TrendHistory(engine);
     this.free = !scenarioDef;
     this.scenario = scenarioDef ? new Scenario(scenarioDef) : null;
-    this.run = this.scenario ? new RunState(this.scenario, engine.spec) : null;
+    // Auch ohne Szenario: die Kennzahlen entstehen im freien Spiel genauso,
+    // sie wurden bis 0.6.6 nur nirgends gesammelt (siehe RunState). Gewertet
+    // wird davon nichts -- eine Runde ohne Ende hat kein Ergebnis --, aber
+    // der Schichtbericht liest daraus alle acht Stunden seine Bilanz.
+    this.run = new RunState(this.scenario, engine.spec);
+    this.shift = new ShiftLog(this.run);
+    this.shift.onReport = (report) => {
+      // Als Protokollzeile, nicht als Dialog: der Bericht stellt sich in
+      // dieselbe Zeitleiste wie Stoerungen und Meldungen und unterbricht
+      // niemanden. ui/panels.js holt ihn beim naechsten Renderlauf ab
+      // (engine.drainLog()), persist.js nimmt ihn im Verlauf mit.
+      engine.ctx.log.push(ShiftLog.logEntry(report));
+      if (this.onShift) this.onShift(report);
+    };
+    this.onShift = null;
     this.objectives = scenarioDef?.score_mode === 'incident_v1'
       ? new ScenarioObjectives(engine, this.scenario) : null;
     this.phase = this.scenario ? PHASE.BRIEFING : PHASE.RUNNING;
@@ -156,7 +171,8 @@ export class Session {
     if (this.objectives) return { objectives: this.objectives.snapshot() };
     return this.free ? { demandNoise: this.demandNoise,
       demandNextChangeT: this.demandNextChangeT, rng: this.demandRng.snapshot(),
-      faults: this.faults ? this.faults.snapshot() : undefined } : {};
+      faults: this.faults ? this.faults.snapshot() : undefined,
+      shift: this.shift.snapshot() } : {};
   }
 
   restore(data) {
@@ -170,6 +186,10 @@ export class Session {
     if (Number.isFinite(data.demandNextChangeT)) this.demandNextChangeT = data.demandNextChangeT;
     this.demandRng.restore(data.rng);
     if (this.faults) this.faults.restore(data.faults);
+    // Nach der RunState: persist.js spielt sie vor dieser Stelle ein (siehe
+    // apply() dort), und der Schichtbericht braucht ihren wiederhergestellten
+    // Stand als Bezugslinie, nicht den leeren vom Rundenbau.
+    this.shift.restore(data.shift);
   }
 
   /** Freies Spiel: die Anforderung folgt der Tageslastkurve, nie sprunghaft --
@@ -211,7 +231,15 @@ export class Session {
       // dem sie ausgeloest wird, nicht erst im naechsten ueber die laufenden
       // Merker.
       if (this.faults) this.faults.step();
-      this.engine.ctx.trends.sample(s);
+      // Derselbe abgeleitete Zustand fuer Kennzahlen UND Trendschreiber --
+      // sample() wuerde sich sonst seinen eigenen holen. Das freie Spiel
+      // zahlt damit ein derive() je Rechenschritt, genau wie ein Szenario
+      // es schon immer tut.
+      const d = this.engine.derive();
+      this.run.accumulate(s, d, worstSeverity, tiles, dt);
+      this.shift.step(s.t_sim);
+      this.unacked = unackedSeconds;
+      this.engine.ctx.trends.sample(s, d);
       if (s.destroyed) this._finish(false, 'fail_fuel_damage');
       return;
     }
@@ -237,6 +265,7 @@ export class Session {
     if (this.objectives) this.objectives.step(dt);
     const d = this.engine.derive();
     this.run.accumulate(s, d, worstSeverity, tiles, dt);
+    this.shift.step(s.t_sim);
     this.unacked = unackedSeconds;
 
     const failed = this.run.checkFail(s, d, dt, worstSeverity);
@@ -259,7 +288,12 @@ export class Session {
     if (this.phase === PHASE.DEBRIEF) return;
     this.engine.ctx.trends.sample(this.engine.state, d, true);
     this.phase = PHASE.DEBRIEF;
-    if (this.run) {
+    // Nur ein Szenario wird gewertet. Die RunState gibt es seit dem
+    // Schichtbericht auch im freien Spiel (siehe Konstruktor), aber eine
+    // Runde ohne vorgesehenes Ende hat kein Ergebnis: summary() haette dort
+    // weder Szenariokennung noch Schwierigkeit, und score() rechnete eine
+    // Punktzahl, die niemand in eine Bestenliste schreiben darf.
+    if (this.run && this.scenario) {
       this.run.completed = completed;
       this.run.failed = failed;
       const sum = this.run.summary(this.engine.state);

@@ -11,6 +11,7 @@ import { getPlant, isAvailable, PLANT_IDS } from './plants/index.js';
 import { Session, PHASE } from './game/session.js';
 import { FAULT_LEVEL_IDS } from './game/freeEvents.js';
 import { CORE_AGE_IDS, coreAgeBurnup } from './game/coreAge.js';
+import { SEASON_IDS, DEFAULT_SEASON, seasonCoolingWater } from './game/season.js';
 import { gridDeviationTrips } from './game/scenario.js';
 import { api } from './net/api.js';
 import { pack as packSave, apply as applySave } from './net/persist.js';
@@ -135,9 +136,11 @@ function wireChoice(node, prefKey, allowed, fallback) {
 function readFreeSetup() {
   const faults = $('#rs-faults');
   const coreAge = $('#rs-core-age');
+  const season = $('#rs-season');
   return {
     faults: faults && FAULT_LEVEL_IDS.includes(faults.value) ? faults.value : 'off',
     coreAge: coreAge && CORE_AGE_IDS.includes(coreAge.value) ? coreAge.value : 'fresh',
+    season: season && SEASON_IDS.includes(season.value) ? season.value : DEFAULT_SEASON,
   };
 }
 
@@ -202,6 +205,11 @@ function initStart() {
   // Stoerung war bis 0.6.5 der einzige Zustand, und genau der war zu ruhig.
   wireChoice($('#rs-faults'), 'faults', FAULT_LEVEL_IDS, 'normal');
   wireChoice($('#rs-core-age'), 'coreAge', CORE_AGE_IDS, 'fresh');
+  // Jahreszeit: sie setzt die Kuehlwassertemperatur und damit den
+  // Turbinengegendruck (siehe game/season.js). Vorgabe ist das Fruehjahr --
+  // nahe am Auslegungspunkt der Anlage, damit ein freies Spiel ohne bewusste
+  // Wahl nicht ploetzlich anders faehrt als vor dieser Einstellung.
+  wireChoice($('#rs-season'), 'season', SEASON_IDS, DEFAULT_SEASON);
 
   for (const card of cards) {
     const id = card.dataset.reactor;
@@ -2196,8 +2204,15 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
   // wird nur einmal gebildet), ein Szenario startet stets frisch beladen.
   const freeBurnup = !scenarioDef && !loadSlot && freeSetup
     ? coreAgeBurnup(plant.spec, freeSetup.coreAge) : undefined;
+  // Jahreszeit genauso: nur ein NEUES freies Spiel waehlt. Ein Spielstand
+  // bringt sein Kuehlwasser im Zustand mit (s.T_cw, siehe sim/state.js), ein
+  // Szenario bleibt am Auslegungspunkt seiner Anlagendatei -- dessen
+  // Zeitplan und Wertung sind auf genau diesen abgestimmt.
+  const freeCoolingWater = !scenarioDef && !loadSlot && freeSetup
+    ? seasonCoolingWater(plant.spec, freeSetup.season) : undefined;
   app.engine = createEngine(plant, {
     burnup: saved?.state?.burnup !== undefined ? saved.state.burnup : freeBurnup,
+    T_cw: saved?.state?.T_cw !== undefined ? saved.state.T_cw : freeCoolingWater,
     n: isColdStart ? 1e-6 : 1.0, cold: isColdStart, seed: scenarioDef ? scenarioDef.seed : 1,
     // Meldetafel-Vorwarnung fuer die szenarioeigene Fail-Bedingung
     // 'grid_deviation' (siehe game/scenario.js) -- ohne sie fiel eine Runde

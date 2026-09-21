@@ -187,7 +187,12 @@
   "opt_core_age_fresh": "Frisch beladen -- volle Reserve",
   "opt_core_age_mid": "Zyklusmitte",
   "opt_core_age_late": "Zyklusende -- knappe Reserve",
-  "opt_free_setup_hint": "Beides gilt nur fürs freie Spiel. Störungen kommen frühestens nach einer Einfahrzeit und nie bei stehendem oder abgeschaltetem Reaktor. Ein älterer Kern hat weniger Überschussreaktivität: Xenon und Lastwechsel zehren dann an einer knappen Reserve.",
+  "opt_season": "Jahreszeit",
+  "opt_season_spring": "Frühjahr -- Kühlwasser 12 °C",
+  "opt_season_summer": "Sommer -- Kühlwasser 26 °C, Volllast knapp",
+  "opt_season_autumn": "Herbst -- Kühlwasser 18 °C",
+  "opt_season_winter": "Winter -- Kühlwasser 4 °C, bestes Vakuum",
+  "opt_free_setup_hint": "Alles drei gilt nur fürs freie Spiel. Störungen kommen frühestens nach einer Einfahrzeit und nie bei stehendem oder abgeschaltetem Reaktor. Ein älterer Kern hat weniger Überschussreaktivität: Xenon und Lastwechsel zehren dann an einer knappen Reserve. Warmes Kühlwasser verschlechtert das Vakuum im Kondensator und kostet elektrische Leistung — im Sommer ist die Abendspitze nicht mehr ganz zu decken.",
   "start_scenarios": "Szenarien",
   "scenario_loading": "Szenario wird geladen ...",
   "scenario_load_failed": "Szenario konnte nicht geladen werden. Es wird kein freies Spiel automatisch gestartet. Erneut versuchen wiederholt den gewählten Szenariostart oder das Fortsetzen desselben Spielstands.",
@@ -367,6 +372,7 @@
   "val_h2_mass": "Wasserstoff",
   "val_gov": "Regelventil",
   "val_cond_press": "Kondensatordruck",
+  "val_cw_temp": "Kühlwasser",
   "val_generator": "Generatorleistung",
   "val_deviation": "Abweichung",
   "val_frequency": "Netzfrequenz",
@@ -1036,5 +1042,6 @@
   "tut_chernobyl_hint_feed_surge": "Speisewasser von Hand hochgefahren. Die Unterkühlung steigt, die Dampfblasen fallen zusammen, die Leistung sackt kurz ab. Danach nimmt die Regelung den Strom von selbst zurück – und die Blasen kommen mit einem Überschwinger wieder.",
   "tut_chernobyl_hint_dip_down": "Die Stäbe fahren ein, die Leistung fällt. Beobachte Reaktivität und Abschaltreserve.",
   "tut_chernobyl_hint_dip_bottom": "Unten. Von hier aus musste die Mannschaft die Anlage zurückholen – oder sie abschalten.",
-  "tut_chernobyl_hint_dip_recover": "Die Regelung zieht die Stäbe zurück. Sieh zu, wie weit sie dafür herauskommen müssen."
+  "tut_chernobyl_hint_dip_recover": "Die Regelung zieht die Stäbe zurück. Sieh zu, wie weit sie dafür herauskommen müssen.",
+  "log_shift_report": "Schichtbericht {n}: {mwh} MWh geliefert, Lastfolgefehler {dev} MWh, Alarm {min} min, {scram} RESA"
 }

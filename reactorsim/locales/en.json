@@ -187,7 +187,12 @@
   "opt_core_age_fresh": "Freshly loaded -- full margin",
   "opt_core_age_mid": "Mid cycle",
   "opt_core_age_late": "End of cycle -- little margin",
-  "opt_free_setup_hint": "Both apply to free play only. Faults never arrive before a settling-in period, and never while the reactor is shut down or at standstill. An older core has less excess reactivity: xenon and load changes then eat into a thin margin.",
+  "opt_season": "Season",
+  "opt_season_spring": "Spring -- cooling water 12 °C",
+  "opt_season_summer": "Summer -- cooling water 26 °C, full load tight",
+  "opt_season_autumn": "Autumn -- cooling water 18 °C",
+  "opt_season_winter": "Winter -- cooling water 4 °C, best vacuum",
+  "opt_free_setup_hint": "All three apply to free play only. Faults never arrive before a settling-in period, and never while the reactor is shut down or at standstill. An older core has less excess reactivity: xenon and load changes then eat into a thin margin. Warm cooling water worsens the condenser vacuum and costs electrical output — in summer the evening peak can no longer be fully covered.",
   "start_scenarios": "Scenarios",
   "scenario_loading": "Loading scenario ...",
   "scenario_load_failed": "The scenario could not be loaded. Free play will not start automatically. Retry repeats the selected scenario start or resumes the same saved game.",
@@ -367,6 +372,7 @@
   "val_h2_mass": "Hydrogen",
   "val_gov": "Governor valve",
   "val_cond_press": "Condenser pressure",
+  "val_cw_temp": "Cooling water",
   "val_generator": "Generator output",
   "val_deviation": "Deviation",
   "val_frequency": "Grid frequency",
@@ -1036,5 +1042,6 @@
   "tut_chernobyl_hint_feed_surge": "Feedwater raised by hand. Subcooling climbs, the steam voids collapse, power dips briefly. Then the controller cuts the flow back on its own - and the voids return with an overshoot.",
   "tut_chernobyl_hint_dip_down": "The rods are inserting and power is falling. Watch reactivity and shutdown margin.",
   "tut_chernobyl_hint_dip_bottom": "At the bottom. From here the crew had to bring the plant back - or shut it down.",
-  "tut_chernobyl_hint_dip_recover": "The controller is withdrawing the rods. Watch how far out they have to come."
+  "tut_chernobyl_hint_dip_recover": "The controller is withdrawing the rods. Watch how far out they have to come.",
+  "log_shift_report": "Shift report {n}: {mwh} MWh delivered, load-following error {dev} MWh, alarms {min} min, {scram} SCRAM"
 }

@@ -675,7 +675,10 @@ export const hooks = {
     s.ao = ctx.aoLag.step(_axialTarget(s, sp), dt);
 
     // ── Turbine und Netz ────────────────────────────────────────────────────
-    s.p_cond = clamp(psat(sp.condenser.T_cw + sp.condenser.pinch
+    // s.T_cw statt sp.condenser.T_cw: die Kuehlwassertemperatur gehoert dem
+    // Lauf, nicht der Bauart (Jahreszeit, siehe game/season.js). Der Wert aus
+    // der Anlagendatei ist weiterhin ihr Anfangswert.
+    s.p_cond = clamp(psat(s.T_cw + sp.condenser.pinch
       + (sp.condenser.rise || 12) * clamp(s.W_steam / sp.drum.W_steam0, 0, 1.2)), 0.02, 1.5);
     const wSpec = (hg(s.p_drum) - hf(s.p_cond)) * sp.turbine.workFactor;
     s.P_e = s.breaker && !s.turbineTripped ? (W_t * wSpec) / 1000 : 0;

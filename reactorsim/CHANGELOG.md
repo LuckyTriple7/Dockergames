@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.6.7
+
+- ✨ **Das freie Spiel legt Rechenschaft ab.** Eine Runde ohne Szenario bekam
+  bisher gar keine `RunState` — gerechnet wurde dieselbe Physik wie im
+  Szenario, nur sammelte sie niemand, und am Ende einer durchgefahrenen Nacht
+  stand nirgends, ob sie gut war. Neu läuft die Kennzahlensammlung auch ohne
+  Szenario (`game/scenario.js`: `RunState` nimmt jetzt `null` und liest die
+  Anforderung aus dem Zustand statt aus der Bedarfskurve), und alle acht
+  Stunden Simulationszeit — bei 60× alle acht Minuten — legt sie eine Bilanz
+  ins Protokoll: gelieferte Energie, Lastfolgefehler außerhalb eines
+  Toleranzbands von 50 MW, Alarmminuten, Schnellabschaltungen
+  (`game/shift.js`). Gemeldet wird der **Zuwachs** dieser Schicht, nicht die
+  Summe seit Rundenbeginn: eine Summe wird mit jeder Schicht träger und sagt
+  irgendwann nur noch, wie lange gespielt wurde. Der Bericht ist eine
+  Protokollzeile und kein Dialog — ein Kasten, der alle acht Minuten die
+  Anlage verdeckt, wäre nach der dritten Schicht ein Gegner. Er übersteht
+  Speichern und Laden mitsamt seiner Bezugslinie und zählt danach die
+  vorherige Schicht nicht noch einmal mit. Gewertet wird weiterhin nichts:
+  eine Runde ohne vorgesehenes Ende hat kein Ergebnis.
+
+- ✨ **Und es hat jetzt eine Jahreszeit.** Die Kühlwassertemperatur war in
+  allen drei Anlagendateien dieselbe Konstante (15 °C) und damit die einzige
+  Randbedingung des Kraftwerks, die sich nie änderte. Sie wandert in den
+  Zustand (`s.T_cw`, `sim/state.js`) und ist vor dem Start wählbar: Frühjahr
+  12 °C, Sommer 26 °C, Herbst 18 °C, Winter 4 °C (`game/season.js`). Der Weg
+  ist immer derselbe — Kühlwasser, Grädigkeit des Kondensators,
+  Turbinengegendruck, nutzbares Enthalpiegefälle, elektrische Leistung —, aber
+  wo er herauskommt, hängt am Regelkonzept: SWR und RBMK halten ihre
+  Reaktorleistung, dort fehlen im Sommer rund 3 % der Nennleistung und die
+  Abendspitze der Tageskurve ist nicht mehr zu decken. Der DWR fährt
+  turbinengeführt, hält die Klemmenleistung und holt sich den fehlenden Dampf
+  aus dem Kern: dort kostet der Sommer stattdessen etwa 2 % mehr thermische
+  Leistung, 25 K Brennstofftemperatur und ein Stück DNBR-Reserve. Ein
+  Begrenzer auf die thermische Leistung ist beim DWR nicht modelliert. Dass
+  der Herbst wärmer ist als das Frühjahr, ist die Wärmekapazität des Wassers,
+  kein Tippfehler. Die neue Statuskachel „Kühlwasser" zeigt den Wert;
+  Szenarien bleiben beim Auslegungspunkt von 15 °C, auf den ihr Zeitplan und
+  ihre Wertung abgestimmt sind, und ein Spielstand von vor 0.6.7 lädt
+  unverändert auf diesen Punkt.
+
 ## 0.6.6
 
 - ✨ **Das freie Spiel hat jetzt einen Tag.** Die Netzanforderung folgte

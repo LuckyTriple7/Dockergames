@@ -80,7 +80,8 @@ Lernzielen und Schichtverlauf, aber keine Punkte oder Bestenlisteneinträge.
 
 Das freie Spiel ist eine Schicht ohne Auftrag und ohne Wertung: sie endet
 nicht von selbst, nur ein Brennstoffschaden beendet sie. Seit 0.6.6 stellst du
-vor dem Start ein, wie unruhig sie werden soll.
+vor dem Start ein, wie unruhig sie werden soll; seit 0.6.7 auch, welche
+Jahreszeit draußen ist, und alle acht Stunden legt die Schicht Rechenschaft ab.
 
 **Netzanforderung.** Die Last folgt einer Tageskurve statt einem
 Zufallsspaziergang: Nachttal bei 55 %, Morgenrampe, Mittagsplateau,
@@ -115,6 +116,37 @@ verbleibenden Stell- bzw. Borreserve bei Nennleistung, nicht an einer
 Brennstoffbilanz. Abbrennbare Gifte im Brennelement und das Nachladen im
 Betrieb beim RBMK rechnet das Modell nicht. Der Abbrand wächst während einer
 Runde nicht weiter; er ist ein Anfangswert.
+
+**Jahreszeit.** Die Kühlwassertemperatur am Kondensatoreintritt ist wählbar:
+Frühjahr 12 °C, Sommer 26 °C, Herbst 18 °C, Winter 4 °C. Sie setzt über die
+Grädigkeit des Kondensators den Turbinengegendruck, der Gegendruck das
+nutzbare Enthalpiegefälle und dieses die elektrische Leistung — warmes Wasser
+heißt schlechteres Vakuum heißt weniger Megawatt, bei gleicher thermischer
+Leistung. Dass der Herbst wärmer ist als das Frühjahr, ist kein Versehen: ein
+Fluss trägt die Wärme des Sommers in den Herbst und die Kälte des Winters ins
+Frühjahr.
+
+Wo die Rechnung herauskommt, hängt am Regelkonzept des Typs. SWR und RBMK
+halten ihre Reaktorleistung, das schlechtere Vakuum schlägt also direkt auf
+die Klemmenleistung durch: im Sommer fehlen rund 3 % der Nennleistung, und
+die Abendspitze der Tageskurve ist nicht mehr ganz zu decken. Der DWR fährt
+turbinengeführt, hält die Klemmenleistung und holt sich den fehlenden Dampf
+aus dem Kern — dort kostet der Sommer stattdessen etwa 2 % mehr thermische
+Leistung, 25 K Brennstofftemperatur und ein Stück Abstand zur Siedekrise. Ein
+Begrenzer auf die thermische Leistung ist nicht modelliert. Die gewählte
+Temperatur gehört zum Lauf und steht im Spielstand; die Statuskachel
+„Kühlwasser" zeigt sie an. Szenarien wählen nie: sie bleiben beim
+Auslegungspunkt von 15 °C, auf den ihr Zeitplan und ihre Wertung abgestimmt
+sind.
+
+**Schichtbericht.** Alle acht Stunden Simulationszeit — bei 60× also alle acht
+Minuten — steht eine Bilanz im Protokoll: gelieferte Energie, Lastfolgefehler
+außerhalb eines Toleranzbands von 50 MW, Alarmminuten und Schnellabschaltungen.
+Gemeldet wird der Zuwachs dieser Schicht, nicht die Summe seit Rundenbeginn:
+eine Summe wird mit jeder Schicht träger und sagt irgendwann nur noch, wie
+lange gespielt wurde. Der Bericht ist eine Protokollzeile und kein Dialog, er
+unterbricht also nichts. Gewertet wird davon weiterhin nichts — eine Runde
+ohne vorgesehenes Ende hat kein Ergebnis und keinen Bestenlisteneintrag.
 
 ## Szenarien
 

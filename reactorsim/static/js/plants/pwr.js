@@ -512,7 +512,7 @@ export const hooks = {
     s.C_B = ctx.boronMix.step(s.C_B_cmd, dt);
 
     // ── Turbine, Kondensator, Netz ───────────────────────────────────────────
-    s.p_cond = _condenserPressure(sp, s.W_steam);
+    s.p_cond = _condenserPressure(s, sp, s.W_steam);
     const wSpec = (hg(s.p_sg) - hf(s.p_cond)) * sp.turbine.workFactor;
     s.P_e = s.breaker && !s.turbineTripped ? (W_t * wSpec) / 1000 : 0;
   },
@@ -649,10 +649,16 @@ function _hfw(sp) {
   return 4.2 * (sp.sg.T_fw - 273.15);
 }
 
-/** Kondensatordruck aus Kühlwassertemperatur, Last und Grädigkeit. */
-function _condenserPressure(sp, W_steam) {
+/** Kondensatordruck aus Kühlwassertemperatur, Last und Grädigkeit.
+ *
+ * Die Kühlwassertemperatur kommt aus dem Zustand (s.T_cw), nicht mehr aus der
+ * Anlagendatei: sie ist die einzige Randbedingung dieses Kraftwerks, die sich
+ * mit der Jahreszeit ändert, und damit eine Größe des Laufs, keine der
+ * Bauart. sp.condenser.T_cw bleibt ihr Auslegungswert und ihr Anfangswert
+ * (siehe sim/state.js und game/season.js). */
+function _condenserPressure(s, sp, W_steam) {
   const load = clamp(W_steam / sp.sg.W_steam0, 0, 1.2);
-  const T = sp.condenser.T_cw + sp.condenser.pinch + (sp.condenser.rise || 12) * load;
+  const T = s.T_cw + sp.condenser.pinch + (sp.condenser.rise || 12) * load;
   return clamp(psat(T), 0.02, 1.5);
 }
 

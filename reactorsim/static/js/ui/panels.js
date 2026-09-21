@@ -558,6 +558,10 @@ export function buildPanels(engine, render, helperEnabled) {
     put('w_steam', num(s.W_steam, 0) + U('unit_kgs'));
     put('gov', num(ctxPos(ctx.govValve) * 100, 0) + U('unit_percent'));
     put('p_cond', num(s.p_cond, 3) + U('unit_bar'));
+    // Kuehlwassertemperatur: erklaert den Kondensatordruck darueber. Im
+    // Sommer steht hier eine hohe Zahl, und deshalb ist die Abendspitze mit
+    // dieser Anlage nicht mehr ganz zu decken (siehe game/season.js).
+    put('t_cw', num(s.T_cw - 273.15, 1) + U('unit_celsius'));
     const levelLost = sp.id === 'bwr' && !s.dcPower;
     put('l_sg', levelLost ? t('diag_unavailable') : num(d.L_sg * 100, 0) + U('unit_percent'),
         levelLost ? 2 : (d.L_sg < 0.25 ? 3 : (d.L_sg < 0.32 || d.L_sg > 0.78 ? 1 : 0)));

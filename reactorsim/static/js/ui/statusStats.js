@@ -47,6 +47,10 @@ export const STATUS_STATS = [
   { key: 'w_steam', labelKey: 'val_steam_flow' },
   { key: 'gov', labelKey: 'val_gov' },
   { key: 'p_cond', labelKey: 'val_cond_press' },
+  // Kuehlwasser am Kondensatoreintritt -- im freien Spiel die Jahreszeit
+  // (siehe game/season.js), sonst der Auslegungspunkt der Anlage. Gehoert
+  // neben p_cond: die beiden erklaeren einander.
+  { key: 't_cw', labelKey: 'val_cw_temp' },
   { key: 'l_sg', labelKey: 'val_sg_level' },
   { key: 'w_fw', labelKey: 'val_feed_flow' },
   { key: 'breaker', labelKey: 'val_breaker' },

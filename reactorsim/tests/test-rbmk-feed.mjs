@@ -71,14 +71,23 @@ test('unequipped RBMK retains exact pre-change physics and controller timing', (
   // lands on a different rod position now, so every downstream hash shifts
   // too. Not a regression: the old baseline was pinned to the previous,
   // buggy rod curve.
+  //
+  // Regenerated again in 0.6.7, when the cooling-water temperature moved from
+  // the plant file (sp.condenser.T_cw) into the state as s.T_cw, so that a
+  // free round can pick a season (see game/season.js). The hash covers the
+  // ENTIRE state object, so one added field shifts every checkpoint even
+  // though nothing moved: with s.T_cw filtered out, all seven checkpoints
+  // still matched the previous baseline exactly, and s.T_cw itself held the
+  // plant file's own 288.15 K at every one of them. Physics identical, hash
+  // different -- that is what a whole-state hash is for and also its price.
   const baseline = {
-    0: '7c4963dd3512622c0e456124a6050cc6185d3aeb26a35745fcde30bef33d18b0',
-    1: '008f78881a2e5443a08e79b50a0bc4e42dc5acae777f2bce732a14992434c238',
-    4: 'f140f56a1ecd4421da69ca998b571b1a1340bca0d2052a0e6d7e6fc62d3c6724',
-    17: 'da1f10b505cd815eb786e65290ec232e23b10d2db833ea5d708887032b200ab2',
-    200: '110e8ce9b3ed6c912ca3c932098782a28bda7cedf1e448b9ca6411fa3d2a6198',
-    600: 'd57536bc9786ac1cc6b1242545b801b01b5b26f84b7990171c17e76928d171bc',
-    1200: 'feb9439ad592e73668a57a6124129d3f76aa8c839fb26563487c4ed67d100e4e',
+    0: 'd2301fb718da3e98809d0366e6d8df5f8702b7979d203abda16fb735f53fdca8',
+    1: '268c589103bbc619013886ea4eacfcfbe5ca4f3c57f455f6c79ff3dacf5bcb4c',
+    4: '43ae54a384ff7c8f50e761d3fa829cae01f41154e61aa9f600d56eda8d1f7ba7',
+    17: 'f760a7c6c41ca6feff9f9ee005feda5d050a2f0da45fb59a44fbaed379e2459b',
+    200: '3817b411249ac9492df8182d07ae8c4c3b94a6ef048932e8a01a8f551d93830a',
+    600: '10632658ed9f5b799fbc01fa1e74a4347dae1bce8b78bd4b2845656bf554da5a',
+    1200: '3a667ca48263c7a8a86cea6f9ff85254493e81ed1da7aa995bc7313720c1141b',
   };
   const e = createEngine(rbmk);
   for (let i = 0; i <= 1200; i++) {
