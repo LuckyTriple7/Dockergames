@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.6.3
+
+- ✨ **Der Xenon-Zeitsprung meldet sich beim Server an.** Die Spielhistorie
+  deckelt die gemeldete simulierte Dauer bei dem, was 60-facher Zeitraffer in
+  der gemessenen echten Zeit hergibt — nur kennt das freie Spiel einen Knopf,
+  der diese Grenze von innen bricht: `fastForwardXenon()` rechnet die Jodgrube
+  in einer engen Schleife statt im Bildtakt und erzeugt binnen Sekunden bis zu
+  48 h. Bis 0.6.2 hob der Server den Deckel deshalb für **jedes** freie Spiel
+  pauschal um diese 48 h an, ob gesprungen wurde oder nicht; im freien Spiel
+  ging damit immer alles durch. Jetzt meldet der Sprung sich an
+  (`/api/runs/skip`) — mit der Zeit, die wirklich gerechnet wurde, auch nach
+  einem Abbruch, denn auch ein halber Sprung ist gesprungen. Gezählt wird nur,
+  was ein offener Lauf **dieses** Kontos angemeldet hat, und anmelden kann nur,
+  was dieser Server selbst als freies Spiel führt: ein Szenario bekommt auf
+  diesem Weg gar nichts. Nachrechnen kann er die Zahl nicht, die Physik läuft
+  im Browser; über dem 24-h-Deckel ist ohnehin Schluss. Der Client wartet die
+  Antwort ab, bevor er den Lauf abmeldet — sonst könnte eine Kernzerstörung im
+  Sprung die Abmeldung an der Anmeldung vorbeiziehen lassen.
+
+- ✨ **Die Zeitmessung überlebt einen Neustart des Containers.** Sie lag bis
+  hierher nur im Speicher: ging der Container hoch, war die Messung des gerade
+  laufenden Spiels weg, und seine Dauer fiel auf den alten 24-h-Deckel
+  zurück. Die offenen Läufe stehen jetzt in `/data/runs.db` neben den Konten,
+  mit der Wanduhr ihres Beginns. Die Ausfallzeit zählt dabei **nicht** als
+  Spielzeit — davor saß niemand: in derselben Datei steht eine Marke, die der
+  laufende Betrieb alle 20 Sekunden erneuert, auch aus dem Healthcheck des
+  Containers (die einzige Anfrage, die selbst dann noch kommt, wenn niemand
+  spielt). Beim Hochfahren ist die Lücke zwischen ihr und jetzt genau die
+  Zeit, in der niemand spielen konnte, und sie wird von jedem übernommenen
+  Lauf abgezogen. Einträge, die länger offen stehen als das längste mögliche
+  Spiel, räumt das Hochfahren weg, statt sie als Messung auszugeben. Bleibt
+  die Datei stumm (Schreibfehler, altes Verzeichnis), läuft alles wie vorher
+  — ein fehlender Messwert ist kein Grund, einen Lauf gar nicht erst
+  aufzuzeichnen.
+
+  Was ein Neustart nicht heilen kann, bleibt benannt: Ein Client, der
+  `/api/runs/start` nie gerufen hat — ein Tab, der vor dem Update geladen
+  wurde — liefert nichts zu messen. Solche Läufe stehen weiterhin mit leerer
+  Spalte „Am Schirm" in der Historie, nicht mit einer geschätzten Zahl.
+
 ## 0.6.2
 
 - 🐛 **Richtigstellung zu 0.6.1: AZ-5 war der Auslöser, nicht die alleinige

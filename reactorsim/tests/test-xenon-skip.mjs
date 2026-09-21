@@ -23,7 +23,8 @@ function harness(cap) {
   const buttons = [0, 1, 4, 16, 60].map(speed => ({ dataset: { speed: String(speed) }, classList: classes() }));
   const timers = [];
   const calls = { steps: 0, sessions: 0, samples: 0, renders: 0, destroyed: 0,
-    speeds: [], dt: [], faults: [], records: [], marks: [], paused: false, locked: false };
+    speeds: [], dt: [], faults: [], records: [], marks: [], skips: [],
+    paused: false, locked: false };
   const s = { t_sim: 42, X: 2, scram: { active: true }, destroyed: false, fault: null };
   const engine = { state: s, ctx: { log: [], trends: { mark(e) { calls.marks.push(e); } } },
     trips: { tiles: () => [], unacknowledgedSeconds: () => 7 },
@@ -59,6 +60,15 @@ function harness(cap) {
       calls.faults.push(detail);
     },
     showDestroyed() { calls.destroyed++; app.endShown = true; },
+    // Die Anmeldung des Sprungs beim Server (app.py /api/runs/skip). Ueber
+    // h.skipGate laesst sich die Antwort anhalten -- damit prueft der Test,
+    // dass fastForwardXenon() wirklich darauf wartet, statt die Abmeldung
+    // des Laufs vorbeiziehen zu lassen.
+    api: { async noteSkip(run, seconds) {
+      calls.skips.push({ run, seconds });
+      await (h.skipGate || Promise.resolve());
+      return { ok: true, data: { ok: true } };
+    } },
   });
   for (let declaration of source.matchAll(/^const XENON_SKIP_\w+ = .*?;/gm)) {
     let text = declaration[0];
@@ -404,4 +414,76 @@ test('real DWR engine and free session run two chunks, then SCRAM cancels withou
   assert.equal(engine.ctx.log.some(e => e.key === 'event_time_skip'), false);
   assert.equal(engine.ctx.trends.markers.some(e => e.key === 'event_time_skip'), false);
   assert.ok(engine.ctx.trends.markers.some(e => e.id === 'scram' && e.t === time));
+});
+
+// ── Anmeldung des Zeitsprungs (app.py /api/runs/skip) ────────────────────────
+//
+// Der Knopf rechnet in einer engen Schleife statt im Bildtakt und erzeugt in
+// Sekunden Stunden simulierter Zeit. Ohne diese Meldung kuerzt der Server die
+// gemeldete Dauer am Ende auf das, was bei 60x moeglich gewesen waere.
+
+test('a completed skip reports the seconds it really stepped, under its own run token', async () => {
+  const h = harness();
+  h.app.runToken = 'run-token';
+  h.onStep = () => { if (h.calls.steps === 3) h.app.engine.state.X = 1; };
+  const pending = h.ctx.fastForwardXenon();
+  await h.chunk(); await pending;
+  assert.deepEqual(h.calls.skips, [{ run: 'run-token', seconds: 3 * 0.05 }]);
+});
+
+test('a cancelled skip still reports its partial jump -- half a jump is jumped', async () => {
+  const h = harness();
+  h.app.runToken = 'run-token';
+  h.onStep = () => { if (h.calls.steps === 5) h.ctx.cancelXenonSkip(); };
+  const pending = h.ctx.fastForwardXenon();
+  await h.chunk(); await pending;
+  cleaned(h, 'xenon_skip_cancelled');
+  assert.deepEqual(h.calls.skips, [{ run: 'run-token', seconds: 5 * 0.05 }]);
+});
+
+test('nothing is reported without a token, without a step, or for a replaced round', async () => {
+  // Ohne Kennung gibt es nichts anzumelden (der Server misst diesen Lauf
+  // nicht), ohne Schritt nichts zu melden, und eine Kennung, die inzwischen
+  // zur NAECHSTEN Runde gehoert, darf der alte Sprung nicht belasten.
+  const h = harness();
+  h.onStep = () => { if (h.calls.steps === 3) h.app.engine.state.X = 1; };
+  const noToken = h.ctx.fastForwardXenon();
+  await h.chunk(); await noToken;
+  assert.deepEqual(h.calls.skips, []);
+
+  const empty = harness();
+  empty.app.runToken = 'run-token';
+  const pending = empty.ctx.fastForwardXenon();
+  empty.ctx.cancelXenonSkip();
+  await empty.chunk(); await pending;
+  assert.equal(empty.calls.steps, 0);
+  assert.deepEqual(empty.calls.skips, []);
+
+  const replaced = harness();
+  replaced.app.runToken = 'run-token';
+  replaced.onStep = () => { if (replaced.calls.steps === 2) replaced.app.bootId = 2; };
+  const old = replaced.ctx.fastForwardXenon();
+  await replaced.chunk(); await old;
+  assert.deepEqual(replaced.calls.skips, []);
+});
+
+test('the skip does not finish before the server has taken its report', async () => {
+  const h = harness();
+  h.app.runToken = 'run-token';
+  let gate;
+  h.skipGate = new Promise((resolve) => { gate = resolve; });
+  h.onStep = () => { if (h.calls.steps === 3) h.app.engine.state.X = 1; };
+  let done = false;
+  const pending = h.ctx.fastForwardXenon().then(() => { done = true; });
+  await h.chunk();
+  await Promise.resolve();
+  assert.equal(h.calls.skips.length, 1);
+  assert.equal(done, false, 'reportRun() must not overtake the announcement');
+  // Die Bedienung ist trotzdem schon frei -- gewartet wird auf die
+  // Buchhaltung, nicht mit dem Leitstand.
+  assert.equal(h.$('#rs-xenon-skip').disabled, false);
+  gate();
+  await pending;
+  assert.equal(done, true);
+  assert.equal(h.app.loop.speed, 1);
 });

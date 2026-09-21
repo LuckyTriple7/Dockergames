@@ -60,6 +60,12 @@ export const api = {
   // Scheitert der Aufruf, laeuft alles wie vorher -- ohne Messung, mit dem
   // alten Deckel; das Spiel haengt daran nicht.
   startRun: (run) => request('POST', '/api/runs/start', run),
+  // Einen Xenon-Zeitsprung anmelden (main.js fastForwardXenon(), app.py
+  // /api/runs/skip). Der Knopf rechnet schneller als der Bildtakt; ohne
+  // diese Meldung kuerzt der Server die gemeldete simulierte Dauer am Ende
+  // auf das, was bei 60x moeglich gewesen waere. Scheitert der Aufruf,
+  // bleibt der Sprung selbst davon unberuehrt.
+  noteSkip: (run, seconds) => request('POST', '/api/runs/skip', { run, seconds }),
   readAccount: () => request('GET', '/api/account'),
   changePassword: (current, next) =>
     request('POST', '/api/account/password', { current, new: next }),

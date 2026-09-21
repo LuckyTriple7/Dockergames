@@ -122,19 +122,41 @@ abgearbeitet:**
   Startpunkt nicht mehr aus der Anfrage, sondern aus dem `t_sim` des
   gespeicherten Standes auf der eigenen Platte.
 
-Offen:
+**Seit 0.6.3 sind die beiden letzten offenen Punkte umgesetzt:**
 
-- **Das freie Spiel bleibt von der 60×-Grenze ausgenommen.** Der
-  Xenon-Zeitraffer (`main.js fastForwardXenon()`) rechnet in einer engen
-  Schleife statt im Bildtakt und erzeugt binnen Sekunden bis zu 48 h
-  simulierte Zeit -- für diesen Modus ist die Grenze deshalb wirkungslos und
-  wird in `app.py` ausdrücklich so benannt, statt sie zu behaupten. Für
-  Szenarien und Tutorials greift sie. Ein sauberer Weg wäre, den Sprung selbst
-  beim Server anzumelden.
-- **Ohne Messung greift weiterhin nur der 24-h-Deckel** -- nach einem Neustart
-  des Containers (die Messungen liegen nur im Speicher) oder bei einem
-  Client, der `/api/runs/start` nicht kennt. Solche Läufe stehen mit leerer
-  Spalte „Am Schirm" in der Historie, nicht mit einer geschätzten Zahl.
+- **Der Xenon-Zeitsprung meldet sich beim Server an** (`/api/runs/skip`,
+  `main.js fastForwardXenon()`). Vorher hob der Server den Deckel für *jedes*
+  freie Spiel pauschal um 48 h an, ob gesprungen wurde oder nicht -- die
+  60×-Grenze war dort wirkungslos. Jetzt zählt nur, was ein offener Lauf
+  dieses Kontos angemeldet hat, und anmelden kann nur, was dieser Server
+  selbst als freies Spiel führt: ein Szenario bekommt auf diesem Weg gar
+  nichts (400 `no_open_run`). Der Client wartet die Antwort ab, bevor er den
+  Lauf abmeldet, damit die Abmeldung die Anmeldung nicht überholt.
+- **Die Messung überlebt einen Neustart des Containers.** Die offenen Läufe
+  liegen in `/data/runs.db` (SQLite) neben den Konten, mit der Wanduhr ihres
+  Beginns. Die Ausfallzeit des Servers zählt dabei **nicht** als Spielzeit:
+  in derselben Datei steht eine Marke, die der laufende Betrieb alle 20
+  Sekunden erneuert -- auch aus dem Healthcheck, der als einzige Anfrage
+  selbst dann noch kommt, wenn niemand spielt. Beim Hochfahren ist die Lücke
+  zwischen ihr und jetzt die Zeit, in der niemand spielen konnte, und sie
+  wird von jedem übernommenen Lauf abgezogen.
+
+Offen bzw. bewusst so:
+
+- **Die angemeldete Sprungdauer ist eine Angabe des Clients.** Nachrechnen
+  kann der Server sie nicht -- die Physik läuft im Browser. Er grenzt sie nur
+  ein: freies Spiel, eigener offener Lauf, und über dem 24-h-Deckel ist
+  ohnehin Schluss. Das ist weniger als eine Prüfung und deutlich mehr als die
+  pauschalen 48 h vorher.
+- **Ohne gemeldeten Beginn greift weiterhin nur der 24-h-Deckel** -- bei einem
+  Client, der `/api/runs/start` nicht kennt (ein Tab, der vor dem Update
+  geladen wurde). Zu so einem Lauf gibt es schlicht nichts zu messen; er steht
+  mit leerer Spalte „Am Schirm" in der Historie, nicht mit einer geschätzten
+  Zahl.
+- **Die gemessene Ausfallzeit fällt um bis zu 20 Sekunden zu groß aus** (die
+  Marke ist nur so frisch wie ihr letztes Schreiben). Lieber ein paar Sekunden
+  zu wenig gutschreiben als eine fremde Minute zu viel.
+
 
 ### Chernobyl-Tutorial „Block 4 – Die Nacht des 26. April“
 

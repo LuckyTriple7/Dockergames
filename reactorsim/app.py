@@ -16,6 +16,7 @@ import logging
 import os
 import secrets
 import signal
+import sqlite3
 import subprocess
 import threading
 import time
@@ -135,7 +136,7 @@ class OpenRuns:
     start), der Server merkt sich seine eigene Uhr dazu, und am Ende steht
     ihm eine Zahl zur Verfuegung, die gar nicht aus der Anfrage stammt.
 
-    Zwei Dinge fallen dabei ab:
+    Drei Dinge fallen dabei ab:
 
     * `wall_s` -- die tatsaechlich am Schirm verbrachte Zeit. Sie ist die
       ehrlichere Antwort auf "wie lange hat der gespielt?" als die simulierte
@@ -144,11 +145,24 @@ class OpenRuns:
       (der hoechste Zeitraffer, siehe loop.js) kann kein Browser rechnen, mehr
       als `Startzeit + wall_s * 60` kann ein ehrlicher Lauf also nicht erreicht
       haben.
+    * `skip_s` -- die Summe der angemeldeten Xenon-Zeitspruenge (siehe
+      /api/runs/skip). Der Vorspulknopf des freien Spiels rechnet in einer
+      engen Schleife statt im Bildtakt und bricht die 60x-Grenze damit von
+      innen; bis 0.6.2 bekam deshalb JEDES freie Spiel pauschal 48 h
+      geschenkt, ob gesprungen wurde oder nicht. Jetzt zaehlt nur, was
+      angemeldet wurde -- und angemeldet wird nur, was dieser Server selbst
+      als freies Spiel gefuehrt hat.
 
-    Nur im Speicher, ohne Persistenz: geht der Container neu hoch, ist die
-    Messung des gerade laufenden Spiels weg und die Dauer faellt auf den alten
-    24-h-Deckel zurueck -- ein fehlender Messwert ist kein Grund, einen Lauf
-    gar nicht erst aufzuzeichnen.
+    Seit 0.6.3 ueberlebt die Messung einen Neustart des Containers: die
+    offenen Laeufe liegen in `runs.db` neben den Konten, mit der Wanduhr ihres
+    Beginns. Die Ausfallzeit des Servers zaehlt dabei NICHT als Spielzeit --
+    dafuer steht in derselben Datei eine Marke, die der laufende Betrieb alle
+    paar Sekunden erneuert (siehe touch()); beim Hochfahren ist die Luecke
+    zwischen ihr und jetzt die Zeit, in der niemand spielen konnte. Bleibt die
+    Datei stumm (Schreibfehler, altes Verzeichnis), laeuft alles wie vorher:
+    die Messung lebt im Speicher, ein Neustart verliert sie, und die Dauer
+    faellt auf den 24-h-Deckel zurueck -- ein fehlender Messwert ist kein
+    Grund, einen Lauf gar nicht erst aufzuzeichnen.
     """
 
     # Ein Lauf, der laenger offen steht als das laengste moegliche Spiel
@@ -159,30 +173,186 @@ class OpenRuns:
     # trotz TTL, fliegt der aelteste Eintrag -- das kostet hoechstens EINE
     # Zeitmessung, nie einen Lauf.
     MAX_OPEN = 2048
+    # Abstand zwischen zwei Lebenszeichen auf der Platte. Kuerzer als der
+    # Healthcheck des Containers (30 s, siehe Dockerfile), damit jeder davon
+    # die Marke wirklich erneuert -- sonst waere die gemessene Ausfallzeit um
+    # eine ganze Runde zu lang. Eine winzige Schreibweise alle halbe Minute.
+    SEEN_EVERY_S = 20.0
 
-    def __init__(self):
+    _SCHEMA = '''
+        CREATE TABLE IF NOT EXISTS open_runs (
+            token TEXT PRIMARY KEY,
+            account TEXT NOT NULL,
+            reactor TEXT,
+            scenario TEXT,
+            start_sim REAL NOT NULL,
+            skip_s REAL NOT NULL DEFAULT 0,
+            t0 REAL NOT NULL,
+            lost_s REAL NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS server_seen (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            seen REAL NOT NULL
+        );
+    '''
+
+    def __init__(self, data_dir: str | None = None):
         self._runs: dict[tuple[str, str], dict] = {}
         self._lock = threading.Lock()
+        self._path = os.path.join(data_dir, 'runs.db') if data_dir else None
+        self._seen_mono = 0.0
+        self._warned = False
+        if self._path:
+            # Wie in users.py: das Verzeichnis kann beim allerersten Start
+            # noch fehlen. Ohne dieses makedirs scheitert schon das Anlegen
+            # der Tabellen -- und danach JEDE Schreibweise, weil es sie dann
+            # nie gibt.
+            os.makedirs(data_dir, exist_ok=True)
+            self._restore()
 
-    def _sweep(self, now: float) -> None:
-        for key in [k for k, v in self._runs.items() if v['t0'] <= now - self.TTL_S]:
+    # ── Platte ────────────────────────────────────────────────────────────
+
+    def _connect(self):
+        conn = sqlite3.connect(self._path, timeout=5)
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _write(self, sql: str, params: tuple = ()) -> None:
+        """Buchhaltung, kein Spielstand: schlaegt sie fehl, laeuft die Runde
+        weiter -- nur ohne Messung ueber einen Neustart hinweg. Gemeldet wird
+        einmal, nicht bei jeder Schreibweise."""
+        if not self._path:
+            return
+        try:
+            with self._connect() as conn:
+                conn.execute(sql, params)
+        except sqlite3.Error as exc:
+            if not self._warned:
+                self._warned = True
+                log.error("Zeitmessung nicht gespeichert: %s", exc.__class__.__name__)
+
+    def _restore(self) -> None:
+        """Offene Laeufe aus der Datei zurueckholen und die Ausfallzeit des
+        Servers abziehen.
+
+        Die Uhr auf der Platte ist die Wanduhr; drinnen rechnet alles weiter
+        mit `time.monotonic()` (die keine Zeitumstellung kennt). Uebersetzt
+        wird einmal hier: aus dem verstrichenen Anteil wird ein Startpunkt,
+        als haette dieser Prozess den Lauf selbst eroeffnet.
+        """
+        now_wall, now_mono = time.time(), time.monotonic()
+        try:
+            with self._connect() as conn:
+                conn.executescript(self._SCHEMA)
+                row = conn.execute('SELECT seen FROM server_seen WHERE id = 1').fetchone()
+                # Ohne Marke ist dies der erste Start mit dieser Datei: dann
+                # gibt es keine Ausfallzeit, nur einen leeren Tisch.
+                down = max(0.0, now_wall - float(row['seen'])) if row else 0.0
+                conn.execute('INSERT INTO server_seen (id, seen) VALUES (1, ?) '
+                             'ON CONFLICT(id) DO UPDATE SET seen = excluded.seen',
+                             (now_wall,))
+                rows = conn.execute('SELECT * FROM open_runs').fetchall()
+                stale, live = [], []
+                for r in rows:
+                    lost = float(r['lost_s']) + down
+                    elapsed = now_wall - float(r['t0']) - lost
+                    if not (elapsed == elapsed) or elapsed > self.TTL_S:
+                        stale.append(r['token'])
+                        continue
+                    live.append((r, max(0.0, elapsed), lost))
+                if stale:
+                    conn.executemany('DELETE FROM open_runs WHERE token = ?',
+                                     [(tok,) for tok in stale])
+                for r, _elapsed, lost in live:
+                    conn.execute('UPDATE open_runs SET lost_s = ? WHERE token = ?',
+                                 (lost, r['token']))
+        except sqlite3.Error as exc:
+            log.error("Offene Zeitmessungen nicht gelesen: %s", exc.__class__.__name__)
+            return
+        self._seen_mono = now_mono
+        for r, elapsed, _lost in live:
+            self._runs[(r['account'], r['token'])] = {
+                't0': now_mono - elapsed, 'reactor': r['reactor'],
+                'scenario': r['scenario'], 'start_sim': float(r['start_sim']),
+                'skip_s': float(r['skip_s'])}
+        if live or stale:
+            log.info("Zeitmessung: %d offene Laeufe uebernommen, %d verfallen, "
+                     "%.0f s Ausfallzeit abgezogen", len(live), len(stale), down)
+
+    def touch(self) -> None:
+        """Lebenszeichen auf der Platte -- gerufen aus jeder Anfrage, auch aus
+        dem Healthcheck (siehe _require_login).
+
+        Sie beantwortet beim naechsten Hochfahren genau eine Frage: wie lange
+        war der Server weg? Diese Zeit sass niemand vor dem Schirm, sie darf
+        also in keiner Messung stehen. Um bis zu SEEN_EVERY_S faellt die
+        Antwort zu gross aus -- lieber ein paar Sekunden zu wenig gutschreiben
+        als eine fremde Minute zu viel.
+        """
+        if not self._path:
+            return
+        now = time.monotonic()
+        with self._lock:
+            if now - self._seen_mono < self.SEEN_EVERY_S:
+                return
+            self._seen_mono = now
+        self._write('INSERT INTO server_seen (id, seen) VALUES (1, ?) '
+                    'ON CONFLICT(id) DO UPDATE SET seen = excluded.seen', (time.time(),))
+
+    # ── Messung ───────────────────────────────────────────────────────────
+
+    def _sweep(self, now: float) -> list:
+        gone = [k for k, v in self._runs.items() if v['t0'] <= now - self.TTL_S]
+        for key in gone:
             self._runs.pop(key, None)
         while len(self._runs) > self.MAX_OPEN:
-            self._runs.pop(min(self._runs, key=lambda k: self._runs[k]['t0']), None)
+            key = min(self._runs, key=lambda k: self._runs[k]['t0'])
+            self._runs.pop(key, None)
+            gone.append(key)
+        return gone
 
     def open(self, account: str, reactor: str, scenario, start_sim: float) -> str:
         """@return die Kennung, die der Client beim Beenden zurueckgibt."""
         token = secrets.token_urlsafe(12)
-        now = time.monotonic()
+        now, wall = time.monotonic(), time.time()
         with self._lock:
-            self._sweep(now)
+            gone = self._sweep(now)
             self._runs[(account, token)] = {
                 't0': now, 'reactor': reactor, 'scenario': scenario,
-                'start_sim': float(start_sim)}
+                'start_sim': float(start_sim), 'skip_s': 0.0}
+        for _acct, tok in gone:
+            self._write('DELETE FROM open_runs WHERE token = ?', (tok,))
+        self._write('INSERT OR REPLACE INTO open_runs '
+                    '(token, account, reactor, scenario, start_sim, skip_s, t0, lost_s) '
+                    'VALUES (?, ?, ?, ?, ?, 0, ?, 0)',
+                    (token, account, reactor, scenario, float(start_sim), wall))
         return token
 
+    def add_skip(self, account: str, token, seconds: float,
+                 cap_total: float) -> float | None:
+        """Einen Xenon-Zeitsprung zu einem offenen Lauf anmelden.
+
+        @return die neue Summe, oder None wenn es diesen Lauf nicht gibt oder
+        er kein freies Spiel ist. Ob er eines ist, sagt der hier hinterlegte
+        Eintrag -- nicht die Anfrage: den Knopf gibt es nur im freien Spiel
+        (main.js fastForwardXenon()), und ein Szenario darf sich auf diesem
+        Weg keine Extrazeit erschreiben.
+        """
+        if not isinstance(token, str) or not token:
+            return None
+        with self._lock:
+            entry = self._runs.get((account, token))
+            if entry is None or entry['scenario'] is not None:
+                return None
+            entry['skip_s'] = min(entry['skip_s'] + max(0.0, float(seconds)), cap_total)
+            total = entry['skip_s']
+        self._write('UPDATE open_runs SET skip_s = ? WHERE token = ?', (total, token))
+        return total
+
     def close(self, account: str, token) -> dict | None:
-        """@return {'wall_s', 'reactor', 'scenario', 'start_sim'} oder None.
+        """@return {'wall_s', 'reactor', 'scenario', 'start_sim', 'skip_s'}
+        oder None.
 
         Das Konto gehoert mit in den Schluessel: sonst koennte eine fremde
         Kennung die Messung eines anderen Spielers einsammeln.
@@ -193,14 +363,15 @@ class OpenRuns:
             entry = self._runs.pop((account, token), None)
         if entry is None:
             return None
+        self._write('DELETE FROM open_runs WHERE token = ?', (token,))
         return {'wall_s': max(0.0, time.monotonic() - entry['t0']),
                 'reactor': entry['reactor'], 'scenario': entry['scenario'],
-                'start_sim': entry['start_sim']}
+                'start_sim': entry['start_sim'], 'skip_s': entry['skip_s']}
 
 
 STORE = persist.Store(_DATA)
 LIMITS = persist.RateLimit()
-RUNS = OpenRuns()
+RUNS = OpenRuns(_DATA)
 USERS = usersmod.UserStore(_DATA)
 AUTH = authmod.Auth(_DATA, REACTORSIM_USER, REACTORSIM_PASSWORD, USERS)
 # Konfiguration aus der Umgebung, also aus Dockge -- genau wie das
@@ -235,6 +406,11 @@ _ADMIN_ENDPOINTS = frozenset({
 
 @app.before_request
 def _require_login():
+    # Lebenszeichen fuer die Zeitmessung (siehe OpenRuns.touch): hier oben,
+    # vor jeder Zugangspruefung, damit auch der Healthcheck des Containers
+    # die Marke erneuert -- er ist die einzige Anfrage, die selbst dann noch
+    # kommt, wenn gerade niemand spielt.
+    RUNS.touch()
     if request.endpoint in _PUBLIC_ENDPOINTS:
         return None
     user = AUTH.valid(request.cookies.get(authmod.SESSION_COOKIE))
@@ -1067,21 +1243,31 @@ _RUN_RATE_GRACE_S = 120
 # Das freie Spiel kennt zusaetzlich den Xenon-Zeitraffer (main.js
 # fastForwardXenon(), XENON_SKIP_CAP_S): der rechnet in einer engen Schleife,
 # nicht im Bildtakt, und erzeugt binnen Sekunden bis zu 48 h simulierte Zeit.
-# Fuer diesen Modus ist die 60x-Grenze deshalb wirkungslos -- das steht hier
-# offen, statt eine Grenze zu behaupten, die der eigene Vorspulknopf bricht.
-# Fuer Szenarien und Tutorials (die gewerteten und die gefuehrten Laeufe)
-# gibt es den Knopf nicht, dort greift sie.
-_RUN_XENON_SKIP_S = 48 * 3600
+# Bis 0.6.2 hob der Server deshalb den Deckel fuer JEDES freie Spiel pauschal
+# um diese 48 h an -- ob gesprungen wurde oder nicht. Damit war die 60x-Grenze
+# im freien Spiel wirkungslos.
+#
+# Seit 0.6.3 meldet der Sprung sich an (/api/runs/skip, siehe dort): gezaehlt
+# wird nur, was ein offener Lauf dieses Kontos tatsaechlich angemeldet hat,
+# und angemeldet werden kann nur ein Lauf, den dieser Server selbst als freies
+# Spiel fuehrt. Ein Szenario oder ein Tutorial bekommt hier nichts -- dort
+# gibt es den Knopf gar nicht.
+#
+# Angemeldet wird die Sekundenzahl vom Client; nachpruefen kann der Server sie
+# nicht, er rechnet die Physik ja nicht mit. Was er kann, ist sie eingrenzen --
+# und dafuer braucht es keine eigene Zahl: die Notbremse des Knopfs liegt bei
+# 48 h, also ueber dem 24-h-Deckel, der hier ohnehin ueber allem steht. Mehr
+# als einen Tag simulierte Zeit meldet dieser Server nicht, gesprungen oder
+# nicht. Das ist weniger als eine Pruefung und deutlich mehr als vorher, wo
+# dieselben Stunden ungefragt fuer jeden freien Lauf galten.
 
 
-def _run_duration_cap(measured: dict | None, mode: str) -> float:
+def _run_duration_cap(measured: dict | None) -> float:
     """Wie viel simulierte Zeit dieser Lauf hoechstens erreicht haben kann."""
     if measured is None:
         return float(_RUN_MAX_DURATION_S)
     cap = (measured['start_sim'] + measured['wall_s'] * _RUN_MAX_RATE
-           + _RUN_RATE_GRACE_S)
-    if mode == usersmod.MODE_FREE:
-        cap += _RUN_XENON_SKIP_S
+           + _RUN_RATE_GRACE_S + measured['skip_s'])
     return min(float(_RUN_MAX_DURATION_S), cap)
 
 
@@ -1144,6 +1330,45 @@ def run_start():
     return jsonify({'run': RUNS.open(_account_id(), reactor, scenario, start_sim)})
 
 
+@app.route('/api/runs/skip', methods=['POST'])
+def run_skip():
+    """Einen Xenon-Zeitsprung anmelden (siehe _run_duration_cap und den
+    Abschnitt darueber).
+
+    Der Client ruft das erst NACH dem Sprung und mit der wirklich gerechneten
+    Zeit -- vorher weiss er sie nicht, ein Abbruch kann jederzeit dazwischen
+    kommen. Bis die Antwort da ist, meldet er den Lauf nicht ab (main.js
+    fastForwardXenon()); sonst koennte die Abmeldung die Anmeldung ueberholen
+    und der Sprung fiele unter den Tisch.
+
+    Der Zeitsprung selbst braucht diese Anfrage nicht: scheitert sie, springt
+    der Client trotzdem, und nur die gemeldete Dauer wird am Ende gekuerzt.
+    """
+    if _limited('run_skip', 60, 60):
+        return jsonify({'error': 'rate_limited'}), 429
+    if not _current_player_row():
+        return jsonify({'error': 'no_account'}), 403
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({'error': 'bad_body'}), 400
+    try:
+        seconds = float(body.get('seconds'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'bad_seconds'}), 400
+    if not (seconds == seconds) or seconds < 0:       # NaN faellt mit durch
+        return jsonify({'error': 'bad_seconds'}), 400
+
+    total = RUNS.add_skip(_account_id(), body.get('run'), seconds,
+                          cap_total=float(_RUN_MAX_DURATION_S))
+    # Kein offener Lauf, eine fremde Kennung, oder ein Szenario, das den Knopf
+    # gar nicht hat -- fuer diese Antwort ist das dasselbe: hier ist nichts
+    # anzumelden.
+    if total is None:
+        return jsonify({'error': 'no_open_run'}), 400
+    return jsonify({'ok': True, 'skip_s': total})
+
+
 @app.route('/api/runs', methods=['POST'])
 def run_record():
     """Ein beendeter Lauf fuer die Historie im Admin-Panel."""
@@ -1195,7 +1420,7 @@ def run_record():
     if measured is not None and (measured['reactor'] != reactor
                                  or measured['scenario'] != scenario):
         measured = None
-    duration = min(duration, _run_duration_cap(measured, mode))
+    duration = min(duration, _run_duration_cap(measured))
 
     USERS.record_play_session(
         player['id'], reactor, scenario, duration,

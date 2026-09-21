@@ -8,7 +8,9 @@ Ausgefuehrt mit: python3 -m pytest reactorsim/tests/test_admin.py
 
 import os
 import re
+import sqlite3
 import sys
+import time
 
 import pytest
 
@@ -408,6 +410,200 @@ def test_a_resumed_run_starts_from_the_saved_state_not_from_a_claim(admin):
         'reactor': 'pwr', 'scenario': 'pwr_load_follow', 'duration_s': 7260.0,
         'outcome': 'completed', 'run': bare})
     assert mod.USERS.recent_play_sessions()['rows'][0]['duration_s'] < 7260.0
+
+
+# -- Xenon-Zeitsprung und Neustart --------------------------------------------
+
+
+def _free_run(player, duration_s=9e12, **over):
+    body = {'reactor': 'pwr', 'scenario': None, 'duration_s': duration_s,
+            'outcome': 'aborted'}
+    body.update(over)
+    return player.post('/api/runs', json=body)
+
+
+def test_free_play_no_longer_gets_48_hours_for_free(admin):
+    """Bis 0.6.2 hob der Server den Deckel fuer JEDES freie Spiel pauschal um
+    die 48 h des Xenon-Zeitraffers an -- ob gesprungen wurde oder nicht. Damit
+    war die 60x-Grenze dort wirkungslos: 24 h simulierte Zeit gingen immer
+    durch. Ohne angemeldeten Sprung gilt jetzt dieselbe Grenze wie im
+    Szenario."""
+    mod, _c = admin
+    player = _player(mod)
+    token = player.post('/api/runs/start',
+                        json={'reactor': 'pwr', 'scenario': None}).get_json()['run']
+    assert _free_run(player, run=token).status_code == 200
+    row = mod.USERS.recent_play_sessions()['rows'][0]
+    assert row['duration_s'] <= mod._RUN_RATE_GRACE_S + 60
+    assert row['duration_s'] < mod._RUN_MAX_DURATION_S
+
+
+def test_an_announced_jump_raises_the_cap_by_exactly_what_was_announced(admin):
+    """Der Server rechnet die Physik nicht mit, er kann den Sprung also nicht
+    nachpruefen. Was er kann: nur zaehlen, was angemeldet wurde."""
+    mod, _c = admin
+    player = _player(mod)
+    token = player.post('/api/runs/start',
+                        json={'reactor': 'pwr', 'scenario': None}).get_json()['run']
+    r = player.post('/api/runs/skip', json={'run': token, 'seconds': 8 * 3600.0})
+    assert r.status_code == 200 and r.get_json()['skip_s'] == 8 * 3600.0
+
+    assert _free_run(player, run=token).status_code == 200
+    row = mod.USERS.recent_play_sessions()['rows'][0]
+    # Acht Stunden Sprung plus der Zuschlag, und keine Minute mehr: die
+    # Messung selbst gibt in dieser Sekunde nichts her.
+    assert 8 * 3600.0 <= row['duration_s'] <= 8 * 3600.0 + mod._RUN_RATE_GRACE_S + 60
+
+
+def test_two_jumps_add_up_and_stay_under_the_hard_ceiling(admin):
+    mod, _c = admin
+    player = _player(mod)
+    token = player.post('/api/runs/start',
+                        json={'reactor': 'pwr', 'scenario': None}).get_json()['run']
+    for _ in range(2):
+        r = player.post('/api/runs/skip', json={'run': token, 'seconds': 20 * 3600.0})
+        assert r.status_code == 200
+    # Zusammen 40 h, gedeckelt auf die 24 h, die ohnehin ueber allem stehen.
+    assert r.get_json()['skip_s'] == float(mod._RUN_MAX_DURATION_S)
+    _free_run(player, run=token)
+    assert mod.USERS.recent_play_sessions()['rows'][0]['duration_s'] \
+        == float(mod._RUN_MAX_DURATION_S)
+
+
+def test_an_absurd_jump_is_cut_to_the_hard_ceiling(admin):
+    """Auch eine erfundene Sekundenzahl hebt nichts ueber den 24-h-Deckel."""
+    mod, _c = admin
+    player = _player(mod)
+    token = player.post('/api/runs/start',
+                        json={'reactor': 'pwr', 'scenario': None}).get_json()['run']
+    r = player.post('/api/runs/skip', json={'run': token, 'seconds': 9e12})
+    assert r.get_json()['skip_s'] == float(mod._RUN_MAX_DURATION_S)
+    _free_run(player, run=token)
+    assert mod.USERS.recent_play_sessions()['rows'][0]['duration_s'] \
+        == float(mod._RUN_MAX_DURATION_S)
+
+
+def test_a_scenario_cannot_announce_a_jump_at_all(admin):
+    """Den Knopf gibt es nur im freien Spiel. Ob ein Lauf eines ist, sagt der
+    Eintrag auf diesem Server -- nicht die Anfrage."""
+    mod, _c = admin
+    player = _player(mod)
+    token = player.post('/api/runs/start',
+                        json={'reactor': 'pwr', 'scenario': 'pwr_load_follow'}
+                        ).get_json()['run']
+    r = player.post('/api/runs/skip', json={'run': token, 'seconds': 8 * 3600.0})
+    assert r.status_code == 400 and r.get_json()['error'] == 'no_open_run'
+
+    player.post('/api/runs', json={'reactor': 'pwr', 'scenario': 'pwr_load_follow',
+                                   'duration_s': 9e12, 'outcome': 'aborted',
+                                   'run': token})
+    row = mod.USERS.recent_play_sessions()['rows'][0]
+    assert row['duration_s'] <= mod._RUN_RATE_GRACE_S + 60
+
+
+@pytest.mark.parametrize('body', [
+    {'run': 'gibt-es-nicht', 'seconds': 60.0},
+    {'seconds': 60.0},
+    {'run': 'gibt-es-nicht'},
+])
+def test_a_jump_without_a_matching_open_run_is_refused(admin, body):
+    mod, _c = admin
+    player = _player(mod)
+    assert player.post('/api/runs/skip', json=body).status_code == 400
+
+
+def test_a_jump_cannot_be_announced_for_someone_elses_run(admin):
+    mod, _c = admin
+    one = _player(mod, 'eins@example.test', 'eins-passwort-1')
+    two = _player(mod, 'zwei@example.test', 'zwei-passwort-1')
+    token = one.post('/api/runs/start',
+                     json={'reactor': 'pwr', 'scenario': None}).get_json()['run']
+    assert two.post('/api/runs/skip',
+                    json={'run': token, 'seconds': 8 * 3600.0}).status_code == 400
+    # Der fremde Versuch hat dem Lauf nichts gutgeschrieben.
+    _free_run(one, run=token)
+    assert mod.USERS.recent_play_sessions()['rows'][0]['duration_s'] \
+        <= mod._RUN_RATE_GRACE_S + 60
+
+
+def _open_runs_db(tmp_path):
+    return sqlite3.connect(os.path.join(str(tmp_path), 'runs.db'))
+
+
+def test_a_measurement_survives_a_restart_and_the_downtime_is_not_playtime(admin, tmp_path):
+    """Bis 0.6.2 lag die Messung nur im Speicher: ein Neustart des Containers
+    verlor sie, und der Lauf fiel auf den 24-h-Deckel zurueck. Jetzt steht sie
+    in runs.db -- ohne die Zeit, in der der Server weg war: davor sass
+    niemand."""
+    mod, _c = admin
+    player = _player(mod)
+    token = player.post('/api/runs/start',
+                        json={'reactor': 'pwr', 'scenario': None}).get_json()['run']
+    player.post('/api/runs/skip', json={'run': token, 'seconds': 3600.0})
+
+    now = time.time()
+    with _open_runs_db(tmp_path) as conn:
+        # Der Lauf laeuft seit einer Stunde, der Server war die letzten 50
+        # Minuten davon nicht erreichbar.
+        conn.execute('UPDATE open_runs SET t0 = ?', (now - 3600.0,))
+        conn.execute('UPDATE server_seen SET seen = ?', (now - 3000.0,))
+    mod.RUNS = mod.OpenRuns(str(tmp_path))
+
+    assert _free_run(player, run=token).status_code == 200
+    row = mod.USERS.recent_play_sessions()['rows'][0]
+    # 3600 s offen, 3000 s davon Ausfallzeit: 600 s am Schirm.
+    assert 590.0 <= row['wall_s'] <= 640.0
+    # Und der angemeldete Sprung hat den Neustart mit ueberlebt.
+    assert row['duration_s'] >= 600.0 * mod._RUN_MAX_RATE + 3600.0
+
+
+def test_a_run_left_open_for_longer_than_a_day_is_forgotten_on_restart(admin, tmp_path):
+    """Kein Browser spielt 30 Stunden durch -- dahinter steht ein Tab, den
+    niemand mehr anschaut. Solche Eintraege raeumt das Hochfahren weg, statt
+    sie als Messung auszugeben."""
+    mod, _c = admin
+    player = _player(mod)
+    token = player.post('/api/runs/start',
+                        json={'reactor': 'pwr', 'scenario': None}).get_json()['run']
+    with _open_runs_db(tmp_path) as conn:
+        conn.execute('UPDATE open_runs SET t0 = ?', (time.time() - 30 * 3600.0,))
+    mod.RUNS = mod.OpenRuns(str(tmp_path))
+    with _open_runs_db(tmp_path) as conn:
+        assert conn.execute('SELECT COUNT(*) FROM open_runs').fetchone()[0] == 0
+
+    assert _free_run(player, run=token).status_code == 200
+    row = mod.USERS.recent_play_sessions()['rows'][0]
+    assert row['wall_s'] is None
+    assert row['duration_s'] == float(mod._RUN_MAX_DURATION_S)
+
+
+def test_the_measurement_works_on_a_data_directory_that_does_not_exist_yet(admin, tmp_path):
+    """Beim allerersten Start ist `/data` noch leer -- und kann ganz fehlen.
+    Ohne eigenes Anlegen scheitert schon das Erzeugen der Tabellen, und danach
+    JEDE Schreibweise, weil es sie dann nie gibt: ein Container, der die
+    Zeitmessung stillschweigend nie gehabt haette."""
+    mod, _c = admin
+    fresh = tmp_path / 'erster-start'
+    runs = mod.OpenRuns(str(fresh))
+    token = runs.open('konto', 'pwr', None, 0.0)
+    assert runs.add_skip('konto', token, 60.0, cap_total=3600.0) == 60.0
+    with sqlite3.connect(str(fresh / 'runs.db')) as conn:
+        row = conn.execute('SELECT skip_s FROM open_runs').fetchone()
+        assert row is not None and row[0] == 60.0
+    measured = runs.close('konto', token)
+    assert measured['skip_s'] == 60.0 and measured['wall_s'] >= 0.0
+
+
+def test_a_closed_run_leaves_nothing_behind_on_disk(admin, tmp_path):
+    mod, _c = admin
+    player = _player(mod)
+    token = player.post('/api/runs/start',
+                        json={'reactor': 'pwr', 'scenario': None}).get_json()['run']
+    with _open_runs_db(tmp_path) as conn:
+        assert conn.execute('SELECT COUNT(*) FROM open_runs').fetchone()[0] == 1
+    _free_run(player, run=token)
+    with _open_runs_db(tmp_path) as conn:
+        assert conn.execute('SELECT COUNT(*) FROM open_runs').fetchone()[0] == 0
 
 
 # -- Blaetterung --------------------------------------------------------------

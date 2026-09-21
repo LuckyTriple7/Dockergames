@@ -1351,6 +1351,18 @@ async function fastForwardXenon() {
       setText(message, status ? t(status) : '');
       if (message) message.hidden = !status;
     }
+    // Den Sprung beim Server anmelden (api.noteSkip(), app.py
+    // /api/runs/skip). Er kann ihn nicht nachrechnen, aber ohne die Meldung
+    // kuerzt er die gemeldete simulierte Dauer am Ende auf das, was bei 60x
+    // in derselben echten Zeit moeglich gewesen waere -- und der Knopf hier
+    // rechnet gerade nicht im Bildtakt. Gemeldet wird, was wirklich
+    // gerechnet wurde, auch nach einem Abbruch: auch ein halber Sprung ist
+    // gesprungen. Gewartet wird darauf, damit die Abmeldung des Laufs
+    // (reportRun()) die Anmeldung nicht ueberholt -- eine Kernzerstoerung im
+    // Sprung fuehrt unmittelbar danach dorthin.
+    if (cleaned && ticks > 0 && app.runToken) {
+      await api.noteSkip(app.runToken, ticks * XENON_SKIP_DT);
+    }
   }
   if (!cleaned || !sameRound() || app.xenonSkip) return;
   if (failure || s.fault) {

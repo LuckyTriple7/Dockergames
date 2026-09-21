@@ -289,6 +289,11 @@ data/
 ├── sessions.json         Sitzungskennung je Spielerkonto (Ein-Geraet-Sperre)
 ├── users.db              Spielerkonten, Anmelde- und Spielhistorie, offene
 │                         Passwort-Links (SQLite)
+├── runs.db               Zeitmessung der gerade laufenden Spiele (SQLite),
+│                         damit ein Neustart sie nicht verliert. Enthält
+│                         keine Spielstände und gehört nicht in die
+│                         Sicherung — nach einem Wiederherstellen ist sie
+│                         gegenstandslos.
 ├── highscores.json       Bestenliste
 └── players/<hash>/       Spielstände je Konto
 ```
