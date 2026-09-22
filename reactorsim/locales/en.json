@@ -1076,5 +1076,21 @@
   "log_order_new": "Grid order {id}: to {mw} MW by {time}, then hold {min} min.",
   "log_order_met": "Grid order {id} met — held {mw} MW.",
   "log_order_failed": "Grid order {id} failed — could not hold {mw} MW.",
-  "log_order_cancelled": "Grid order {id} withdrawn by the control centre: the plant no longer feeds the grid."
+  "log_order_cancelled": "Grid order {id} withdrawn by the control centre: the plant no longer feeds the grid.",
+
+  "unit_minutes": "min",
+  "btn_monitor": "Monitor",
+  "monitor_title": "Monitor",
+  "monitor_live": "Watching along – this screen only displays, it does not operate.",
+  "monitor_wait": "Connecting …",
+  "monitor_none": "No control room registered. Start a shift on the other device.",
+  "monitor_offline": "This screen cannot reach the server.",
+  "monitor_stale": "The picture has stopped. The control room is not sending anything new.",
+  "monitor_lost": "No connection to the control room.",
+  "monitor_hidden": "The control room window is minimised or in the background – the simulation does not run on there.",
+  "monitor_paused": "The control room is paused.",
+  "monitor_ended": "The shift has ended.",
+  "monitor_closed": "The control room was closed.",
+  "monitor_bad_frame": "This picture does not match this build. Reload the page.",
+  "monitor_age": "picture is {age} old"
 }

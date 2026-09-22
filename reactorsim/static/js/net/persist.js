@@ -11,13 +11,13 @@ import { numbers } from '../sim/state.js';
 import { decaySum, equilibriumDecay } from '../sim/decayheat.js';
 import { TrendHistory } from '../game/trendHistory.js';
 
-const CONTEXT_NUMBERS = ['controlAcc', 'decayFrac', 'nPrev', 'period', 'substeps',
+export const CONTEXT_NUMBERS = ['controlAcc', 'decayFrac', 'nPrev', 'period', 'substeps',
   'tAvgPrev', 'pPrev', 'decayRatio', 'displayLevel',
   // Nur der DWR setzt ihn (plants/pwr.js: _limitedDemand) -- bei den anderen
   // beiden bleibt er undefined und faellt durch den isFinite-Filter unten
   // heraus, wie tAvgPrev/pPrev auch.
   'powerLimitMw'];
-const NESTED_STATE = ['zTop', 'zBot', 'az5'];
+export const NESTED_STATE = ['zTop', 'zBot', 'az5'];
 
 // Additive fields preserve compatibility with older saves. Missing historical
 // values can only be reconstructed approximately; new saves retain them.
@@ -27,7 +27,7 @@ const SAVE_VERSION = 1;
  *  ctx.saveable, von hooks.extraState() je Typ befuellt. Fehlt die Liste
  *  (sollte nicht vorkommen, aber lieber leer als abstuerzen), gibt es
  *  einfach kein components-Feld. */
-function packComponents(ctx) {
+export function packComponents(ctx) {
   if (!ctx.saveable) return undefined;
   const out = {};
   for (const [name, obj] of Object.entries(ctx.saveable)) {
@@ -37,12 +37,12 @@ function packComponents(ctx) {
   return out;
 }
 
-/** Zustand in einen Block packen, den der Server nur weiterreicht.
- *  `runState` ist optional (nur Szenarien haben eins, siehe game/session.js
- *  Session.run) -- ohne sie faengt die Wertung nach jedem Fortsetzen wieder
- *  bei null an, obwohl die Simulation selbst korrekt weiterlaeuft. */
-export function pack(engine, scenarioId, runState, session) {
-  const s = engine.state;
+/** Die Zahlen, Merker und verschachtelten Bloecke am Zustand selbst -- ohne
+ *  alles, was drumherum in ctx lebt. Eigene Funktion, weil ausser dem
+ *  Spielstand auch das Monitorbild genau diesen Teil braucht (siehe
+ *  net/monitorFrame.js); zwei Kopien davon liefen beim naechsten neuen
+ *  Zustandsfeld garantiert auseinander. */
+export function packState(s) {
   const out = {};
   // Nur Zahlen und einfache Felder direkt am Zustand.
   for (const [k, v] of Object.entries(s)) {
@@ -54,6 +54,34 @@ export function pack(engine, scenarioId, runState, session) {
   for (const key of NESTED_STATE) if (s[key]) out[key] = { ...s[key] };
   if (s.tipArmed) out.tipArmed = [...s.tipArmed];
   if (s.destroyedKey) out.destroyedKey = s.destroyedKey;
+  return out;
+}
+
+/** Gegenstueck zu packComponents(). Jedes restore() prueft seine Felder
+ *  selbst -- ein kaputter Eintrag wird uebersprungen, nicht zum Ladefehler
+ *  wie beim Zustand selbst. */
+export function restoreComponents(ctx, data) {
+  if (!data || typeof data !== 'object' || !ctx.saveable) return;
+  for (const [name, obj] of Object.entries(ctx.saveable)) {
+    const entry = data[name];
+    if (entry === undefined || !obj) continue;
+    if (Array.isArray(obj)) {
+      if (Array.isArray(entry) && entry.length === obj.length) {
+        obj.forEach((o, i) => entry[i] && o.restore(entry[i]));
+      }
+    } else if (typeof entry === 'object' && entry !== null) {
+      obj.restore(entry);
+    }
+  }
+}
+
+/** Zustand in einen Block packen, den der Server nur weiterreicht.
+ *  `runState` ist optional (nur Szenarien haben eins, siehe game/session.js
+ *  Session.run) -- ohne sie faengt die Wertung nach jedem Fortsetzen wieder
+ *  bei null an, obwohl die Simulation selbst korrekt weiterlaeuft. */
+export function pack(engine, scenarioId, runState, session) {
+  const s = engine.state;
+  const out = packState(s);
   return {
     v: SAVE_VERSION,
     reactor: s.reactor,
@@ -225,19 +253,7 @@ export function apply(blob, engine, runState, session) {
   // zu lassen. Jedes restore() prueft seine Felder selbst, bevor es sie
   // uebernimmt -- ein kaputter Eintrag hier wird ignoriert, nicht zum
   // Ladefehler wie bei engine.state oben.
-  if (blob.components && typeof blob.components === 'object' && engine.ctx.saveable) {
-    for (const [name, obj] of Object.entries(engine.ctx.saveable)) {
-      const data = blob.components[name];
-      if (data === undefined || !obj) continue;
-      if (Array.isArray(obj)) {
-        if (Array.isArray(data) && data.length === obj.length) {
-          obj.forEach((o, i) => data[i] && o.restore(data[i]));
-        }
-      } else if (typeof data === 'object' && data !== null) {
-        obj.restore(data);
-      }
-    }
-  }
+  restoreComponents(engine.ctx, blob.components);
 
   // Zum Schluss: der Zustand muss die Grenzwächter überstehen.
   if (numbers(s).some((x) => !Number.isFinite(x))) return 'not_finite';

@@ -369,9 +369,74 @@ class OpenRuns:
                 'start_sim': entry['start_sim'], 'skip_s': entry['skip_s']}
 
 
+class MonitorRelay:
+    """Ein Bild des laufenden Leitstands, je Konto, nur im Arbeitsspeicher.
+
+    Die Simulation laeuft im Browser (siehe static/js/loop.js). Wer sie auf
+    einem zweiten Bildschirm oder einem Tablet MITSEHEN will, braucht deshalb
+    eine Stelle, an der der Leitstand ablegt und der Monitor abholt -- mehr
+    macht diese Klasse nicht.
+
+    Bewusst NICHT auf der Platte, anders als Spielstand, Konten und
+    Zeitmessung: ein Monitorbild ist in einer halben Sekunde veraltet. Es zu
+    speichern hiesse, zweimal je Sekunde und Spieler zu schreiben, um etwas
+    aufzubewahren, das nie wieder jemand sehen will. Ein Neustart des
+    Containers kostet genau ein Bild; der naechste Sendetakt fuellt es wieder.
+    """
+
+    #: Nach so langer Stille gilt ein Eintrag als tot und faellt weg. Der
+    #: Monitor sagt "keine Verbindung" schon viel frueher (zehn Sekunden,
+    #: siehe monitor.js) -- diese Grenze raeumt nur den Speicher auf.
+    TTL_S = 300.0
+    #: Deckel je Bild. Gemessen liegt ein Bild bei 4-8 kB; alles darueber ist
+    #: kein Leitstand mehr, sondern ein Fehler oder ein Versuch, den Speicher
+    #: des Servers als Ablage zu benutzen.
+    MAX_BYTES = 64 * 1024
+    #: Deckel ueber alle Konten. Bei 64 kB sind das hoechstens 16 MB, und
+    #: mehr als so viele Spieler gleichzeitig hat diese Anlage nicht.
+    MAX_ACCOUNTS = 256
+
+    def __init__(self):
+        self._frames: dict[str, tuple[float, dict]] = {}
+        self._lock = threading.Lock()
+
+    def _sweep(self, now: float) -> None:
+        dead = [k for k, (ts, _) in self._frames.items() if now - ts > self.TTL_S]
+        for key in dead:
+            self._frames.pop(key, None)
+        while len(self._frames) > self.MAX_ACCOUNTS:
+            oldest = min(self._frames, key=lambda k: self._frames[k][0])
+            self._frames.pop(oldest, None)
+
+    def put(self, account: str, frame: dict) -> None:
+        now = time.monotonic()
+        with self._lock:
+            # Erst ablegen, dann aufraeumen. Andersherum stuenden nach dem
+            # Aufraeumen MAX_ACCOUNTS + 1 Eintraege da -- der Deckel waere um
+            # genau eins zu hoch, und zwar dauerhaft.
+            self._frames[account] = (now, frame)
+            self._sweep(now)
+
+    def get(self, account: str) -> tuple[float, dict] | None:
+        """@return (Alter in Sekunden, Bild) oder None.
+
+        Das Alter kommt von HIER, nicht aus dem Bild selbst: Leitstand und
+        Monitor stehen oft auf verschiedenen Geraeten, und eine falsch gehende
+        Uhr auf einem davon wuerde sonst ein frisches Bild als tot melden oder
+        ein totes als frisch. Der Server ist die einzige Uhr, die beide sehen.
+        """
+        with self._lock:
+            entry = self._frames.get(account)
+        if entry is None:
+            return None
+        ts, frame = entry
+        return max(0.0, time.monotonic() - ts), frame
+
+
 STORE = persist.Store(_DATA)
 LIMITS = persist.RateLimit()
 RUNS = OpenRuns(_DATA)
+MONITOR = MonitorRelay()
 USERS = usersmod.UserStore(_DATA)
 AUTH = authmod.Auth(_DATA, REACTORSIM_USER, REACTORSIM_PASSWORD, USERS)
 # Konfiguration aus der Umgebung, also aus Dockge -- genau wie das
@@ -1117,6 +1182,52 @@ def save_delete(slot: str):
     return jsonify({'ok': STORE.delete_save(_account_id(), slot)})
 
 
+# ── Zweitbildschirm ───────────────────────────────────────────────────────────
+#
+# Undurchsichtig wie ein Spielstand: der Server reicht das Bild weiter, ohne
+# seinen Inhalt zu kennen. Geprueft wird nur, was er selbst braucht -- dass es
+# ueberhaupt ein Objekt ist und eine laufende Nummer traegt.
+#
+# Es gibt bewusst KEINEN Rueckweg. Der Monitor liest, mehr nicht; die Anlage
+# laesst sich von dort nicht anfassen.
+
+
+@app.route('/api/monitor', methods=['POST'])
+def monitor_put():
+    request.max_content_length = MonitorRelay.MAX_BYTES
+    # Zwei Bilder je Sekunde sind der Normalfall (FRAME_INTERVAL_MS in
+    # net/monitorLink.js); die Grenze laesst Sichtbarkeitswechsel und
+    # Abschiedsbilder daneben Platz, ohne einen Dauerstrom zuzulassen.
+    if _limited('monitor', 240, 60):
+        return jsonify({'error': 'rate_limited'}), 429
+    frame = request.get_json(silent=True)
+    if not isinstance(frame, dict) or not isinstance(frame.get('seq'), int):
+        return jsonify({'error': 'bad_body'}), 400
+    MONITOR.put(_account_id(), frame)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/monitor', methods=['GET'])
+def monitor_get():
+    entry = MONITOR.get(_account_id())
+    if entry is None:
+        # Kein Fehler, sondern eine Aussage: es spielt gerade niemand. Der
+        # Monitor sagt das auch genau so, statt "keine Verbindung" zu zeigen.
+        return jsonify({'ok': True, 'none': True})
+    age, frame = entry
+    # Steht das Bild still (Leitstand angehalten, Reiter im Hintergrund),
+    # kommt nur das Alter zurueck. Der Monitor braucht dann nichts zu
+    # zeichnen, und die Leitung traegt ein paar Dutzend Byte statt mehrerer
+    # Kilobyte -- zweimal je Sekunde, ueber Stunden.
+    try:
+        seen = int(request.args.get('seq', 0))
+    except ValueError:
+        seen = 0
+    if seen and seen == frame.get('seq'):
+        return jsonify({'ok': True, 'age': age, 'same': True})
+    return jsonify({'ok': True, 'age': age, 'frame': frame})
+
+
 # ── Einstellungen ───────────────────────────────────────────────────────────────
 #
 # Undurchsichtig wie ein Spielstand (siehe persist.py): der Server speichert
@@ -1588,18 +1699,30 @@ def scores_add():
 # ── Seiten ────────────────────────────────────────────────────────────────────
 
 
-def _render_index(initial_reactor=None):
+def _render_index(initial_reactor=None, monitor=False):
     lang = detect_language(request)
     return render_template('index.html',
                            t=load_translations(lang),
                            lang=lang,
                            app_version=APP_VERSION,
-                           initial_reactor=initial_reactor)
+                           initial_reactor=initial_reactor,
+                           monitor=monitor)
 
 
 @app.route('/')
 def index():
     return _render_index()
+
+
+# Zweitbildschirm: DIESELBE Seite, nur mit einem anderen Einstiegsmodul
+# (monitor.js statt main.js, siehe index.html). Eine eigene Vorlage haette
+# jede Kachel, jedes Rundinstrument und jedes Hilfefenster ein zweites Mal
+# beschrieben -- und beim naechsten Reaktortyp waere genau eine davon
+# vergessen worden. Gesperrt wird nicht durch weggelassene Knoten, sondern
+# durch setControlsLocked() (siehe ui/controls.js).
+@app.route('/monitor')
+def monitor_page():
+    return _render_index(monitor=True)
 
 
 # Direktaufruf/Refresh von /reaktor/<typ> (siehe fadeScreens()/history.pushState

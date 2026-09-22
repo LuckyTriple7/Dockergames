@@ -16,11 +16,14 @@ import { DISPATCH_LEVEL_IDS } from './game/dispatch.js';
 import { gridDeviationTrips } from './game/scenario.js';
 import { api } from './net/api.js';
 import { pack as packSave, apply as applySave } from './net/persist.js';
+import { MonitorSender } from './net/monitorLink.js';
 import { GLOSSARY } from './ui/glossary.js';
 import { SHORTCUTS } from './ui/shortcuts.js';
 import { MusicLoop, playClip, setMuted } from './ui/music.js';
 import { STATUS_STATS, sanitizeStatusKeys } from './ui/statusStats.js';
+import { buildStatusBar, applyStatusSelection, setStatusTileLabel } from './ui/statusBar.js';
 import { enableDragReorder } from './ui/dragReorder.js';
+import { initInstrumentsWindow } from './ui/instruments.js';
 import { attachRecorder } from './game/recorder.js';
 import { DebugTape } from './game/debugTape.js';
 import { packText, downloadBlob } from './ui/download.js';
@@ -57,6 +60,12 @@ const app = {
   scenarios: [],
   chosen: null,      // gewaehltes Szenario oder null fuer freies Spiel
   prefs: {},         // gespeicherte Einstellungen des Spielers, siehe /api/prefs
+  // Schickt zweimal je Sekunde ein Bild des laufenden Leitstands an den
+  // Server, damit ein zweiter Bildschirm oder ein Tablet unter /monitor
+  // mitsehen kann. Reine Zugabe: scheitert der Versand, laeuft die Schicht
+  // unveraendert weiter (siehe net/monitorLink.js).
+  monitor: new MonitorSender(),
+  monitorMeta: null,
 };
 
 // Einmal beim Laden geholt, nicht bei jedem Rundenstart neu: boot() wartet
@@ -981,7 +990,7 @@ function initControls() {
     // offen wanderte die ganze Kachel mitsamt Luecken dorthin, wo die
     // Uebersicht sie sich schon geholt hat. Erst schliessen, dann sauber neu
     // aufbauen.
-    if (openInstruments) closeInstrumentsWindow();
+    if (instruments.isOpen()) instruments.close();
     const body = $('.rs-panel-body', section);
     if (!body) return;
     const placeholder = document.createComment('rs-panel-window-slot');
@@ -1023,85 +1032,11 @@ function initControls() {
     if (ev.key === 'Escape' && !panelWindow.hidden) closePanelWindow();
   });
 
-  // Instrumentenübersicht (Taste O): buendelt die Rundinstrumente
-  // (#rs-*-gauges) und alle Stellteile (Staebe, Pumpen, Speisewasser,
-  // Sicherheitssysteme, Bor, Netz) aus allen acht Reitern auf einer
-  // Flaeche. Dieselbe Verschieben-statt-Kopieren-Regel wie bei
-  // openPanelWindow() oben -- jede Karte hier ist der echte Knoten aus
-  // seinem Reiter (Wertebindungen aus buildPanels() laufen genau EINMAL
-  // gegen diese Knoten, ein Klon liefe stumm mit toten Anzeigen). Anders
-  // als openPanelWindow() bewusst NICHT auf Desktop beschraenkt: auf dem
-  // Handy zeigt sonst kein Reiter mehrere Kacheln gleichzeitig, dort ist
-  // die Buendelung sogar der einzige Weg, Staebe und Pumpen ohne Wechseln
-  // nebeneinander zu sehen.
-  const instrumentsModal = $('#rs-instruments-modal');
-  const instrumentsGrid = $('#rs-instruments-grid');
-  // Nur die Gruppen-Optik (Kopfzeile, Innenabstand) wiederverwenden, siehe
-  // .rs-group > h3 in panels.css -- eigene Ueberschrift statt der echten
-  // <h3> aus dem Reiter, weil mehrere Ziele (Stab-Bedienung, Speisewasser,
-  // Sicherheitssysteme) ihre Ueberschrift mit Messwertzeilen teilen, die
-  // hier NICHT mitkommen (nur Rundinstrumente + Stellteile, keine reinen
-  // Zahlenzeilen, siehe Aufgabenstellung).
-  const INSTRUMENT_SECTIONS = [
-    [['rs-core-gauges'], 'panel_core'],
-    [['rs-prim-gauges'], 'panel_primary'],
-    [['rs-sec-gauges'], 'panel_secondary'],
-    // Die Stabstellung (rs-rods, dieselben Balken wie im Reiter, inklusive
-    // ihrer eigenen %-Anzeige je Bank aus bar() in gauges.js) gehoert mit in
-    // dieselbe Karte wie die Stab-Bedienung -- ohne sie liesse sich "Ziehen"/
-    // "Einfahren" nur blind bedienen.
-    [['rs-rods', 'rs-rod-ctl'], 'panel_core_rods'],
-    [['rs-pumps'], 'panel_primary_pumps'],
-    [['rs-sec-ctl'], 'panel_secondary_feed'],
-    [['rs-safety-ctl'], 'panel_safety'],
-    [['rs-chem-ctl'], 'panel_chemistry'],
-    [['rs-grid-ctl'], 'panel_grid'],
-  ];
-  let openInstruments = null; // Array aus { node, placeholder } waehrend das Fenster offen ist
-
-  const closeInstrumentsWindow = () => {
-    if (!openInstruments) return;
-    for (const { node, placeholder } of openInstruments) placeholder.replaceWith(node);
-    openInstruments = null;
-    instrumentsModal.hidden = true;
-    instrumentsGrid.replaceChildren();
-  };
-
-  const openInstrumentsWindow = () => {
-    // Zweiter Druck auf O schliesst wieder -- ohne Maus die einzige
-    // Rueckmeldung darauf, dass die Taste ueberhaupt etwas tut.
-    if (openInstruments) { closeInstrumentsWindow(); return; }
-    // Vor dem ersten Rundenstart stehen die Zielknoten leer (buildPanels()
-    // hat sie noch nie gefuellt) -- ein leeres Fenster waere nur verwirrend.
-    if (!app.engine) return;
+  // Instrumentenuebersicht (Taste O) -- ui/instruments.js, weil der
+  // Zweitbildschirm sie genauso braucht (siehe monitor.js). Das Panel-Fenster
+  // muss davor weichen: es holt sich Knoten aus denselben Kacheln.
+  const instruments = initInstrumentsWindow(() => !!app.engine, () => {
     if (!panelWindow.hidden) closePanelWindow();
-    openInstruments = [];
-    for (const [ids, labelKey] of INSTRUMENT_SECTIONS) {
-      // Nicht jeder Typ fuellt jedes Stellteil: RBMK/SWR kennen keine Bor-
-      // dosierung (#rs-chem-ctl bleibt leer), der DWR keine Sicherheits-
-      // systeme unter #rs-safety-ctl (siehe hooks.uiControls() je Typ in
-      // plants/*.js, mount-Namen). Ein leerer Knoten kommt gar nicht erst
-      // mit -- eine Karte ganz ohne Inhalt (alle Knoten leer) faellt danach
-      // aus wie bisher.
-      const nodes = ids.map((id) => $('#' + id)).filter((n) => n && n.childElementCount);
-      if (!nodes.length) continue;
-      for (const node of nodes) {
-        const placeholder = document.createComment('rs-instruments-slot');
-        node.before(placeholder);
-        openInstruments.push({ node, placeholder });
-      }
-      instrumentsGrid.append(el('div.rs-group.rs-instruments-section', null, [
-        el('h3', { text: t(labelKey) }),
-        ...nodes,
-      ]));
-    }
-    instrumentsModal.hidden = false;
-  };
-
-  $('#rs-instruments-close').addEventListener('click', closeInstrumentsWindow);
-  instrumentsModal.addEventListener('click', (ev) => { if (ev.target === instrumentsModal) closeInstrumentsWindow(); });
-  document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape' && !instrumentsModal.hidden) closeInstrumentsWindow();
   });
 
   // Kopfzeile anpassen: Checkboxen aus dem Katalog, vorbelegt mit der
@@ -1228,7 +1163,7 @@ function initControls() {
     // die Meldetafel-Quittierung (siehe oben).
     else if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key.toLowerCase() === 'o') {
       ev.preventDefault();
-      openInstrumentsWindow();
+      instruments.open();
     }
   });
 
@@ -1303,6 +1238,10 @@ function setSpeed(v) {
   // liessen sich Staebe, Pumpen und Regler auch im Stillstand bewegen.
   setControlsPaused(v === 0);
   document.body.classList.toggle('rs-ctl-paused', v === 0);
+  // Der Zweitbildschirm soll "angehalten" nicht von "Verbindung weg"
+  // unterscheiden muessen -- bei Zeitraffer 0 stehen die Instrumente
+  // genauso still, nur aus einem ganz anderen Grund.
+  if (app.monitorMeta) app.monitorMeta.speed = v;
 }
 
 /** Zeitlupe, die eine gefuehrte Uebung selbst anfordert (siehe
@@ -1851,6 +1790,10 @@ function toMenu() {
   app.session = null;
   clearEndDialogs();
   if (app.loop) app.loop.stop();
+  // Abmelden statt verstummen: ohne das stuende auf dem Zweitbildschirm nach
+  // dem Verlassen der Schicht dasselbe Bild wie bei abgerissenem Netz.
+  app.monitor.stop();
+  app.monitorMeta = null;
   if (app.autosaveTimer) { window.clearInterval(app.autosaveTimer); app.autosaveTimer = null; }
   // Die Sirene laeuft als eigene Dauerschleife unabhaengig von loop/bgMusic
   // (siehe Horn in annunciator.js) -- ohne silence() hupt eine unquittierte
@@ -2164,45 +2107,6 @@ function loadScores(reactor, scenario) {
   });
 }
 
-// Kachel je Katalogeintrag, ueber Rundenstarts hinweg gemerkt: applyStatus-
-// Selection() knipst nur hidden um, baut aber nichts neu. Das ist der Grund,
-// warum die Einstellungen-Kachel sofort wirkt, ganz ohne Rundenneustart --
-// panels.js sammelt seine data-v-Bindungen einmal beim Rundenstart aus dem
-// DOM und haette bei neu gebauten Knoten nur die alten weiterbeschrieben,
-// unsichtbar, waehrend die neuen fuer immer auf "—" stehen (dieselbe Klasse
-// Fehler wie die doppelten Rundinstrumente aus 0.0.30).
-let statusTiles = null;
-
-/** Alle 47 moeglichen Kacheln einmal bauen (verdeckt) -- einmal je
- *  Rundenstart, weil buildPanels() gleich danach seine Wertebindungen aus
- *  genau diesem DOM einsammelt. */
-function buildStatusBar() {
-  // data-key: haelt fest, welche Kachel welcher Statuswert ist -- die
-  // Zeigergesten-Umsortierung (enableDragReorder in initControls()) liest
-  // die neue Reihenfolge nur aus dem DOM zurueck, ohne die Map hier zu kennen.
-  statusTiles = new Map(STATUS_STATS.map(({ key, labelKey }) => [key,
-    el('div.rs-stat', { hidden: true, 'data-key': key }, [
-      el('span.rs-stat-k', { text: t(labelKey) }),
-      el('span.rs-stat-v', { 'data-v': key, text: '—' }),
-    ])]));
-  $('#rs-status-scroll').replaceChildren(...statusTiles.values());
-}
-
-/** Auswahl anzeigen: nur hidden/Reihenfolge aendern, nie Knoten ersetzen --
- *  wirkt deshalb auch mitten in einer laufenden Runde sofort. */
-function applyStatusSelection(keys) {
-  if (!statusTiles) return;
-  for (const node of statusTiles.values()) node.hidden = true;
-  const scroll = $('#rs-status-scroll');
-  keys.forEach((key, i) => {
-    const node = statusTiles.get(key);
-    if (!node) return;
-    node.hidden = false;
-    node.classList.toggle('rs-stat-lead', i < 2);
-    scroll.append(node); // an den Schluss, in Auswahlreihenfolge
-  });
-}
-
 async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, freeSetup = null) {
   cancelScenarioLoad();
   app.briefDef = scenarioDef || null;
@@ -2275,8 +2179,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
   buildStatusBar();
   // Gleicher Grund wie beim '[data-stat-label="dnbr"]' im Einstellungen-
   // Dialog: DNBR/CPR ist derselbe Wert, der Name wechselt nur mit dem Typ.
-  const marginTile = statusTiles.get('dnbr');
-  if (marginTile) setText($('.rs-stat-k', marginTile), t(plant.spec.marginKey || 'val_dnbr'));
+  setStatusTileLabel('dnbr', t(plant.spec.marginKey || 'val_dnbr'));
   applyStatusSelection(sanitizeStatusKeys(prefs.statusBar && prefs.statusBar[reactorId]));
 
   app.endShown = false;
@@ -2426,6 +2329,13 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
       xenonSkipBtn.hidden = !(app.session && app.session.free
         && state.scram.active && state.X > XENON_SKIP_TARGET);
     }
+
+    // Am Renderlauf, nicht an einem eigenen Zeitgeber. Das ist Absicht: ein
+    // Reiter im Hintergrund bekommt vom Browser keine Bilder mehr, also
+    // rechnet die Simulation dort auch nicht weiter -- und dann DARF der
+    // Zweitbildschirm auch nichts Neues zeigen. Den Grund dafuer schickt der
+    // Sender beim Sichtbarkeitswechsel eigens nach (monitorLink.js).
+    app.monitor.tick(now);
   });
   app.loop.onSlip = (slipping) => { $('#rs-slip').hidden = !slipping; };
   // Absicherung gegen lautloses Einfrieren: jeder Fehler, der die rAF-Kette
@@ -2459,6 +2369,24 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
   const scramBtn = $('#rs-scram');
   setText(scramBtn, scramLabel());
   setAttr(scramBtn, 'title', t((plant.spec.scram && plant.spec.scram.titleKey) || 'btn_scram'));
+  // Zweitbildschirm anmelden. Alles, was der Monitor zum Aufbau seiner
+  // eigenen Engine braucht und was NICHT im Zustand steht, geht hier einmal
+  // mit: der Reaktortyp kommt aus dem Zustand, der Abbrand auch -- aber die
+  // Kennung des Laufs (woran der Monitor einen Neustart erkennt) und die
+  // szenarioeigene Netzabweichungs-Meldung (gridDeviationTrips(), deren
+  // Bedingung eine Funktion ist und sich deshalb nicht verschicken laesst)
+  // nicht.
+  const gridFail = (scenarioDef?.fail || []).find((x) => x.type === 'grid_deviation');
+  app.monitorMeta = {
+    run: `${bootId}-${Math.random().toString(36).slice(2, 8)}`,
+    scenario: scenarioDef?.id || null,
+    tutorial: scenarioDef?.tutorial || null,
+    gridFail: gridFail ? { mw: gridFail.mw, for_s: gridFail.for_s } : null,
+    helper: app.prefs.helper !== false && scenarioDef?.guidance?.auto_helper !== false,
+    speed: 1,
+    hidden: false,
+  };
+  app.monitor.start(app.engine, app.monitorMeta);
   setSpeed(1);
   app.loop.start();
   // Gegen Strg+R/Tab-Absturz: hoechstens eine Minute Fortschritt verloren,

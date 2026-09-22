@@ -1,5 +1,81 @@
 # Changelog
 
+## 0.6.14
+
+- ✨ **Zweitbildschirm: `/monitor` zeigt den laufenden Leitstand mit, auf
+  jedem Geraet mit derselben Anmeldung.** Zweiter Monitor am Rechner,
+  Tablet daneben, Fernseher im Nebenraum -- die Seite zeigt Statuszeile,
+  alle acht Reiter, Fliessbild, Trendkurven, Meldetafel und die
+  Instrumentenuebersicht auf Taste O. Sie bedient nichts: es gibt keinen
+  Rueckweg vom Monitor zur Anlage, und alle Stellteile stehen gesperrt
+  (`setControlsLocked()`, derselbe Vorfuehrmodus wie in der
+  Chernobyl-Uebung). Der Link steht in der Fusszeile des Startbildschirms.
+
+  Warum das nicht "der Monitor rechnet mit" heisst: die Simulation laeuft
+  vollstaendig im Browser (`loop.js`). Zwei Engines mit zwei Bildraten
+  laufen auseinander -- genau das schliesst `verify_run.mjs` sonst aus. Der
+  Leitstand schickt deshalb zweimal je Sekunde ein Bild an den Server
+  (`/api/monitor`), der Monitor holt es ab. Der Server haelt genau EIN Bild
+  je Konto, nur im Arbeitsspeicher: ein Monitorbild ist in einer halben
+  Sekunde veraltet, es zu speichern hiesse zweimal je Sekunde zu schreiben,
+  um etwas aufzubewahren, das nie wieder jemand sehen will.
+
+  Auf dem Monitor entsteht eine ECHTE Engine des richtigen Typs -- sie wird
+  nur nie getreten. Statt `engine.step()` schreibt `applyFrame()` den
+  ankommenden Zustand hinein, und `buildPanels()` laeuft unveraendert
+  darueber. Deshalb steht kein einziges Instrument zweimal im Quelltext,
+  und `/monitor` liefert dieselbe Vorlage wie `/` -- nur mit einem anderen
+  Einstiegsmodul. Neu herausgeloest, damit beide Seiten sie teilen:
+  `ui/statusBar.js` (waehlbare Kopfzeile) und `ui/instruments.js`
+  (Uebersicht auf Taste O).
+
+  Im Bild steckt derselbe Zustand wie in einem Spielstand (`packState()`,
+  `packComponents()` aus `net/persist.js`), aber nicht die Trendhistorie,
+  nicht das Lernprotokoll, nicht der Zufallszahlenstand. Schon nach vierzig
+  Minuten Betrieb ist allein der Trendblock eines Spielstands groesser als
+  das ganze Monitorbild, und er waechst bis zu acht Stunden weiter -- die
+  Kurve baut sich der Monitor deshalb aus den ankommenden Bildern selbst.
+  Gemessen liegt ein Bild bei 4-8 kB; steht es still, schickt der Server
+  auf `?seq=` nur das Alter zurueck und keine Nutzlast.
+
+  Abgeholt statt Dauerverbindung, mit Grund: der Server laeuft unter
+  waitress mit 24 Arbeitsfaeden. Ein Server-Sent-Events-Strom belegt je
+  Zuschauer dauerhaft einen davon -- drei Geraete fraessen ein Achtel des
+  Servers, waehrend sie nichts tun als warten.
+
+  Eine Groesse wird mitgeschickt statt drueben nachgerechnet: die
+  Reaktivitaet. `engine.step()` bildet sie VOR der Vergiftung, `derive()`
+  liest sie DANACH -- wer sie aus dem fertigen Zustand neu bildet, bekommt
+  einen Wert, den der Leitstand so nie angezeigt hat (gemessen rund 4e-6
+  daneben). Ein Monitor, der etwas anderes zeigt als der Schirm daneben,
+  ist schlimmer als keiner.
+
+- ✨ **Der Monitor sagt immer, wie alt sein Bild ist -- und warum.** Ein
+  stehendes Instrument sieht aus wie eine ruhige Anlage, und das ist der
+  gefaehrlichste Irrtum, den eine Fernanzeige haben kann. Ueber der
+  Statuszeile steht deshalb dauerhaft eine Zeile mit dem Alter des letzten
+  Bildes; ab drei Sekunden wird der ganze Leitstand grau, ab zehn Sekunden
+  meldet er "keine Verbindung" und wird schwarzweiss. Gegraut wird die
+  ganze Flaeche, nicht nur die Zeile: eine einzelne Warnung ueber lebendig
+  aussehenden Zeigern wird uebersehen.
+
+  Und weil der Browser einem Reiter im Hintergrund keine Bilder mehr gibt,
+  rechnet ein minimierter Leitstand auch nicht weiter -- sein Bild altert
+  dann genau wie bei abgerissenem Netz. Der Sender meldet den
+  Sichtbarkeitswechsel deshalb eigens, und beim Schliessen des Reiters geht
+  per `sendBeacon` noch ein Abschiedsbild raus. Der Monitor nennt daraufhin
+  den Grund -- Fenster im Hintergrund, Schicht beendet, Leitstand
+  geschlossen, angehalten -- statt "keine Verbindung" zu raten. Die
+  Reihenfolge dieser Faelle steht als eigene, reine Funktion in
+  `net/monitorStatus.js` und hat ihren eigenen Test: ein genannter Grund
+  schlaegt jedes Alter, nur "angehalten" nicht, denn ein pausierter
+  Leitstand sendet weiter.
+
+  Das Alter kommt vom Server, nicht aus einem Vergleich zweier Uhren --
+  Leitstand und Monitor stehen oft auf verschiedenen Geraeten, und eine
+  falsch gehende Tablet-Uhr wuerde sonst ein frisches Bild als tot melden
+  oder ein totes als frisch.
+
 ## 0.6.13
 
 - ✨ **Debug-Modus: die ganze Schicht wird mitgeschrieben und am Ende

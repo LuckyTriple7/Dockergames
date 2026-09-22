@@ -69,6 +69,13 @@ export const api = {
   readAccount: () => request('GET', '/api/account'),
   changePassword: (current, next) =>
     request('POST', '/api/account/password', { current, new: next }),
+  // Ein Bild des laufenden Leitstands fuer ein zweites Geraet ablegen bzw.
+  // abholen (siehe net/monitorLink.js, app.py MonitorRelay). Der Server haelt
+  // genau EIN Bild je Konto, nur im Arbeitsspeicher. `seq` sagt beim Abholen,
+  // welches der Monitor schon hat -- steht das Bild still, kommt nur das
+  // Alter zurueck und keine Nutzlast.
+  sendMonitor: (frame) => request('POST', '/api/monitor', frame),
+  readMonitor: (seq) => request('GET', `/api/monitor?seq=${encodeURIComponent(seq || 0)}`),
   readPrefs: () => request('GET', '/api/prefs'),
   writePrefs: (blob) => request('PUT', '/api/prefs', blob),
 };

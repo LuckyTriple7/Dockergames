@@ -126,6 +126,76 @@ def test_save_roundtrip_and_size_limit(client):
     assert client.get('/api/saves/slot1').status_code == 404
 
 
+def test_monitor_relay_roundtrip_and_seq(client):
+    """Zweitbildschirm: ablegen, abholen, und bei stehendem Bild nichts
+    zurueckschicken (siehe MonitorRelay, net/monitorLink.js)."""
+    # Ohne angemeldeten Leitstand ist das eine Aussage, kein Fehler.
+    assert client.get('/api/monitor').get_json() == {'ok': True, 'none': True}
+
+    frame = {'v': 1, 'seq': 1, 'reactor': 'pwr', 't_sim': 12.5, 'state': {'n': 1.0}}
+    assert client.post('/api/monitor', json=frame).status_code == 200
+
+    got = client.get('/api/monitor').get_json()
+    assert got['ok'] is True and got['frame'] == frame
+    assert 0 <= got['age'] < 5
+
+    # Derselbe Stand: nur das Alter, keine Nutzlast. Genau davon lebt der
+    # Abholtakt bei angehaltenem oder minimiertem Leitstand.
+    same = client.get('/api/monitor?seq=1').get_json()
+    assert same['same'] is True and 'frame' not in same
+
+    frame2 = dict(frame, seq=2, t_sim=13.0)
+    assert client.post('/api/monitor', json=frame2).status_code == 200
+    assert client.get('/api/monitor?seq=1').get_json()['frame'] == frame2
+
+    # Ein kaputtes seq darf nicht zum Fehler werden -- es waehlt nichts aus,
+    # es vergleicht nur.
+    assert client.get('/api/monitor?seq=nonsense').get_json()['frame'] == frame2
+
+
+def test_monitor_rejects_shapeless_frames_and_oversize(client):
+    for bad in (None, [], {'seq': 'x'}, {'v': 1}):
+        r = client.post('/api/monitor', json=bad)
+        assert r.status_code == 400, bad
+    # Der Deckel liegt deutlich unter dem eines Spielstands: ein Monitorbild
+    # ist kein Ablageplatz.
+    import app as appmod
+    assert appmod.MonitorRelay.MAX_BYTES == 64 * 1024
+    big = {'v': 1, 'seq': 1, 'pad': 'x' * (128 * 1024)}
+    assert client.post('/api/monitor', json=big).status_code == 413
+
+
+def test_monitor_frames_never_leave_their_account(client, tmp_path):
+    """Das Bild gehoert dem Konto, nicht dem Server. Ein zweites Konto darf
+    es nicht sehen -- sonst waere die Mitschau eine Ueberwachung."""
+    import app as appmod
+    assert client.post('/api/monitor', json={'v': 1, 'seq': 1, 'secret': 'meins'}).status_code == 200
+
+    other_mail = 'zweiter@example.test'
+    _, err = appmod.USERS.create_user(other_mail, TEST_PASSWORD, created_by=ADMIN_USER)
+    assert err is None, err
+    import re
+    other = appmod.app.test_client()
+    html = other.get('/login').get_data(as_text=True)
+    csrf = re.search(r'name="csrf" value="([^"]+)"', html).group(1)
+    assert other.post('/login', data={'user': other_mail, 'password': TEST_PASSWORD,
+                                      'csrf': csrf, 'next': '/'}).status_code == 302
+    assert other.get('/api/monitor').get_json() == {'ok': True, 'none': True}
+
+
+def test_monitor_page_is_the_control_room_page_with_another_entry_module(client):
+    """Eine Vorlage, zwei Einstiege. Waere /monitor eine eigene Seite, stuende
+    jede Kachel zweimal im Quelltext -- und beim naechsten Messwert waere eine
+    davon vergessen."""
+    html = client.get('/monitor').get_data(as_text=True)
+    assert 'js/monitor.js' in html and 'js/main.js' not in html
+    assert 'monitor: true' in html
+    assert 'rs-core-gauges' in html and 'rs-monitor-bar' in html
+
+    room = client.get('/').get_data(as_text=True)
+    assert 'js/main.js' in room and 'js/monitor.js' not in room
+
+
 def test_save_exact_request_and_storage_limits(client):
     import app as appmod
     import persist

@@ -38,7 +38,14 @@ function harness(readSave = async () => ({ ok: false })) {
   const timeouts = [];
   const flushTimeouts = () => { const due = timeouts.splice(0); for (const fn of due) fn(); };
   const music = () => ({ start() {}, stop() {} });
-  const app = { prefs: {}, prefsPromise: Promise.resolve({}),
+  // Der Zweitbildschirm-Sender (net/monitorLink.js) haengt am Rundenstart und
+  // am Renderlauf. Hier nur mitgezaehlt: dass er An- und Abmeldung genau
+  // einmal je Schicht sieht, gehoert zum Lebenszyklus -- was er verschickt,
+  // prueft test-monitor.mjs.
+  const monitor = { starts: 0, stops: 0, ticks: 0,
+    start() { monitor.starts++; }, stop() { monitor.stops++; }, tick() { monitor.ticks++; } };
+  counters.monitor = monitor;
+  const app = { prefs: {}, prefsPromise: Promise.resolve({}), monitor,
     introMusic: music(), bgMusic: music(), render: { clear() {}, tick() {} } };
   const ctx = vm.createContext({ app, $, PHASE, getPlant, createEngine, Session,
     gridDeviationTrips, attachRecorder, applySave: apply,
@@ -52,7 +59,7 @@ function harness(readSave = async () => ({ ok: false })) {
     },
     t: (key) => key, clock: String,
     setText: (node, text) => { node.textContent = text; }, setAttr() {}, el: () => ({}),
-    buildStatusBar() {}, statusTiles: new Map(), applyStatusSelection() {},
+    buildStatusBar() {}, setStatusTileLabel() {}, applyStatusSelection() {},
     sanitizeStatusKeys: () => [], applyAudioPrefs() {}, initControls() {},
     // Vorfuehrmodus-Sperre (ui/controls.js): boot() haengt die Abfrage ein,
     // der Render-Takt blendet danach die Bedienkacheln ab und sperrt den

@@ -63,15 +63,33 @@ def _walk_imports(entry):
     return seen
 
 
+# Zwei Einstiegsmodule, zwei Seiten: der Leitstand (/) und der
+# Zweitbildschirm (/monitor). Ab main.js allein waere monitor.js und alles,
+# was NUR von dort haengt, ungeprueft -- und genau so ein Modul faellt eben
+# nicht beim Start auf, sondern erst als toter Schirm beim Spieler.
+ENTRIES = ('main.js', 'monitor.js')
+
+
 def test_every_reachable_module_is_copied():
     targets = _copy_targets()
-    entry = os.path.join(_ROOT, 'static', 'js', 'main.js')
-    assert os.path.exists(entry), 'main.js fehlt'
-    modules = _walk_imports(entry)
+    modules = set()
+    for name in ENTRIES:
+        entry = os.path.join(_ROOT, 'static', 'js', name)
+        assert os.path.exists(entry), f'{name} fehlt'
+        modules |= _walk_imports(entry)
     assert len(modules) > 20, f'nur {len(modules)} Module erreicht -- Graph kaputt?'
     for path in sorted(modules):
         rel = os.path.relpath(path, _ROOT)
         assert _covered(rel, targets), f'{rel} wird nicht ins Image kopiert'
+
+
+def test_every_entry_module_is_reachable_from_its_template():
+    """Ein Einstiegsmodul, das keine Seite laedt, ist toter Code -- und eine
+    Seite, die ein nicht vorhandenes laedt, ist ein weisser Schirm."""
+    with open(os.path.join(_ROOT, 'templates', 'index.html'), encoding='utf-8') as f:
+        html = f.read()
+    for name in ENTRIES:
+        assert name[:-3] in html, f'{name} wird von keiner Vorlage geladen'
 
 
 PY_IMPORT_RE = re.compile(r'^\s*(?:import|from)\s+([a-zA-Z_][\w.]*)', re.M)

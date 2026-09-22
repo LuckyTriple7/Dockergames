@@ -14,6 +14,77 @@
   min-height: 0;
 }
 
+/* ── Zweitbildschirm (/monitor) ───────────────────────────────────────────── */
+
+/* Der Balken steht ueber allem und ist auf diesem Schirm nie abschaltbar.
+   Er beantwortet die eine Frage, die eine Fernanzeige sonst offen laesst:
+   steht das Instrument still, weil die Anlage ruhig ist -- oder weil hier
+   seit zwei Minuten nichts mehr ankommt? */
+.rs-monitor-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  padding-top: calc(5px + env(safe-area-inset-top));
+  font-size: 12px;
+  border-bottom: 1px solid var(--rs-line);
+  background: #0c131b;
+  color: var(--rs-fg-dim);
+}
+
+.rs-monitor-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.rs-monitor-msg { flex: 1 1 auto; min-width: 0; }
+
+.rs-monitor-age {
+  flex: 0 0 auto;
+  font-family: var(--rs-font-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--rs-fg-mute);
+}
+
+.rs-monitor-bar[data-sev="ok"]   { color: var(--rs-ok); }
+.rs-monitor-bar[data-sev="warn"] { color: var(--rs-warn); background: #1a1508; }
+.rs-monitor-bar[data-sev="bad"]  { color: var(--rs-alarm); background: #1d0d0f; }
+
+/* Steht das Bild, wird der ganze Leitstand grau -- nicht nur der Balken.
+   Eine einzelne Warnzeile ueber lebendig aussehenden Zeigern wird
+   uebersehen, und genau dieser Irrtum ist der teuerste, den diese Anzeige
+   haben kann. Pointer-events bleiben an: Reiter wechseln und Hilfetexte
+   lesen soll auch dann noch gehen. */
+.rs-monitor-bar[data-sev="warn"] ~ .rs-status,
+.rs-monitor-bar[data-sev="warn"] ~ .rs-workspace { filter: grayscale(0.75) brightness(0.8); }
+.rs-monitor-bar[data-sev="bad"]  ~ .rs-status,
+.rs-monitor-bar[data-sev="bad"]  ~ .rs-workspace { filter: grayscale(1) brightness(0.6); }
+
+/* Was auf einem Schirm, der nur zusieht, nichts zu suchen hat. Ausgeblendet
+   statt weggelassen: die Vorlage ist dieselbe wie im Leitstand (siehe
+   app.py: monitor_page()), und ein zweiter Satz Kacheln waere genau der
+   Wartungsfehler, den diese Loesung vermeidet. */
+body.rs-monitor .rs-speed,
+body.rs-monitor .rs-scram,
+body.rs-monitor #rs-save,
+body.rs-monitor #rs-menu,
+body.rs-monitor #rs-stats-cfg,
+body.rs-monitor #rs-xenon-skip,
+body.rs-monitor #rs-xenon-skip-cancel,
+body.rs-monitor #rs-briefing-btn,
+/* Quittieren und Rueckstellen gehoeren in den Leitstand. Hier waeren sie
+   eine Taeuschung: der Klick wirkte genau ein halbes Bild lang, dann brauechte
+   die naechste Meldetafel-Uebernahme (trips.restore in net/monitorFrame.js)
+   ihn wieder zurueck -- und die Hupe ginge wieder an. Quittiert wird drueben,
+   und dieser Schirm wird dadurch von selbst still. */
+body.rs-monitor #rs-ack,
+body.rs-monitor #rs-alarm-reset,
+body.rs-monitor .rs-status-feedback { display: none; }
+
 /* ── Statuszeile ──────────────────────────────────────────────────────────── */
 
 .rs-status {

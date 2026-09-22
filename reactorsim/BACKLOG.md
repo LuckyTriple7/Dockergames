@@ -21,6 +21,34 @@ dem Leitstand; woher die Wiedergabe ihr Protokoll bekommt (eigener Endpunkt
 `/api/highscores/<id>/log`? nur die eigenen Läufe, oder jeder Bestenlisten-
 Eintrag?); ob während der Wiedergabe Ton laufen soll.
 
+### Zweitbildschirm -- was noch offen ist
+
+Umgesetzt in 0.6.14: `/monitor` zeigt den laufenden Leitstand auf einem
+zweiten Geraet mit, lesend, mit Altersangabe und benanntem Grund, wenn das
+Bild steht (`net/monitorFrame.js`, `net/monitorLink.js`,
+`net/monitorStatus.js`, `monitor.js`). Offen bleibt:
+
+- **Kopplungscode fuer ein Geraet ohne Anmeldung.** Heute braucht der
+  Monitor dieselbe Sitzung wie der Leitstand. Ein Fernseher oder ein
+  Tablet ohne Tastatur bekaeme mit einer sechsstelligen Zahl aus dem
+  Leitstand ein reines Lesetoken, zehn Minuten gueltig, nur fuer DIESEN
+  Lauf. Das ist ein zweiter Zugangsweg neben der Sitzung -- ein eigener
+  Baustein, keine Zugabe.
+- **Anfahren-Tutorial und Netzauftrag fehlen auf dem Monitor.**
+  `buildTutorial()` und `buildDispatch()` brauchen eine `Session`, und die
+  gibt es auf einem Schirm ohne Engine-Takt nicht. Ihr Zustand steckt heute
+  nicht im Bild; ihn mitzuschicken hiesse, `Session.snapshot()` dafuer zu
+  oeffnen.
+- **Die Trendkurve beginnt beim Zuschalten**, nicht beim Schichtbeginn. Die
+  Historie kommt bewusst nicht ueber die Leitung (bis 28.800 Abtastungen).
+  Ein einmaliger Erstabgleich beim Verbinden waere moeglich, braucht aber
+  einen zweiten Endpunkt und eine Anfrage, die der Sender beantwortet --
+  heute redet nur eine Richtung.
+- **Mehrere Laeufe je Konto.** Der Server haelt genau EIN Bild je Konto.
+  Wer auf zwei Geraeten gleichzeitig spielt, ueberschreibt sich selbst; der
+  Monitor zeigt dann abwechselnd beide. Ein Schluessel je Lauf statt je
+  Konto waere die Loesung, kostet aber eine Wahl auf dem Monitor.
+
 ### Simulation in einen Web Worker
 
 Würde Rechnung und Bildaufbau trennen: kein Ruckeln mehr bei 60×, und der

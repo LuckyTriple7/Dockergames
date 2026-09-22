@@ -685,7 +685,11 @@ button {
 .rs-score-name { color: var(--rs-fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rs-score-v { color: var(--rs-value); font-weight: 600; }
 
-.rs-start-logout { text-decoration: none; }
+.rs-start-logout, .rs-start-monitor { text-decoration: none; }
+/* Zweitbildschirm: ein Link, kein Knopf -- er oeffnet eine eigene Seite,
+   meist auf einem anderen Geraet. */
+.rs-start-monitor { color: var(--rs-fg-dim); }
+.rs-start-monitor:hover { color: var(--rs-value); }
 /* Kontoknopf in der Fusszeile: sieht aus wie der Abmelde-Link daneben, ist
    aber ein Knopf -- er oeffnet einen Dialog statt einer Seite. */
 .rs-start-account { font-size: 12px; padding: 3px 9px; min-height: 0; }

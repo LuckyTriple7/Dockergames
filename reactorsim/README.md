@@ -347,6 +347,8 @@ Szenarios aufgelöst — derselbe Startwert ergibt dieselbe Schicht.
 | GET | `/api/meta` | Version und Szenarienliste |
 | GET/PUT/DELETE | `/api/saves[/<slot>]` | Spielstände |
 | GET/POST | `/api/highscores` | Bestenliste |
+| GET | `/monitor` | Zweitbildschirm (siehe unten) |
+| GET/POST | `/api/monitor` | Bild des laufenden Leitstands, nur im Arbeitsspeicher |
 
 Der Server rechnet den Punktestand **selbst**; ein mitgeschicktes `score`-Feld
 wird nicht gelesen. Mitgelieferte Bedienprotokolle werden in Node durch
@@ -392,6 +394,37 @@ bleibt für den Server undurchsichtig und wird beim Laden im Browser geprüft.
   Klemmbrett-Symbol (`#rs-briefing-btn`) jederzeit wieder als Einweisung auf.
 - **Tastatur:** Leertaste und Enter aktivieren fokussierte native
   Schaltflächen und Klappüberschriften, ohne dabei das Tempo umzuschalten.
+
+## Zweitbildschirm
+
+`/monitor` zeigt den laufenden Leitstand auf einem zweiten Bildschirm, einem
+Tablet oder einem Fernseher mit — dieselbe Anmeldung, dasselbe Konto. Zu sehen
+sind Statuszeile, alle acht Reiter, Fließbild, Trendkurven, Meldetafel und die
+Instrumentenübersicht auf Taste **O**. Der Link steht in der Fußzeile des
+Startbildschirms.
+
+Der Schirm **bedient nicht**: alle Stellteile stehen gesperrt, und es gibt
+keinen Rückweg vom Monitor zur Anlage. Quittieren und Rückstellen bleiben dem
+Leitstand vorbehalten — quittiert man dort, wird auch der Monitor still.
+
+Die Simulation läuft weiterhin ausschließlich im Browser des Spielers. Der
+Leitstand schickt zweimal je Sekunde ein Bild seines Zustands an den Server,
+der Monitor holt es ab; gehalten wird genau ein Bild je Konto, nur im
+Arbeitsspeicher und höchstens 64 KiB groß. Ein Neustart des Containers kostet
+genau ein Bild.
+
+Der Monitor sagt **immer**, wie alt das Gezeigte ist. Ab drei Sekunden ohne
+neues Bild wird die ganze Fläche grau, ab zehn Sekunden schwarzweiß mit
+„keine Verbindung". Ein minimierter oder in den Hintergrund gelegter Leitstand
+rechnet nicht weiter — der Browser gibt ihm keine Bilder mehr —, deshalb meldet
+der Sender den Sichtbarkeitswechsel eigens, und der Monitor nennt dann diesen
+Grund statt einen Verbindungsabriss zu raten. Dasselbe gilt für eine beendete
+Schicht, einen geschlossenen Reiter und eine angehaltene Simulation.
+
+Grenzen: die Trendkurve auf dem Monitor beginnt beim Zuschalten des Schirms,
+nicht beim Schichtbeginn — die bis zu 28.800 Abtastungen der Historie kommen
+bewusst nicht über die Leitung. Anfahren-Tutorial und Netzauftrag zeigen ihre
+eigenen Laufzeithinweise nur im Leitstand.
 
 ## Trends
 

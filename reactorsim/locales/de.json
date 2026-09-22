@@ -1076,5 +1076,21 @@
   "log_order_new": "Netzauftrag {id}: auf {mw} MW bis {time}, dann {min} min halten.",
   "log_order_met": "Netzauftrag {id} erfüllt — {mw} MW gehalten.",
   "log_order_failed": "Netzauftrag {id} gescheitert — {mw} MW nicht durchgehalten.",
-  "log_order_cancelled": "Netzauftrag {id} von der Leitstelle zurückgezogen: die Anlage liefert nicht mehr ins Netz."
+  "log_order_cancelled": "Netzauftrag {id} von der Leitstelle zurückgezogen: die Anlage liefert nicht mehr ins Netz.",
+
+  "unit_minutes": "min",
+  "btn_monitor": "Monitor",
+  "monitor_title": "Monitor",
+  "monitor_live": "Mitschau – dieser Schirm zeigt nur an, er bedient nicht.",
+  "monitor_wait": "Verbindung wird aufgebaut …",
+  "monitor_none": "Kein Leitstand angemeldet. Auf dem anderen Gerät eine Schicht starten.",
+  "monitor_offline": "Dieser Schirm erreicht den Server nicht.",
+  "monitor_stale": "Das Bild steht. Der Leitstand schickt gerade nichts Neues.",
+  "monitor_lost": "Keine Verbindung zum Leitstand.",
+  "monitor_hidden": "Das Leitstandfenster ist minimiert oder im Hintergrund – dort rechnet die Simulation nicht weiter.",
+  "monitor_paused": "Der Leitstand ist angehalten.",
+  "monitor_ended": "Die Schicht ist beendet.",
+  "monitor_closed": "Der Leitstand wurde geschlossen.",
+  "monitor_bad_frame": "Das Bild passt nicht zu diesem Stand. Seite neu laden.",
+  "monitor_age": "Bild ist {age} alt"
 }

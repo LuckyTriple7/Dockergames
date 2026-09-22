@@ -87,6 +87,10 @@
            Knopf steht neben "Abmelden", weil beides dasselbe betrifft. -->
       <button type="button" class="rs-btn rs-btn-ghost rs-start-account"
               id="rs-account-btn">{{ t.btn_account }}</button>
+      <!-- Zweitbildschirm: dieselbe Anmeldung, nur lesend. Der Link steht
+           hier, weil er sonst nirgends auffindbar waere -- wer ihn auf einem
+           anderen Geraet braucht, tippt die Adresse ab. -->
+      <a class="rs-start-monitor" href="/monitor" target="_blank" rel="noopener">{{ t.btn_monitor }}</a>
       <a class="rs-start-logout" href="/logout">{{ t.btn_logout }}</a>
       <span class="rs-start-ver">v{{ app_version }}</span>
     </div>
@@ -198,6 +202,16 @@
 
 <!-- ── Leitstand ────────────────────────────────────────────────────────── -->
 <div class="rs-app" id="rs-app" hidden>
+
+  <!-- Nur auf dem Zweitbildschirm sichtbar (monitor.js). Er sagt IMMER, wie
+       alt das gezeigte Bild ist: ein stehendes Instrument sieht sonst aus wie
+       eine ruhige Anlage, und genau das ist der gefaehrlichste Irrtum, den
+       eine Fernanzeige haben kann. -->
+  <div class="rs-monitor-bar" id="rs-monitor-bar" hidden role="status">
+    <span class="rs-monitor-dot" id="rs-monitor-dot" aria-hidden="true"></span>
+    <span class="rs-monitor-msg" id="rs-monitor-msg"></span>
+    <span class="rs-monitor-age" id="rs-monitor-age"></span>
+  </div>
 
   <header class="rs-status" id="rs-status">
     <div class="rs-status-top">
@@ -736,8 +750,12 @@
   // die Simulation in einen Web Worker wandert, ist der lexikalische
   // Modul-Zugriff weg, die Eigenschaft am globalen Objekt bleibt.
   window.RS_I18N = {{ t|tojson }};
-  window.RS_CFG  = { lang: {{ lang|tojson }}, version: {{ app_version|tojson }}, initialReactor: {{ initial_reactor|tojson }} };
+  window.RS_CFG  = { lang: {{ lang|tojson }}, version: {{ app_version|tojson }}, initialReactor: {{ initial_reactor|tojson }}, monitor: {{ monitor|tojson }} };
 </script>
-<script type="module" src="/s/{{ app_version }}/js/main.js"></script>
+<!-- Zweitbildschirm (/monitor) laedt ein anderes Einstiegsmodul in dieselbe
+     Seite: monitor.js baut denselben Leitstand aus ankommenden Bildern auf,
+     statt selbst zu rechnen. Kein zweiter Satz Kacheln, kein zweiter Satz
+     Rundinstrumente -- siehe app.py: monitor_page(). -->
+<script type="module" src="/s/{{ app_version }}/js/{% if monitor %}monitor{% else %}main{% endif %}.js"></script>
 </body>
 </html>
