@@ -467,7 +467,15 @@ _PUBLIC_ENDPOINTS = frozenset({'health', 'login', 'set_lang', 'forgot', 'reset'}
 # kein Hochladen eines eigenen Bildes. Deshalb eine Liste dessen, was geht,
 # und nicht eine Liste dessen, was nicht geht: eine neue Route ist damit
 # von sich aus gesperrt und nicht von sich aus offen.
-_MONITOR_ENDPOINTS = frozenset({'monitor_page', 'monitor_get', 'vstatic', 'logout'})
+_MONITOR_ENDPOINTS = frozenset({
+    'monitor_page', 'monitor_get', 'vstatic', 'logout',
+    # Lesend, nicht schreibend: der Zweitschirm baut seine Kopfzeile aus der
+    # Kachelauswahl des Kontos (siehe api.readPrefs() in monitor.js). Ohne
+    # sie stuenden dort andere Kacheln als drueben, und ein Schirm, der etwas
+    # anderes zeigt als der Leitstand, ist als Mitleser wertlos.
+    # prefs_write ist eine eigene Route und bleibt gesperrt.
+    'prefs_read',
+})
 
 # Nur der Admin darf hier hinein, ein Spieler nie -- siehe _require_login().
 _ADMIN_ENDPOINTS = frozenset({

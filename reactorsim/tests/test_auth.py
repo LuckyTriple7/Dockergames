@@ -395,7 +395,12 @@ def test_a_watcher_may_read_the_frame_and_nothing_else(tmp_path, monkeypatch):
     assert tablet.get('/api/monitor').status_code == 200
     # Kein Bild senden: der Zweitschirm liest, er sendet nicht.
     assert tablet.post('/api/monitor', json={'seq': 1}).status_code == 403
-    for path in ('/api/meta', '/api/saves', '/api/prefs', '/api/highscores'):
+    # Die Kachelauswahl des Kontos darf er lesen -- sonst zeigt er eine
+    # andere Kopfzeile als der Leitstand (siehe _MONITOR_ENDPOINTS).
+    assert tablet.get('/api/prefs').status_code == 200
+    # Schreiben aber nicht.
+    assert tablet.put('/api/prefs', json={'audio': {'muted': True}}).status_code == 403
+    for path in ('/api/meta', '/api/saves', '/api/highscores'):
         r = tablet.get(path)
         assert r.status_code == 403, f'{path} war offen: {r.status_code}'
         assert r.get_json()['error'] == 'monitor_only'

@@ -29,7 +29,6 @@ import { gridDeviationTrips } from './game/scenario.js';
 import { sanitizeStatusKeys } from './ui/statusStats.js';
 import { buildStatusBar, applyStatusSelection, setStatusTileLabel } from './ui/statusBar.js';
 import { setMuted } from './ui/music.js';
-import { createEndSounds } from './game/endSounds.js';
 import { initInstrumentsWindow } from './ui/instruments.js';
 import { api } from './net/api.js';
 import { applyFrame } from './net/monitorFrame.js';
@@ -40,7 +39,6 @@ const view = {
   engine: null,
   render: new Render(),
   built: null,
-  endSounds: null,
   run: null,
   prefs: {},
   /** Letzter uebernommener Protokolleintrag, als Simulationszeit. Der
@@ -103,22 +101,27 @@ function buildFor(frame) {
   // Schirm, der nur zusieht, waere das ein Angebot, das nichts bewirkt --
   // sein Ergebnis ueberschreibt das naechste Bild eine halbe Sekunde spaeter.
   view.built = buildPanels(view.engine, view.render, false);
-  // Je Lauf neu, wie im Leitstand: die Flanken sollen beim naechsten wieder
-  // feuern. Ein Schirm, der beim Alarm hupt, aber bei der Zerstoerung
-  // schweigt, waere die schlechtere Haelfte von beidem.
-  view.endSounds = createEndSounds(view.built.horn);
-  applyAudio();
+  silence();
   view.run = frame.meta?.run ?? null;
   return null;
 }
 
-/** Ton wie im Leitstand: dieselbe Kontoeinstellung. Eine Hupe im Nebenzimmer
- *  ist der halbe Sinn eines zweiten Schirms -- abgestellt wird sie da, wo
- *  alle anderen Toene auch abgestellt werden. */
-function applyAudio() {
-  const a = view.prefs.audio || {};
-  setMuted(!!a.muted);
-  if (view.built && view.built.horn) view.built.horn.enabled = !a.muted && a.horn !== false;
+/**
+ * Dieser Schirm bleibt stumm, ohne Ausnahme und ohne Schalter.
+ *
+ * Bis 0.6.24 spielte er den Ton des Leitstands mit, nach derselben
+ * Kontoeinstellung -- gedacht als Hupe im Nebenzimmer. In der Benutzung ist
+ * das falsch herum: ein Zweitschirm steht dort, wo gerade NICHT bedient
+ * wird, oft im selben Raum wie der Leitstand. Dann hupt es zweimal, um
+ * Sekundenbruchteile versetzt, und die zweite Hupe gehoert zu einem Bild,
+ * das eine halbe Sekunde alt ist. Wer den Ton will, hat ihn drueben.
+ *
+ * Keine Einstellung dafuer: eine, die praktisch immer auf "aus" stuende,
+ * waere nur eine Zeile mehr im Dialog.
+ */
+function silence() {
+  setMuted(true);
+  if (view.built && view.built.horn) view.built.horn.enabled = false;
   if (view.built && view.built.rodSound) view.built.rodSound.setEnabled(false);
 }
 
@@ -156,11 +159,6 @@ function onFrame(frame) {
     const last = frame.history[frame.history.length - 1];
     if (last && Number.isFinite(last.t)) view.lastLogT = Math.max(view.lastLogT, last.t);
   }
-
-  // Erst nach applyFrame, also mit dem Zustand des neuen Bildes: hier
-  // entscheidet sich, ob Brennstoffversagen oder Explosion dazugekommen
-  // sind (siehe game/endSounds.js).
-  view.endSounds?.step(view.engine.state);
 
   // Eigene Trendhistorie, aus den ankommenden Bildern gebaut. Sie kommt
   // bewusst NICHT mit: acht Stunden Historie sind bis zu 28.800 Abtastungen
@@ -208,6 +206,12 @@ document.title = `${t('monitor_title')} — ${t('app_title')}`;
 // Sichtbar ist so lange nur die Zeile oben, und die sagt, worauf gewartet
 // wird.
 document.body.classList.add('rs-monitor', 'rs-monitor-waiting', 'rs-ctl-locked');
+// Der Ton-Hauptschalter gehoert dem Leitstand: main.js verdrahtet ihn, und
+// main.js laeuft hier nicht. Er stuende also als toter Knopf da -- und auf
+// einem Schirm, der grundsaetzlich stumm ist (siehe silence()), waere er
+// ausserdem ein Versprechen, das er nicht halten kann.
+for (const btn of document.querySelectorAll('.rs-mute')) btn.remove();
+setMuted(true);
 
 // Der Startbanner gehoert dem Leitstand: er wartet auf die erste Nutzergeste,
 // weil danach Musik laufen darf (initStart() in main.js). Auf einem Schirm,

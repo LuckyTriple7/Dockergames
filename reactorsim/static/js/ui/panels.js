@@ -482,6 +482,7 @@ export function buildPanels(engine, render, helperEnabled) {
   // Kacheln dasteht. Beide bekommen dieselben data-sev/data-unack wie die
   // Kacheln (siehe annunciator.css) -- kein eigener Statusbalken mehr, der
   // beim Auftauchen Inhalte darunter verschiebt.
+  const statusBar = $('#rs-status');
   const tabAlarm = $('#rs-tab-alarm-label');
   const alarmHeader = $('#rs-p-alarm > .rs-panel-h');
 
@@ -653,6 +654,15 @@ export function buildPanels(engine, render, helperEnabled) {
     setAttr(tabAlarm, 'data-unack', engine.trips.horn ? '1' : '0');
     setAttr(alarmHeader, 'data-sev', worst);
     setAttr(alarmHeader, 'data-unack', engine.trips.horn ? '1' : '0');
+
+    // Der Kopf blinkt, solange die Schnellabschaltung steht (RESA bei DWR
+    // und SWR, AZ-5 beim RBMK -- derselbe Merker, nur ein anderer Name auf
+    // dem Schild). Die Meldetafel sagt es zwar auch, aber sie ist im
+    // Handy-Raster hinter einem Reiter, und wer gerade eine Transiente
+    // faehrt, schaut auf die Zahlen oben. Anders als die Kacheln haengt das
+    // NICHT an "quittiert": eine abgeschaltete Anlage bleibt abgeschaltet,
+    // auch wenn die Hupe laengst aus ist, und genau das soll zu sehen sein.
+    setAttr(statusBar, 'data-scram', s.scram.active ? '1' : '0');
 
     // Hupe im Takt der blinkenden Kachel -- laeuft als Dauerschleife, solange
     // etwas unquittiert ist (siehe Horn.alarm()), und wird sofort abgestellt,

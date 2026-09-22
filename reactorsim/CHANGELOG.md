@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.6.25
+
+- ✨ **Die Kopfzeile blinkt, solange die Schnellabschaltung steht** (RESA
+  bei DWR und SWR, AZ-5 beim RBMK -- derselbe Merker, nur ein anderer Name
+  auf dem Schild). Die Meldetafel sagt es zwar auch, aber sie steckt im
+  Handy-Raster hinter einem Reiter, und wer eine Transiente faehrt, schaut
+  auf die Zahlen oben. Ein Rahmen und ein Schimmer statt eines Farbwechsels
+  der ganzen Leiste: darin stehen die Werte, die in genau diesem Augenblick
+  gelesen werden, und die muessen lesbar bleiben.
+
+  Anders als die Kacheln haengt das NICHT an "quittiert": eine
+  abgeschaltete Anlage bleibt abgeschaltet, auch wenn die Hupe laengst aus
+  ist. Deshalb auch 1,2 s Takt statt der 0,5 s einer frischen Meldung --
+  ein Zustand, der Minuten dauert, bittet nicht um Aufmerksamkeit, er
+  bleibt nur sichtbar. Wer `prefers-reduced-motion` gesetzt hat, bekommt
+  den Rahmen ohne die Bewegung. Der Zweitschirm zeigt es mit.
+
+- 🔇 **Der Zweitbildschirm bleibt stumm.** Bis 0.6.24 spielte er den
+  Ton des Leitstands mit, nach derselben Kontoeinstellung -- gedacht als
+  Hupe im Nebenzimmer. In der Benutzung ist das falsch herum: ein
+  Zweitschirm steht oft im selben Raum wie der Leitstand, dann hupt es
+  zweimal und um Sekundenbruchteile versetzt, und die zweite Hupe gehoert
+  zu einem Bild, das eine halbe Sekunde alt ist. Keine Einstellung dafuer:
+  eine, die praktisch immer auf "aus" stuende, waere nur eine Zeile mehr im
+  Dialog. Der Ton-Hauptschalter faellt auf diesem Schirm gleich mit weg --
+  `main.js` verdrahtet ihn, und `main.js` laeuft dort nicht, er stand also
+  ohnehin als toter Knopf da.
+
+- 🐛 **Lange Kachelnamen liefen aus der Meldetafel heraus.**
+  "Reaktorschutz Turbinenschnellschluss abgeschaltet" ragte links und
+  rechts aus seiner Box. `overflow-wrap: break-word` reichte dafuer nicht:
+  es zaehlt beim Berechnen der kleinstmoeglichen Breite nicht mit, das Wort
+  blaeht die Spalte weiterhin auf und bricht erst danach. Jetzt
+  `overflow-wrap: anywhere` mit `hyphens: auto` davor, damit ein Trennstrich
+  an einer erlaubten Stelle steht statt eines harten Schnitts mitten im Wort.
+
+- 🐛 **Der Zweitschirm durfte seine eigene Kachelauswahl nicht mehr
+  lesen.** Folgefehler aus 0.6.24: die mitlesende Sitzung war auch fuer
+  `GET /api/prefs` gesperrt, und damit stand in der Kopfzeile eine andere
+  Auswahl als drueben. Lesen ist jetzt erlaubt, Schreiben weiterhin nicht.
+
 ## 0.6.24
 
 - 🐛 **Der Zweitbildschirm hat den Leitstand abgemeldet -- und
