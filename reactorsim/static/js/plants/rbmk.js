@@ -599,7 +599,9 @@ export const hooks = {
     s.T_mod = Tsat;
     s.x_e = clamp(s.W_steam / s.W_core, 0, 1);
     s.P_th = P;
-    s.alphaBar = _void(s, sp);
+    // Im Gleichgewicht geht die gesamte Spaltleistung ins Kuehlmittel: der
+    // Brennstoff speichert nichts mehr, der Graphitknoten auch nicht.
+    s.alphaBar = _void(s, sp, P * 1000);
     ctx.voidLag.set(s.alphaBar);
 
     // Graphit im Gleichgewicht: was hineingeht, geht auch wieder heraus.
@@ -664,7 +666,7 @@ export const hooks = {
     s.x_e = clamp(qBoil / (W * hfg(s.p_drum)), 0, 1);
 
     const collapse = sp.drum.voidCollapse * ctx.dpLag.v;
-    s.alphaBar = ctx.voidLag.step(clamp(_void(s, sp) - collapse, 0, 0.95), h);
+    s.alphaBar = ctx.voidLag.step(clamp(_void(s, sp, qCoolKW) - collapse, 0, 0.95), h);
 
   },
 
@@ -1040,10 +1042,44 @@ function _subcooling(s, sp) {
   return clamp((hSat - hMix) / sp.coolant.cp, 0, 80);
 }
 
-function _void(s, sp) {
+/**
+ * Mittlerer Blasenanteil im Kern.
+ *
+ * `qCoolKW` ist die Waerme, die im Rechenschritt TATSAECHLICH ins Kuehlmittel
+ * gelangt -- dieselbe Groesse, aus der coreCoolant() den Dampfgehalt s.x_e
+ * bildet. Bis 0.6.27 stand hier stattdessen die momentane Spaltleistung
+ * (s.P_th * 1000), und das war der schaerfste Modellfehler dieses Typs:
+ *
+ * averageVoid() setzt sich aus zwei Faktoren zusammen -- dem Dampfgehalt in
+ * der Siedezone und `fBoil`, dem Anteil des Kanals, der ueberhaupt siedet.
+ * Der erste kam traege ueber Brennstoff (tau = 7 s), Huellrohr und
+ * Waermeuebergang, der zweite sprang der Spaltleistung OHNE jede Traegheit
+ * nach. Eine prompte Leistungsspitze verschob damit die Siedegrenze im
+ * selben Augenblick, in dem sie entstand.
+ *
+ * Beim RBMK ist der Blasenkoeffizient positiv -- die Rueckkopplung war also
+ * siebenmal schneller als der Doppler, der einzige kraeftige negative
+ * Beitrag. Das Ergebnis war ein ungedaempfter Grenzzyklus: die Anlage
+ * schwang nach jeder Stoerung mit rund 20 s Periode auf, und zwar innerhalb
+ * ihres EIGENEN erlaubten Betriebsbands (sp.orm.min = 30). Gemessen bei
+ * Kernalter "mittel" (ORM 33) nach einem Netzabwurf: 830 bis 6272 MW bei
+ * festgehaltenen Staeben. Mit dem Leistungsregler in Automatik wurde daraus
+ * eine Abwaertsspirale, weil die Schwingung unsymmetrisch ist -- kurze hohe
+ * Spitzen, lange tiefe Taeler, im Mittel zu wenig Leistung, also zieht der
+ * Regler. Jeder gezogene Stab verschlechtert ueber _voidCoeff den
+ * Blasenkoeffizienten, und der treibt die naechste Schwingung staerker.
+ *
+ * Physikalisch kann der Blasenanteil nicht schneller reagieren als der
+ * Brennstoff heiss wird: die Waerme muss durch Pellet, Spalt und Huellrohr.
+ * Genau diesen Weg nimmt sie jetzt. Die verbleibende Verzoegerung
+ * (ctx.voidLag, 1,0 s) steht weiter fuer das Wandern der Siedegrenze im
+ * Kanal und bleibt unveraendert -- sie kommt jetzt NACH der Traegheit des
+ * Brennstoffs statt an ihrer Stelle.
+ */
+function _void(s, sp, qCoolKW) {
   const W = Math.max(s.W_core, 1);
   const G = W / sp.coolant.flowArea_m2;
-  const qPerKg = (s.P_th * 1000) / W;
+  const qPerKg = Math.max(qCoolKW, 0) / W;
   const subPerKg = sp.coolant.cp * s.dTsub;
   const fBoil = clamp(1 - subPerKg / Math.max(qPerKg, 1e-3), 0.05, 0.98);
   return averageVoid(s.x_e, s.p_drum, G, fBoil);

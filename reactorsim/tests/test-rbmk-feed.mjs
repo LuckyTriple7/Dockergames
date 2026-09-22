@@ -101,14 +101,27 @@ test('unequipped RBMK retains exact pre-change physics and controller timing', (
   // add up bit-for-bit the same way as 2400+3200. The hash covers the raw
   // state and cannot tell that apart from a real change -- that is what it is
   // for and also its price.
+  //
+  // Regenerated again in 0.6.28, and this time the physics DID change: _void()
+  // in rbmk.js takes the heat that actually reaches the coolant instead of the
+  // instantaneous fission power (see the comment there for why). Step 0 still
+  // hashes to the SAME value as before -- the steady state is untouched, which
+  // is the point: only the path a TRANSIENT takes through the model moved.
+  // From step 1 on every checkpoint shifts, and the size of the shift tells
+  // the story. Early on it is small (n at step 17: 0.994740776931 before,
+  // 0.994999735956 after); at step 1200, six hundred steps after AZ-5, the
+  // void fraction stands at 7.2 % instead of 2.3 %. That is the correction
+  // itself: the fuel is still hot after a scram and goes on boiling the
+  // coolant, where the old model let the bubbles vanish the instant fission
+  // stopped.
   const baseline = {
     0: '6839808870614e5861df2725e2dcf4f1b34abf13201e7ddd6fbfa6334fae30ba',
-    1: '4216c9aa5c063820831597e53ed54c326bb3ee4f935e87d5774ba455b4e51441',
-    4: 'd189f2b90e71a0d9f7d91171880c428fe22b291169426b26c7a1f27dfe6b5baf',
-    17: 'add934b10d5eaf8be1bff65f387a8a94b1877912ba01bc84e8d3cffb41de6c28',
-    200: '380277be3742f5cf60c54f16b7d3ed5ac532e199f9f1d336205d648fb04342a2',
-    600: '16ec92e474eb77ab1a7b3c160d0fbcbe4c116066a4c56639a50f7ab3f3a394a1',
-    1200: '2289929f8b81c2bd515297671873007927e5a8ae8a2398847b0bfa6353e65ef9',
+    1: '20a6acb9123049fae2f1986098e7849b7aa8fa49fe2dd91496f4ded3dbc7a20f',
+    4: '2484d164820852e82e0b163c5adce57edcf4afa11f7caab7d79b8fafa99d49d2',
+    17: 'c71d50a3b6579020bbbeab016d05f648b3cf865ae8b65a985295d5d3b6d4da41',
+    200: '6b73eb0dfbb6fb3611d439f4bfd19a78bb1775e5bea8018977384f848d3709e6',
+    600: 'cfe71e178b51fd2c0332e4e165860e404b3684d275ba10b30c456cad38bbfbbf',
+    1200: 'e2145a9bb8acfa72fff98167af778ac026a538b6bbbe22c3b646c5311113aac6',
   };
   const e = createEngine(rbmk);
   for (let i = 0; i <= 1200; i++) {

@@ -1,5 +1,80 @@
 # Changelog
 
+## 0.6.28
+
+- 🐛 **Der Dampfblasenanteil folgte der Spaltleistung ohne jede
+  Waermetraegheit -- der schaerfste Modellfehler des RBMK.** Aus dem freien
+  Spiel gemeldet: nach einem Netzabwurf und dem Wiederzuschalten stieg die
+  Leistung sprunghaft an. Nachgerechnet aus dem mitgeschickten Protokoll
+  (Kernalter "mittel"): die Anlage schwang mit rund 20 s Periode auf, von
+  830 auf 22534 MW Spitze (746 % der Nennleistung), und der Brennstoff kam
+  bis auf 231 von 250 J/g an das Versagenskriterium heran. AZ-5 kam 0,55 s
+  vor der Spitze.
+
+  Die Ursache sass in `_void()` in `plants/rbmk.js`. `averageVoid()` setzt
+  sich aus zwei Faktoren zusammen: dem Dampfgehalt in der Siedezone und
+  `fBoil`, dem Anteil des Kanals, der ueberhaupt siedet. Der Dampfgehalt
+  `s.x_e` kam richtig aus der Waerme, die `coreCoolant()` tatsaechlich ins
+  Kuehlmittel uebergibt -- also traege ueber Brennstoff (tau = 7 s),
+  Huellrohr und Waermeuebergang. `fBoil` dagegen wurde aus `s.P_th`
+  gebildet, der MOMENTANEN Spaltleistung, und sprang damit ohne jede
+  Verzoegerung. Zwei Groessen derselben Physik, eine traege, eine nicht.
+
+  Beim RBMK ist der Blasenkoeffizient positiv. Die Rueckkopplung war also
+  siebenmal schneller als der Doppler, der einzige kraeftige negative
+  Beitrag -- und das Ergebnis ein ungedaempfter Grenzzyklus INNERHALB des
+  erlaubten Betriebsbands dieses Modells (`sp.orm.min = 30`). Gemessen bei
+  festgehaltenen Staeben, nur die Anlage, ohne Regler:
+
+  | Abschaltreserve | vorher | nachher |
+  |---|---|---|
+  | ORM 45,8 | 2370 ... 3809 MW | 2716 ... 3387 MW |
+  | ORM 38,3 | 1420 ... 5425 MW | 2501 ... 3523 MW |
+  | ORM 33,3 |  830 ... 6272 MW | 2364 ... 3641 MW |
+
+  `_void()` nimmt jetzt dieselbe Waerme wie `s.x_e`. Die verbleibende
+  Verzoegerung (`ctx.voidLag`, 1,0 s) steht weiter fuers Wandern der
+  Siedegrenze im Kanal und bleibt unveraendert -- sie kommt jetzt NACH der
+  Traegheit des Brennstoffs statt an ihrer Stelle.
+
+  Was sich NICHT aendert: der stationaere Zustand. Stabstellungen,
+  Abschaltreserve und Blasenkoeffizient bei Nennleistung sind bei allen drei
+  Kernaltern dieselben wie vorher, und die SHA-256-Grundlinie in
+  `tests/test-rbmk-feed.mjs` stimmt bei Schritt 0 unveraendert weiter.
+
+  Was sich auch nicht aendert: die Tschernobyl-Exkursion. Sie wird vom
+  positiven Schnellabschalteffekt der Graphitspitzen getrieben, nicht vom
+  prompten Blasenpfad -- gemessen 1060 % Spitze bei 846 pcm gegen
+  beta = 480, vorher 1090 % bei 850 pcm. Alle 34 Tests der Uebung laufen
+  unveraendert durch.
+
+  Sichtbar wird die Korrektur dagegen nach einer Schnellabschaltung: 600
+  Schritte nach AZ-5 steht der Blasenanteil bei 7,2 % statt bei 2,3 %. Der
+  Brennstoff ist dann noch heiss und siedet weiter -- im alten Modell
+  verschwanden die Blasen in dem Augenblick, in dem die Spaltung aufhoerte.
+
+- 🐛 **Kernalter "alt" stellte den RBMK unter seine eigene
+  Alarmschwelle.** `game/coreAge.js` mass die drei Stufen laut eigenem
+  Kommentar "an der jeweiligen Reserve (Stabstellung bzw. Borgehalt bei
+  Nennleistung)". Beim RBMK setzt dieselbe Stabstellung ueber `_voidCoeff`
+  aber auch den Dampfblasenkoeffizienten, und an der Stabstellung gemessen
+  fiel nicht auf, wohin 0.35 den Kern stellte: ORM 5,9 -- unter
+  `sp.orm.alarm = 15`, Blasenkoeffizient auf dem schlechtesten Wert von
+  62 pcm/%, Leistungskoeffizient positiv. Das freie Spiel bot als
+  Schwierigkeitsgrad einen Zustand an, den das Reglement des Originals zur
+  sofortigen Abschaltung verpflichtet haette.
+
+  Die Stufen spannen jetzt das erlaubte Band auf: `mid` 0.10 trifft die
+  nominale Reserve (ORM 45,8 bei `sp.orm.nominal = 46`), `late` 0.18 liegt
+  knapp ueber dem Betriebsminimum (ORM 33,3 bei `sp.orm.min = 30`). "Alt"
+  bleibt deutlich unangenehmer als "frisch" -- der Blasenkoeffizient steht
+  dort bei 37 statt 20 pcm/% --, aber die Anlage ist fahrbar. Wer ORM 6
+  sehen will, findet ihn in der Tschernobyl-Uebung; dort gehoert er hin.
+
+  Derselbe gemeldete Lauf, mit beiden Korrekturen und dem Leistungsregler in
+  Automatik: frisch 3099 ... 3233 MW, mittel 3098 ... 3239 MW, alt
+  2680 ... 3611 MW (113 % Spitze, 9 von 250 J/g). Vorher 830 ... 22534 MW.
+
 ## 0.6.27
 
 - 🐛 **Der Netzabwurf war unsichtbar -- und eine Sackgasse.** Zwei

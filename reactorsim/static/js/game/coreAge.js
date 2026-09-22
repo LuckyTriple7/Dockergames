@@ -24,10 +24,31 @@
 // Gleichgewichtskern; sein Zyklus ist hier nur eine Rechengröße. Die Werte
 // sind an der jeweiligen Reserve gemessen (Stabstellung bzw. Borgehalt bei
 // Nennleistung), nicht aus einer Brennstoffbilanz hergeleitet.
+//
+// Fuer den RBMK ist die Stabstellung dafuer seit 0.6.28 NICHT mehr das Mass,
+// sondern die Abschaltreserve, die sie erzeugt. Der Grund ist, dass beim
+// RBMK dieselbe Stabstellung ueber _voidCoeff (plants/rbmk.js) auch den
+// Dampfblasenkoeffizienten setzt -- an der Stabstellung gemessen fiel nicht
+// auf, dass 0.35 den Kern auf ORM 5,9 stellte: unterhalb der Alarmschwelle
+// dieses Modells (sp.orm.alarm = 15), mit dem Blasenkoeffizienten auf seinem
+// schlechtesten Wert von 62 pcm/%, und mit einem positiven Leistungs-
+// koeffizienten, gegen den der Leistungsregler dauerhaft anfahren musste.
+// Das freie Spiel bot damit als Schwierigkeitsgrad einen Zustand an, den das
+// Reglement des Originals zur sofortigen Abschaltung verpflichtet haette.
+//
+// Die Stufen spannen jetzt das ERLAUBTE Band auf (sp.orm, gemessen bei
+// Nennleistung):
+//   fresh 0     -> ORM 66,3  volle Reserve
+//   mid   0.10  -> ORM 45,8  die nominale Reserve (sp.orm.nominal = 46)
+//   late  0.18  -> ORM 33,3  knapp ueber dem Betriebsminimum (sp.orm.min = 30)
+// "late" bleibt damit deutlich unangenehmer als "fresh" -- der Blasen-
+// koeffizient steht dort bei 37 statt 20 pcm/% --, aber die Anlage ist
+// fahrbar. Wer ORM 6 sehen will, findet ihn in der Tschernobyl-Uebung; dort
+// gehoert er hin.
 const FRACTIONS = {
   pwr: { fresh: 0, mid: 0.35, late: 0.65 },
   bwr: { fresh: 0, mid: 0.10, late: 0.20 },
-  rbmk: { fresh: 0, mid: 0.18, late: 0.35 },
+  rbmk: { fresh: 0, mid: 0.10, late: 0.18 },
 };
 
 const DEFAULT = { fresh: 0, mid: 0.2, late: 0.35 };
