@@ -225,6 +225,14 @@ export function apply(blob, engine, runState, session) {
       s[k] = v;
     }
   }
+  // Staende von vor 0.6.23 kennen gridPower nicht. Der frisch gebaute
+  // Zustand steht dort auf true, und stepDiesel() rechnete beim naechsten
+  // Schritt acPower = gridPower || dieselRun -- ein Stand mitten im
+  // Station-Blackout haette sich damit von selbst geheilt. Woher das Netz
+  // fehlte, stand in so einem Stand ja nur an acPower.
+  if (s.reactor === 'bwr' && s.gridPower !== undefined && !Object.hasOwn(src, 'gridPower')) {
+    s.gridPower = src.acPower !== false;
+  }
   if (rbmkFeed) Object.assign(s, rbmkFeed);
   if (src.scram && typeof src.scram === 'object') {
     s.scram = { active: !!src.scram.active, t: Number(src.scram.t) || 0, cause: src.scram.cause || null };

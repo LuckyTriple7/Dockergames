@@ -109,3 +109,38 @@ test('a two-bank RBMK save from before 0.6.11 loads into the three-bank model un
   assert.ok(Math.abs(restored.derive().rho_pcm - before.rho) < 1e-3,
     `rho ${restored.derive().rho_pcm} != ${before.rho}`);
 });
+
+test('a BWR blackout saved before 0.6.23 stays a blackout after loading', () => {
+  // Staende von damals kennen gridPower nicht. Der frisch gebaute Zustand
+  // steht auf true, und stepDiesel() bildet acPower jeden Schritt neu aus
+  // Netz und Diesel -- ohne den Altstand-Zweig in apply() haette sich ein
+  // Stand mitten im Station-Blackout beim ersten Rechenschritt selbst
+  // geheilt, und zwar lautlos.
+  const a = createEngine(getPlant('bwr'), { n: 1.0 });
+  a.state.gridPower = false;
+  a.state.acPower = false;
+  a.state.dcPower = false;
+  const blob = JSON.parse(JSON.stringify(pack(a, null, new RunState(null, a.spec), null)));
+  assert.equal(blob.state.gridPower, false);
+  delete blob.state.gridPower;          // so sah ein Stand vor 0.6.23 aus
+
+  const b = createEngine(getPlant('bwr'), { n: 1.0 });
+  assert.equal(apply(blob, b, new RunState(null, b.spec), null), null);
+  assert.equal(b.state.gridPower, false, 'Netz aus dem Nichts zurueck');
+  b.step(0.05);
+  assert.equal(b.state.acPower, false, 'Blackout hat sich selbst geheilt');
+});
+
+test('a BWR save with the grid up keeps it up', () => {
+  // Gegenprobe: derselbe Zweig darf einem normalen Altstand nicht das Netz
+  // wegnehmen.
+  const a = createEngine(getPlant('bwr'), { n: 1.0 });
+  const blob = JSON.parse(JSON.stringify(pack(a, null, new RunState(null, a.spec), null)));
+  delete blob.state.gridPower;
+
+  const b = createEngine(getPlant('bwr'), { n: 1.0 });
+  assert.equal(apply(blob, b, new RunState(null, b.spec), null), null);
+  assert.equal(b.state.gridPower, true);
+  b.step(0.05);
+  assert.equal(b.state.acPower, true);
+});

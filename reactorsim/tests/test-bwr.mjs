@@ -216,3 +216,121 @@ test('beide Typen laufen gleichzeitig, ohne sich zu stoeren', () => {
   assert.equal(a.state.fault, null);
   assert.equal(b.state.fault, null);
 });
+
+// ── Notstromdiesel ───────────────────────────────────────────────────────────
+//
+// Bis 0.6.22 hatte der Station-Blackout keinen Weg zurueck: s.acPower wurde
+// nur beim Anlagenaufbau wieder true, und die Schicht konnte der Anlage
+// danach beim Auskochen zusehen. Der Diesel ist dieser Weg -- aber ein
+// schmaler. Geprueft wird deshalb beides: dass er traegt, UND dass er nicht
+// mehr traegt, als er darf.
+
+/** Blackout mit Schnellabschaltung. Ohne den SCRAM ist die Anlage hin,
+ *  bevor irgendein Diesel angelaufen waere -- 45 s Vollast ohne Speisung. */
+function blackout(e) {
+  getEvent('station_blackout').apply(e, {});
+  e.scram('test');
+  return e;
+}
+
+test('Der Diesel laeuft erst nach seiner Anlaufzeit an und braucht die Batterie', () => {
+  const e = blackout(boot());
+  e.state.dieselCmd = true;
+  // Ohne Gleichstrom dreht der Anlasser nicht: der Blackout hat die Batterie
+  // mitgenommen, und der Zaehler darf nicht heimlich laufen.
+  run(e, 60);
+  assert.equal(e.state.dieselRun, false, 'ohne Gleichstrom angelaufen');
+  assert.equal(e.state.dieselT, 0);
+  assert.equal(e.state.acPower, false);
+
+  e.state.dcPower = true;
+  run(e, bwr.spec.diesel.startS - 5);
+  assert.equal(e.state.dieselRun, false, 'zu frueh angelaufen');
+  assert.ok(e.state.dieselT > 0, 'Anlauf zaehlt nicht');
+  run(e, 10);
+  assert.equal(e.state.dieselRun, true, 'nicht angelaufen');
+  assert.equal(e.state.acPower, true, 'traegt keinen Strom');
+  // Und das Netz bleibt weg. Genau daran haengt alles Weitere.
+  assert.equal(e.state.gridPower, false);
+});
+
+test('Ein Anlauf, dem die Batterie wegbricht, faengt von vorne an', () => {
+  const e = blackout(boot());
+  e.state.dcPower = true;
+  e.state.dieselCmd = true;
+  run(e, bwr.spec.diesel.startS - 10);
+  assert.ok(e.state.dieselT > 0);
+  e.state.dcPower = false;
+  run(e, 1);
+  assert.equal(e.state.dieselT, 0, 'halb angelassener Diesel aufgehoben');
+  assert.equal(e.state.dieselRun, false);
+});
+
+test('Ein laufender Diesel braucht die Batterie nicht mehr', () => {
+  const e = blackout(boot());
+  e.state.dcPower = true;
+  e.state.dieselCmd = true;
+  run(e, bwr.spec.diesel.startS + 5);
+  assert.equal(e.state.dieselRun, true);
+  e.state.dcPower = false;
+  run(e, 60);
+  assert.equal(e.state.dieselRun, true, 'Diesel mit der Batterie ausgegangen');
+  assert.equal(e.state.acPower, true);
+});
+
+test('Am Diesel haengt die Notspeisung, nicht die Hauptspeisepumpe', () => {
+  const e = blackout(boot());
+  e.state.dcPower = true;
+  e.state.dieselCmd = true;
+  run(e, bwr.spec.diesel.startS + 120);
+  // Der Regler will nach einem Blackout weit mehr, als der Diesel hergibt --
+  // genau deshalb ist der Deckel die Aussage und nicht der Reglerausgang.
+  assert.ok(e.state.W_fw <= bwr.spec.diesel.feedMax + 1e-6,
+    `Speisung ${e.state.W_fw} ueber dem Deckel ${bwr.spec.diesel.feedMax}`);
+  assert.ok(e.state.W_fw > bwr.spec.fireInj.W0,
+    'Diesel speist nicht mehr als die Loeschwasserpumpe');
+  assert.ok(e.state.W_fw < bwr.spec.vessel.W_steam0 / 4,
+    'Diesel traegt fast den Vollastspeisestrom');
+});
+
+test('Mit Diesel kommt der Fuellstand zurueck, ohne ihn laeuft der Kern frei', () => {
+  // Die eigentliche Aussage der ganzen Mechanik, an der Physik gemessen und
+  // nicht an einem Merker.
+  const ohne = blackout(boot());
+  run(ohne, 2000);
+  const mit = blackout(boot());
+  mit.state.dcPower = true;
+  mit.state.dieselCmd = true;
+  run(mit, 2000);
+  assert.ok(ohne.state.L_rpv <= 0.01, `ohne Diesel noch ${ohne.state.L_rpv}`);
+  assert.ok(mit.state.L_rpv > 0.3,
+    `mit Diesel nur ${mit.state.L_rpv}`);
+});
+
+test('Der Diesel laesst sich wieder abstellen, und dann ist der Strom weg', () => {
+  const e = blackout(boot());
+  e.state.dcPower = true;
+  e.state.dieselCmd = true;
+  run(e, bwr.spec.diesel.startS + 5);
+  assert.equal(e.state.acPower, true);
+  e.state.dieselCmd = false;
+  run(e, 1);
+  assert.equal(e.state.dieselRun, false);
+  // Und nicht etwa true, weil irgendwer acPower einmal gesetzt haette: der
+  // Strom wird jeden Schritt neu aus Netz und Diesel gebildet.
+  assert.equal(e.state.acPower, false);
+});
+
+test('Ohne Blackout aendert der Diesel gar nichts', () => {
+  const e = boot();
+  e.state.dcPower = true;
+  e.state.dieselCmd = true;
+  run(e, bwr.spec.diesel.startS + 60);
+  assert.equal(e.state.dieselRun, true);
+  assert.equal(e.state.gridPower, true);
+  assert.equal(e.state.acPower, true);
+  // Der Deckel greift nur im reinen Dieselbetrieb -- am Netz regelt die
+  // Speisung weiter, wie sie soll.
+  assert.ok(e.state.W_fw > bwr.spec.diesel.feedMax,
+    `Speisung am Netz auf ${e.state.W_fw} gedeckelt`);
+});

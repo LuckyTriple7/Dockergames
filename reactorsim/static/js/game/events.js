@@ -144,6 +144,10 @@ const EVENTS = {
       // recircPumpStuck genau wie bei rcp_trip: sonst liesse sich die
       // Pumpe ueber denselben Knopf wie sonst auch wieder anwerfen, obwohl
       // gar kein Motorstrom mehr da ist.
+      // gridPower ist die Quelle, acPower die Folge (siehe stepDiesel() in
+      // plants/bwr.js). Nur acPower zu nehmen haette der naechste
+      // Rechenschritt sofort zurueckgesetzt -- das Netz stuende ja noch.
+      e.state.gridPower = false;
       e.state.acPower = false;
       e.state.dcPower = false;
       if (e.ctx.recircPump) { e.ctx.recircPump.trip(); e.ctx.recircPumpStuck = true; }

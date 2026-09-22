@@ -65,17 +65,32 @@ Textfassungen, ein zweiter solcher Zweig haette vier gebraucht. Getrennt bleibt
 es bei zwei unabhaengigen Entscheidungen, und eine Schicht ohne fertige Arbeit
 liest gar keine Zahl statt immer derselben Null.
 
+Seit 0.6.23 hat der Notstromfall einen Weg zurueck: ein Notstromdiesel im
+SWR (`ctl_diesel`, `stepDiesel()` in `plants/bwr.js`). Dafuer sind Netz und
+Wechselstrom zwei verschiedene Dinge geworden -- `s.gridPower` ist die
+Quelle, `s.acPower` die jeden Schritt neu gebildete Folge aus Netz ODER
+Diesel. Der Diesel traegt den Eigenbedarf und die Notspeisung (gedeckelt auf
+`spec.diesel.feedMax`, in derselben Groessenordnung wie der Notkondensator),
+nicht die Hauptspeisepumpen und nicht die Umwaelzpumpe; deren Trupp-Auftrag
+verlangt deshalb ausdruecklich `gridPower`. Der Anlasser haengt an der
+Batterie, also erst `ctl_emergency_dc`, dann der Diesel.
+
 Offen bleibt:
 
-- **Der Notstromfall hat keinen Weg zurueck.** `s.acPower`/`s.dcPower` werden
-  heute nur beim Anlagenaufbau wieder true (`bwr.js`). Netzwiederkehr oder
-  Diesel waeren ein eigener Zustand mit eigener Bedienung, nicht die Arbeit
-  eines Trupps -- die Reparatur sperrt sich ja gerade an fehlendem Motorstrom.
-  Das Muster stuende bereit: `ctl_emergency_dc` (`bwr.js`) gibt dem Bediener
-  den Gleichstrom schon heute zurueck, dem Wechselstrom fehlt nur derselbe
-  Knopf. Ein Notstromdiesel mit Anlaufzeit waere die ehrliche Form; `s.breaker`
-  bliebe dabei aus, denn ein Diesel traegt den Eigenbedarf und nicht das Netz.
-  Nur SWR -- `acPower` modelliert kein anderer Typ (siehe `freeEvents.js`).
+- **Die Netzwiederkehr selbst fehlt.** `gridPower` wird nach einem
+  Station-Blackout von keiner Stelle je wieder true -- der Diesel umgeht das
+  Problem, er loest es nicht. Ein Netz, das nach einer gewuerfelten Weile
+  wiederkommt, waere die naheliegende Ergaenzung; ob sie dem freien Spiel
+  guttut oder ihm nur die Entscheidung abnimmt, ist die offene Frage, nicht
+  der Code.
+- **Nur der SWR hat einen Diesel.** `gridPower`/`acPower` modelliert kein
+  anderer Typ (siehe `freeEvents.js`), und `station_blackout` rechnet auch
+  nur dort wirklich durch. Fuer DWR und RBMK waere das jeweils erst die
+  Strommodellierung, dann der Diesel.
+- **Der Diesel hat unbegrenzt Kraftstoff.** Ein endlicher Vorrat waere ein
+  zweiter Zaehler wie `fireWaterKg` und eine zweite Uhr, gegen die der
+  Spieler faehrt. Solange es keine Netzwiederkehr gibt, gegen die er faehrt,
+  waere das nur ein Zeitlimit ohne Ausweg.
 - **Zwei der drei bleibenden Stoerungen bleiben.** Klemmender Steuerstab
   (`ctx.stuckRods`) sitzt im Kern, das Dampferzeuger-Rohrleck (`ctx.sgLeak`)
   trifft einen zusammengefassten Dampferzeuger ohne Einzelisolation. Ein

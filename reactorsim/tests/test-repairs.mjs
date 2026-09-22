@@ -177,21 +177,40 @@ test('Was der Trupp nicht erreicht, steht gar nicht erst auf der Liste', () => {
   assert.equal(engine.ctx.sgLeak, 8);
 });
 
-test('Ohne Motorstrom gibt es am Motorschutz nichts zurueckzustellen', () => {
+test('Ohne Netz gibt es an der Umwaelzpumpe nichts freizugeben', () => {
   const { engine, session } = freeRun('bwr');
   const r = session.repairs;
   fire(engine, 'station_blackout');
   assert.deepEqual(jobIds(r), ['recirc']);
   assert.equal(r.jobs()[0].ready, false);
-  assert.equal(r.jobs()[0].blockKey, 'repair_block_power');
+  assert.equal(r.jobs()[0].blockKey, 'repair_block_grid');
   assert.equal(r.order('recirc'), 'blocked');
 
-  // Kommt der Strom wieder, geht die Arbeit.
+  // Kommt das Netz wieder, geht die Arbeit.
+  engine.state.gridPower = true;
   engine.state.acPower = true;
   assert.equal(r.jobs()[0].ready, true);
   assert.equal(r.order('recirc'), 'ordered');
   advance(engine, r, 16 * 60);
   assert.equal(engine.ctx.recircPumpStuck, false);
+});
+
+test('Der Notstromdiesel gibt die Umwaelzpumpe NICHT frei', () => {
+  // Der Diesel traegt den Eigenbedarf, nicht ein paar Megawatt Pumpe. Ein
+  // Trupp, der den Motorschutz trotzdem zurueckstellte, gaebe ein Stellteil
+  // frei, an dem nichts anlaeuft.
+  const { engine, session } = freeRun('bwr');
+  const r = session.repairs;
+  fire(engine, 'station_blackout');
+  engine.scram('test');                 // sonst ist die Anlage vor dem Diesel hin
+  engine.state.dcPower = true;          // Ersatzbatterien
+  engine.state.dieselCmd = true;
+  run(engine, session, 45);             // Anlaufzeit ist 30 s
+  assert.equal(engine.state.dieselRun, true, 'Diesel nicht angelaufen');
+  assert.equal(engine.state.acPower, true, 'Diesel traegt keinen Strom');
+  assert.equal(engine.state.gridPower, false, 'Netz waere zurueck');
+  assert.equal(r.jobs()[0].ready, false, 'Pumpe am Diesel freigegeben');
+  assert.equal(r.order('recirc'), 'blocked');
 });
 
 test('Faellt die Voraussetzung waehrend der Arbeit weg, bricht der Trupp ab', () => {

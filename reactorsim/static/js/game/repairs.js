@@ -81,10 +81,18 @@ const JOBS = {
     },
   },
   recirc: {
+    // NETZstrom, nicht nur Strom: eine Hauptumwaelzpumpe haengt nie an einem
+    // Notstromdiesel, der ist fuer Nachzerfallswaerme ausgelegt und nicht
+    // fuer ein paar Megawatt Pumpenleistung (siehe spec.diesel in
+    // plants/bwr.js). Der Elektriker koennte den Motorschutz zwar auch mit
+    // Dieselstrom zuruecksetzen -- nur liefe die Pumpe danach trotzdem nicht
+    // an, und ein Knopf, der ein totes Stellteil freigibt, waere eine Luege.
     key: 'repair_job_recirc',
     minutes: 15,
-    ready: (e) => e.state.acPower !== false,
-    blockKey: 'repair_block_power',
+    ready: (e) => e.state.gridPower !== false && e.state.acPower !== false,
+    // Eigener Grund: "kein Motorstrom" waere am Notstromdiesel schlicht
+    // falsch -- Strom ist da, er traegt diese Pumpe nur nicht.
+    blockKey: 'repair_block_grid',
     clear(e) { e.ctx.recircPumpStuck = false; },
   },
   msiv: {

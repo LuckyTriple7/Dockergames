@@ -78,7 +78,10 @@ test('dryout and low critical heat-flux margin reduce heat transfer continuously
 
 test('fire-water pump needs depressurization, and actual injection consumes finite supply', () => {
   const e = createEngine(bwr), s = e.state;
-  s.acPower = false; s.fireInjOn = true;
+  // gridPower, nicht acPower: seit 0.6.23 wird acPower jeden Schritt aus
+  // Netz und Notstromdiesel neu gebildet (stepDiesel in plants/bwr.js), ein
+  // direkt gesetztes acPower waere im naechsten Takt wieder ueberschrieben.
+  s.gridPower = false; s.acPower = false; s.fireInjOn = true;
   for (const pressure of [12, 70.7, 100]) {
     s.p_dome = pressure;
     assert.equal(bwr.fireInjectionFlow(s, e.spec), 0);

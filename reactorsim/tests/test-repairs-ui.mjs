@@ -116,11 +116,12 @@ test('Ein gesperrter Knopf nennt seinen Grund und geht wieder auf', () => {
   assert.equal(rows().length, 1);
   const btn = rows()[0].children[1].children[1];
   assert.equal(btn.disabled, true);
-  assert.equal(nodes['rs-repair-hint'].textContent, locale.repair_block_power);
+  assert.equal(nodes['rs-repair-hint'].textContent, locale.repair_block_grid);
   // Der gesperrte Knopf tut auch dann nichts, wenn er doch gedrueckt wird.
   btn.click();
   assert.equal(nodes['rs-repair-cancel'].hidden, true);
 
+  engine.state.gridPower = true;
   engine.state.acPower = true;
   update();
   assert.equal(rows()[0].children[1].children[1].disabled, false);

@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.6.23
+
+- ✨ **Der Siedewasserreaktor hat einen Notstromdiesel.** Bis 0.6.22 war
+  der Station-Blackout endgueltig: `s.acPower` wurde nur beim Anlagenaufbau
+  wieder true, und die Schicht konnte der Anlage beim Auskochen zusehen.
+  `ctl_diesel` fordert ihn an, nach dreissig Simulationssekunden traegt er
+  (`stepDiesel()` in `plants/bwr.js`). Der Anlasser haengt an der Batterie,
+  also erst `ctl_emergency_dc`, dann der Diesel -- zwei Handgriffe in genau
+  dieser Reihenfolge, beide standen schon auf dem Schirm. Faellt die
+  Batterie waehrend des Anlaufs weg, faengt er von vorne an; ein laufender
+  Diesel braucht sie nicht mehr. Kein Wuerfel, ob er anspringt: ein Diesel,
+  der mal versagt und mal nicht, waere aus nichts zu lernen.
+
+- ♻️ **Netz und Wechselstrom sind jetzt zwei verschiedene Dinge.**
+  `s.gridPower` ist die Quelle, `s.acPower` die Folge -- jeden Rechenschritt
+  neu gebildet aus Netz ODER Diesel. Ohne diese Trennung waere der Diesel
+  ein Knopf gewesen, der die Stoerung zuruecknimmt: die volle
+  Speisewasserregelung waere wiedergekommen und nach der Trupp-Reparatur
+  sogar die Hauptumwaelzpumpe angelaufen, die real nie an einem
+  Notstromdiesel haengt.
+
+  **Fuer den naechsten Leser:** `s.acPower` ist damit ABGELEITET. Wer das
+  Netz nehmen will, nimmt `gridPower`; ein direkt gesetztes `acPower` ist im
+  naechsten Takt wieder weg.
+
+- ⚡ **Was der Diesel traegt, und was nicht.** Eigenbedarf, Leittechnik
+  und Notspeisung ja -- letztere gedeckelt auf `spec.diesel.feedMax`
+  (130 kg/s, dieselbe Groessenordnung wie der Notkondensator, gegen
+  2059 kg/s im Vollastbetrieb). Die Hauptumwaelzpumpe nein: ihr
+  Trupp-Auftrag verlangt ausdruecklich `gridPower` und nennt mit
+  `repair_block_grid` auch den richtigen Grund. "Kein Motorstrom" waere am
+  laufenden Diesel schlicht falsch gewesen.
+
+  Gemessen statt behauptet: nach Blackout mit Schnellabschaltung steht der
+  Fuellstand nach 2000 s ohne Diesel bei 0,00 und mit Diesel bei 0,50.
+
+- 🐛 **Ein Blackout aus einem Stand von vor 0.6.23 bleibt einer.**
+  Solche Staende kennen `gridPower` nicht, der frisch gebaute Zustand steht
+  auf true -- ohne den Altstand-Zweig in `net/persist.js` haette sich ein
+  Stand mitten im Station-Blackout beim ersten Rechenschritt lautlos selbst
+  geheilt. Er bekommt sein Netz jetzt aus dem gespeicherten `acPower`.
+
 ## 0.6.22
 
 - 🔒 **STARTTLS und SMTPS pruefen jetzt das Zertifikat des

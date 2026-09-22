@@ -149,6 +149,22 @@ export const spec = {
   // Diesel-driven low-pressure injection with finite external water supply.
   fireInj: { W0: 35, shutoffBar: 12, supplyKg: 1000000 },
 
+  // Notstromdiesel. Er traegt den Eigenbedarf, nicht das Netz: Schaltraum,
+  // Leittechnik, Notspeisung -- nicht die Umwaelzpumpe und nicht die
+  // Hauptspeisepumpen. Deshalb ist feedMax kein Bruchteil des Vollast-
+  // speisestroms (2059 kg/s), sondern in derselben Groessenordnung wie der
+  // Notkondensator (ic.W0 = 130): beide sind dafuer da, Nachzerfallswaerme
+  // abzufuehren, und fuer nichts sonst. Unmittelbar nach der Abschaltung
+  // (rund 7 % von P0_th, etwa 140 kg/s Dampf) reicht das knapp nicht -- ein
+  // paar Minuten spaeter schon. Genau das ist die Aussage: der Diesel ist
+  // ein Weg zurueck, kein Rueckgaengigmachen.
+  //
+  // startS ist die Anlaufzeit in Simulationssekunden. Kein Wuerfel, ob er
+  // anspringt: ein Notstromdiesel, der mit einer Wahrscheinlichkeit
+  // versagt, waere im selben Lauf einmal die Rettung und einmal nicht, und
+  // der Spieler koennte aus keinem von beiden etwas lernen.
+  diesel: { startS: 30, feedMax: 130 },
+
   // Sicherheitsbehälter (Druckkammer + Kondensationskammer). Baut sich aus
   // dem Sicherheitsventil-Dampf auf, der in die Kondensationskammer bläst --
   // genau der Pfad, über den bei einer Isolierung Wärme den Reaktor
@@ -316,11 +332,32 @@ export const hooks = {
     s.oscV = 0;
 
     // Stromversorgung -- im Normalbetrieb immer da. Eine Störung (Station-
-    // Blackout) setzt beides auf false; ohne Gleichstrom fallen die
+    // Blackout) nimmt beides; ohne Gleichstrom fallen die
     // Notkondensator-Ventile in ihre sichere Stellung: ZU, unbemerkt, weil
     // dieselbe Störung auch die Anzeigen mitreißt.
+    //
+    // gridPower und acPower sind seit 0.6.23 zwei verschiedene Dinge.
+    // acPower heisst "es liegt Wechselstrom an" und wird von allem gelesen,
+    // was einen Motor oder eine Leittechnik braucht. gridPower heisst
+    // "dieser Wechselstrom kommt aus dem Netz" -- und nur daran haengt, was
+    // ein Notstromdiesel NICHT traegt. Ohne die Trennung waere der Diesel
+    // ein Knopf, der die Störung zurücknimmt, statt einer, der die Anlage
+    // in einen schwächeren, aber beherrschbaren Zustand bringt.
+    //
+    // ACHTUNG fuer alles, was den Strom nehmen will: acPower ist seit
+    // 0.6.23 ABGELEITET. stepDiesel() bildet es jeden Rechenschritt neu aus
+    // gridPower und dieselRun, ein direkt gesetztes acPower ist im naechsten
+    // Takt wieder weg. Wer das Netz nehmen will, nimmt gridPower.
+    s.gridPower = true;
     s.acPower = true;
     s.dcPower = true;
+
+    // Notstromdiesel. dieselCmd ist die Bedienerabsicht, dieselRun der
+    // laufende Diesel -- die beiden fallen während des Anlaufs auseinander,
+    // und dieselT misst, wie weit er damit ist.
+    s.dieselCmd = false;
+    s.dieselT = 0;
+    s.dieselRun = false;
 
     // Notkondensator. icDemand ist die Bedienerabsicht (Automatik/Auf per
     // Default), icOpen die tatsächliche Ventilstellung -- die beiden fallen
@@ -520,6 +557,7 @@ export const hooks = {
   },
 
   stepLoop(s, sp, ctx, dt) {
+    stepDiesel(s, sp, dt);
     if (!s.acPower) s.W_fw = Math.min(fireInjectionFlow(s, sp), s.fireWaterKg / dt);
     s.W_fw = Math.min(s.W_fw, Math.max(0, (sp.vessel.massMax - s.M_rpv) / dt));
     if (!s.acPower) s.fireWaterKg = Math.max(0, s.fireWaterKg - s.W_fw * dt);
@@ -711,6 +749,11 @@ export const hooks = {
     // Diesel injection needs low pressure, but no grid AC.
     s.W_fw = s.acPower ? ctx.fwCtl.step(s.L_rpv, s.W_steam, dt)
       : fireInjectionFlow(s, sp);
+    // Am Notstromdiesel haengt die Notspeisung, nicht die Hauptspeisepumpe.
+    // Der Regler darf weiter regeln -- er kommt nur nicht mehr so weit. Ohne
+    // diesen Deckel liefe die Anlage nach dem Dieselstart wieder auf
+    // Vollast, und die Störung waere mit einem Knopf erledigt.
+    if (!s.gridPower && s.dieselRun) s.W_fw = Math.min(s.W_fw, sp.diesel.feedMax);
     // Das Regelventil haelt den Druck, nicht die Leistung.
     s.gov = ctx.govCtl.step(s.P_e, s.P_demand, s.p_dome, dt);
     s.bypass = s.p_dome > sp.vessel.p0 + 4
@@ -777,6 +820,18 @@ export const hooks = {
     const dc = kit.buttonGroup('ctl_emergency_dc', [
       { key: 'state_on', value: '1' }, { key: 'state_off', value: '0' },
     ], '1', (v) => { s.dcPower = !!Number(v); });
+    // Direkt hinter der Batterie, weil der Anlasser an ihr haengt: die
+    // Reihenfolge auf dem Schirm ist die Reihenfolge der Handgriffe.
+    const diesel = kit.buttonGroup('ctl_diesel', [
+      { key: 'state_on', value: '1' }, { key: 'state_off', value: '0' },
+    ], '0', (v) => { s.dieselCmd = !!Number(v); });
+    // Eigene Anzeige fuer den Anlauf: ein Knopf, der auf "ein" steht,
+    // waehrend noch nichts anliegt, waere sonst nicht von einem kaputten zu
+    // unterscheiden. Sie zeigt die Sekunden bis zur Spannung und danach den
+    // tragenden Diesel.
+    const dieselState = kit.indicator({ labelKey: 'val_diesel', digits: 0,
+      read: () => (s.dieselRun ? 0 : Math.max(0, sp.diesel.startS - s.dieselT)),
+      unitKey: 'unit_seconds' });
     const fireSupply = kit.indicator({ labelKey: 'val_fire_water', unitKey: 'unit_t',
       digits: 1, read: () => s.fireWaterKg / 1000 });
 
@@ -798,6 +853,8 @@ export const hooks = {
       { mount: 'safety', node: fireInj.node, set: (st) => fireInj.set(st.fireInjOn ? '1' : '0') },
       { mount: 'safety', node: depressurize.node, set: (st) => depressurize.set(st.depressurize ? '1' : '0') },
       { mount: 'safety', node: dc.node, set: (st) => dc.set(st.dcPower ? '1' : '0') },
+      { mount: 'safety', node: diesel.node, set: (st) => diesel.set(st.dieselCmd ? '1' : '0') },
+      { mount: 'safety', node: dieselState.node, set: () => dieselState.set() },
       { mount: 'safety', node: fireSupply.node, set: () => fireSupply.set() },
       { mount: 'safety', node: contVent.node, set: (st) => contVent.set(st.contVentOpen ? '1' : '0') },
     ];
@@ -898,6 +955,38 @@ function _cpr(s, sp, base) {
   const power = clamp(base.load, 0.02, 2);
   const q = clamp(1 - s.x_e / 0.28, 0.05, 1);
   return clamp(1.9 * Math.pow(flow, 0.5) * Math.pow(q, 0.35) / power, 0, 20);
+}
+
+/**
+ * Notstromdiesel: anfordern, anlaufen, tragen.
+ *
+ * Steht hier und nicht in game/events.js, weil es kein Ereignis ist,
+ * sondern Anlagentechnik -- dieselbe Trennung wie beim Instandhaltungstrupp
+ * (game/repairs.js): dort haengt die Reparatur am Anlagenzustand statt am
+ * ausloesenden Ereignis, hier haengt der Strom an der Maschine statt an der
+ * Störung, die ihn genommen hat.
+ *
+ * Der Anlasser braucht Gleichstrom. Nach einem Station-Blackout heisst das:
+ * erst die Ersatzbatterien (ctl_emergency_dc), dann der Diesel -- zwei
+ * Handgriffe in genau dieser Reihenfolge, und beide stehen schon auf dem
+ * Schirm. Ein LAUFENDER Diesel braucht die Batterie nicht mehr; er erregt
+ * sich selbst, und ihn beim naechsten Spannungseinbruch wieder ausgehen zu
+ * lassen waere eine Strafe ohne Vorbild.
+ */
+function stepDiesel(s, sp, dt) {
+  if (s.destroyed || !s.dieselCmd) {
+    s.dieselT = 0;
+    s.dieselRun = false;
+  } else if (!s.dieselRun) {
+    // Faellt die Batterie waehrend des Anlaufs weg, faengt er von vorne an.
+    // Der Anlasser dreht dann eben nicht weiter, und ein halb angelassener
+    // Diesel ist kein Zustand, den man aufheben koennte.
+    s.dieselT = s.dcPower ? s.dieselT + dt : 0;
+    if (s.dieselT >= sp.diesel.startS) s.dieselRun = true;
+  }
+  // EINE Stelle, die acPower setzt -- sonst muesste jede andere wissen, ob
+  // gerade das Netz oder der Diesel traegt.
+  s.acPower = s.gridPower || s.dieselRun;
 }
 
 export default { spec, hooks };
