@@ -321,7 +321,10 @@ Das hat drei weitere Punkte mit umgeworfen, die vorher als unlösbar galten:
   und `hold` geteilt, mit einem Schritt dazwischen, dessen Dauer auf die Uhr
   zielt statt fest zu stehen).
 - **Die Leistung bleibt vor AZ-5 flach -- und das ist der historische
-  Befund, nicht Ruhe.** Ohne Knopfdruck steht die Anzeige bei rund 7 %. Darunter
+  Befund, nicht Ruhe.** (Der Hilfetext des Schritts behauptete bis 0.6.26
+  das Gegenteil, "Real stieg die Leistung kurz vor dem Druecken von AZ-5
+  an" -- ein Widerspruch zum Modell UND zum Anleitungstext desselben
+  Schritts, gemeldet aus dem Spiel heraus.) Ohne Knopfdruck steht die Anzeige bei rund 7 %. Darunter
   passiert trotzdem alles: der Dampfblasenanteil steigt in den 36 Sekunden von
   5,9 auf 7,7 %, die Reaktivität wächst mit, und die schmale automatische
   Regelgruppe hält mit bis zu **−111 pcm** dagegen

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.26
+
+- 🐛 **Die Chernobyl-Uebung widersprach sich selbst darueber, ob die
+  Leistung vor AZ-5 anstieg.** Der Hilfetext des Schritts "Auf den richtigen
+  Moment warten" begann mit "Real stieg die Leistung kurz vor dem Druecken
+  von AZ-5 an" -- waehrend der Anleitungstext desselben Schritts sagt, die
+  Anzeige stehe still und bleibe nur deshalb flach, weil die Regelung
+  gegenhaelt, und waehrend das Modell genau das rechnet. Wer den einen Satz
+  las und dann dem Leitstand zusah, musste das Modell fuer falsch halten.
+
+  Der Satz ist raus. An seiner Stelle steht, was sich belegen laesst: dass
+  die axiale Flussverteilung mitentschied, wie viel die Graphitverdraenger
+  einbrachten; dass die Aufzeichnungen der Nacht die Leistung ueber die 36
+  Sekunden des Auslaufs nahezu konstant bei rund 200 MWth zeigen und dieses
+  Modell sich daran haelt; und dass "flach" nicht "ruhig" heisst --
+  Dampfblasenanteil und Reaktivitaet wachsen die ganze Zeit.
+
+  Ob die Leistung in den letzten Sekunden vor AZ-5 schon anstieg, steht
+  jetzt als offene Frage da statt als Behauptung. Am Modell aendert sich
+  nichts: das Gleichgewicht vor AZ-5 ist gemessen
+  (`tests/tools/chernobyl_pre_az5.mjs`, bis -111 pcm Regelautoritaet) und
+  durch einen Test festgehalten.
+
 ## 0.6.25
 
 - ✨ **Die Kopfzeile blinkt, solange die Schnellabschaltung steht** (RESA
