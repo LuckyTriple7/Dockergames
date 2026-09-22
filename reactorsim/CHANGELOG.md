@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.6.22
+
+- 🔒 **STARTTLS und SMTPS pruefen jetzt das Zertifikat des
+  Mailservers.** `smtplib` nimmt ohne eigenen Kontext
+  `ssl._create_stdlib_context()`, und der prueft nichts: `verify_mode=0`,
+  `check_hostname=False`. Die Leitung war also verschluesselt, aber nicht
+  authentifiziert -- wer sich dazwischenhaengt, legt ein beliebiges
+  Zertifikat vor und bekommt einen Wimpernschlag spaeter das
+  Postfachpasswort im Klartext, weil `login()` erst nach dem Aufbau laeuft.
+  Beide Wege bekommen jetzt `ssl.create_default_context()` (`mailer.py`).
+
+  **Das kann einen laufenden Versand stilllegen:** ein Mailserver im eigenen
+  Netz mit selbst ausgestelltem Zertifikat wird ab hier abgelehnt. Er
+  bekommt einen eigenen Grund (`tls_failed`) statt des bisherigen
+  Sammeltopfs "nicht erreichbar", damit im Panel steht, was wirklich fehlt.
+  Der Weg dahin ist der Zertifikatsspeicher des Containers, siehe DOCKGE.md.
+
+- ✨ **Die Mails tragen `Auto-Submitted: auto-generated`** (RFC 3834).
+  Passwort- und Willkommensmail sind Maschinenmails; ohne diese Zeile
+  antwortet die Abwesenheitsnotiz des Empfaengers darauf, und das Postfach
+  sammelt Urlaubsgruesse. `Message-ID`, `Date` und die Kodierung des
+  Betreffs standen schon vorher.
+
+- 🐛 **`send()` laesst auch beim Bauen der Kopfzeilen keine Ausnahme
+  mehr durch.** Die Zuweisungen standen ueber dem `try`: eine Adresse mit
+  Zeilenumbruch haette dort `ValueError` geworfen, und der Modulkopf sagt
+  zu, dass ein Mailfehler niemals ein Konto verhindert, das sonst angelegt
+  worden waere. Ueber die vorhandenen Wege war das nicht auszuloesen
+  (`_EMAIL_RE` in `users.py` verbietet Leerraum) -- die Zusage haengt jetzt
+  aber nicht mehr an dieser zweiten Pruefung. Neuer Grund: `bad_address`.
+
 ## 0.6.21
 
 - ✨ **Der Schichtbericht zaehlt die Arbeiten des Instandhaltungstrupps

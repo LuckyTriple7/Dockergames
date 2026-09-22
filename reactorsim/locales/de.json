@@ -984,6 +984,8 @@
   "admin_mail_error_connect_failed": "der Mailserver war nicht erreichbar (Name, Port oder Verschlüsselung falsch)",
   "admin_mail_error_smtp_error": "der Mailserver hat die Mail abgelehnt (Einzelheiten im Protokoll)",
   "admin_mail_error_recipient_refused": "der Mailserver hat den Empfänger abgelehnt",
+  "admin_mail_error_tls_failed": "der Mailserver hat kein vertrauenswürdiges Zertifikat vorgelegt (selbst ausgestellt? dann ins Zertifikatsverzeichnis des Containers legen)",
+  "admin_mail_error_bad_address": "die Empfängeradresse ist keine gültige Kopfzeile",
   "admin_welcome_label": "Willkommens-Mail mit den Zugangsdaten senden",
   "admin_welcome_off": "Kein Mailserver eingerichtet — das Passwort unten einmalig ablesen und selbst weitergeben.",
   "admin_error_mail_not_configured": "Kein Mailserver eingerichtet.",

@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import os
 import smtplib
+import ssl
 import threading
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
@@ -119,30 +120,56 @@ class Mailer:
         if not to:
             return 'no_recipient'
 
-        msg = EmailMessage()
-        msg['From'] = formataddr((SENDER_NAME, self.sender))
-        msg['To'] = to
-        msg['Subject'] = subject
-        msg['Date'] = formatdate(localtime=True)
-        msg['Message-ID'] = make_msgid(domain=self.sender.rpartition('@')[2] or None)
-        # Reine Textmail. Kein HTML, kein Zaehlpixel, kein nachgeladenes Bild --
-        # dieselbe Linie wie bei der Seite selbst (siehe Kommentar zur CSP in
-        # app.py).
-        msg.set_content(body)
+        # Die Kopfzeilen im selben Fang wie der Versand: eine Adresse mit
+        # Zeilenumbruch laesst die email-Bibliothek zu Recht auffliegen (sie
+        # verhindert damit untergeschobene Kopfzeilen), und dieser Aufruf
+        # verspricht seinem Aufrufer, keine Ausnahme durchzulassen. Ueber die
+        # vorhandenen Wege ist das nicht auszuloesen -- _EMAIL_RE in users.py
+        # verbietet Leerraum --, aber die Zusage darf nicht am Wortlaut einer
+        # fremden Bibliothek haengen.
+        try:
+            msg = EmailMessage()
+            msg['From'] = formataddr((SENDER_NAME, self.sender))
+            msg['To'] = to
+            msg['Subject'] = subject
+            msg['Date'] = formatdate(localtime=True)
+            msg['Message-ID'] = make_msgid(domain=self.sender.rpartition('@')[2] or None)
+            # Diese Mail beantwortet niemand, und niemand soll ihr
+            # automatisch antworten: RFC 3834 haelt Abwesenheitsnotizen und
+            # Autoresponder von einer Maschinenmail fern. Ohne die Zeile
+            # bekaeme das Postfach auf jede Passwort-Mail die Urlaubsantwort
+            # des Empfaengers zurueck.
+            msg['Auto-Submitted'] = 'auto-generated'
+            # Reine Textmail. Kein HTML, kein Zaehlpixel, kein nachgeladenes Bild --
+            # dieselbe Linie wie bei der Seite selbst (siehe Kommentar zur CSP in
+            # app.py).
+            msg.set_content(body)
+        except ValueError as exc:
+            log.error('Mail an %r nicht gebaut: %s', to, exc)
+            return 'bad_address'
 
         try:
             if self.security == SECURITY_SSL:
-                with smtplib.SMTP_SSL(self.host, self.port, timeout=self.timeout_s) as smtp:
+                with smtplib.SMTP_SSL(self.host, self.port, timeout=self.timeout_s,
+                                      context=self._tls_context()) as smtp:
                     self._deliver(smtp, msg)
             else:
                 with smtplib.SMTP(self.host, self.port, timeout=self.timeout_s) as smtp:
                     if self.security == SECURITY_STARTTLS:
-                        smtp.starttls()
+                        smtp.starttls(context=self._tls_context())
                         # Nach STARTTLS neu begruessen: die vor der
                         # Verschluesselung angekuendigten Faehigkeiten (u. a.
                         # AUTH) gelten danach nicht mehr.
                         smtp.ehlo()
                     self._deliver(smtp, msg)
+        except ssl.SSLError as exc:
+            # Eigener Grund und nicht 'connect_failed': der Server war ja
+            # erreichbar. Wer hier landet, hat ein Zertifikat, dem dieses
+            # System nicht traut -- meist ein selbst ausgestelltes im eigenen
+            # Netz. Das gehoert in den Zertifikatsspeicher des Containers,
+            # nicht weggeschaltet.
+            log.error('Mail an %s: TLS abgelehnt -- %s (%s)', to, exc.__class__.__name__, exc)
+            return 'tls_failed'
         except smtplib.SMTPAuthenticationError as exc:
             log.error('Mail an %s: Anmeldung am Mailserver abgelehnt (%s)', to, exc)
             return 'auth_failed'
@@ -159,6 +186,18 @@ class Mailer:
             return 'connect_failed'
         log.info('Mail an %s verschickt: %s', to, subject)
         return None
+
+    def _tls_context(self) -> ssl.SSLContext:
+        """Zertifikat UND Hostname pruefen.
+
+        Ohne Kontext nimmt smtplib ``ssl._create_stdlib_context()``, und das
+        verschluesselt zwar, prueft aber nichts: ``verify_mode=CERT_NONE``,
+        ``check_hostname=False``. Wer sich dazwischenhaengt, legt ein
+        beliebiges Zertifikat vor und bekommt einen Wimpernschlag spaeter das
+        Postfachpasswort im Klartext -- ``login()`` laeuft ja erst, wenn die
+        Verbindung steht.
+        """
+        return ssl.create_default_context()
 
     def _deliver(self, smtp, msg: EmailMessage) -> None:
         if self.user and self._password:

@@ -12,6 +12,7 @@ Ausgefuehrt mit: python3 -m pytest reactorsim/tests/test_mail.py
 import os
 import re
 import smtplib
+import ssl
 import sys
 import time
 
@@ -42,8 +43,10 @@ class FakeSMTP:
     calls = []
     fail_with = None       # Ausnahme, die login()/send_message() werfen soll
 
-    def __init__(self, host, port, timeout=None):
-        FakeSMTP.calls.append(('connect', host, port, timeout))
+    def __init__(self, host, port, timeout=None, context=None):
+        # context kommt nur auf dem SMTP_SSL-Weg herein -- dort steht die
+        # Verschluesselung schon beim Verbinden, nicht erst nach STARTTLS.
+        FakeSMTP.calls.append(('connect', host, port, timeout, context))
         if isinstance(FakeSMTP.fail_with, OSError) and not isinstance(
                 FakeSMTP.fail_with, smtplib.SMTPException):
             raise FakeSMTP.fail_with
@@ -54,8 +57,10 @@ class FakeSMTP:
     def __exit__(self, *_exc):
         return False
 
-    def starttls(self):
-        FakeSMTP.calls.append(('starttls',))
+    def starttls(self, context=None):
+        # Der Kontext wandert mit ins Protokoll: ohne ihn nimmt smtplib einen,
+        # der gar nichts prueft (siehe Mailer._tls_context).
+        FakeSMTP.calls.append(('starttls', context))
 
     def ehlo(self):
         FakeSMTP.calls.append(('ehlo',))
@@ -436,3 +441,75 @@ def test_forgot_needs_its_own_csrf_token(mailed):
     assert r.status_code == 400
     time.sleep(0.2)
     assert FakeSMTP.sent == []
+
+
+# ── Kopfzeilen und Transportsicherheit ───────────────────────────────────────
+
+
+def test_starttls_verifies_the_certificate(mailed):
+    """Ohne eigenen Kontext nimmt smtplib ssl._create_stdlib_context(): das
+    verschluesselt, prueft aber weder Zertifikat noch Hostname -- und das
+    Postfachpasswort geht erst danach ueber die Leitung."""
+    _mod, _c = mailed
+    import mailer as mailermod
+    m = mailermod.Mailer.from_env(SMTP_ENV)
+    assert m.send('wer@example.test', 'B', 'I') is None
+    ctx = next(c[1] for c in FakeSMTP.calls if c[0] == 'starttls')
+    assert ctx is not None, 'STARTTLS ohne eigenen Kontext'
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
+
+
+def test_a_rejected_certificate_has_its_own_reason(mailed):
+    """Nicht 'connect_failed': der Server war erreichbar, ihm fehlt das
+    Vertrauen. Nur mit eigenem Grund kann das Panel sagen, was zu tun ist."""
+    _mod, _c = mailed
+    import mailer as mailermod
+    m = mailermod.Mailer.from_env(SMTP_ENV)
+    FakeSMTP.reset()
+    FakeSMTP.fail_with = ssl.SSLCertVerificationError('self signed certificate')
+    assert m.send('wer@example.test', 'B', 'I') == 'tls_failed'
+    assert FakeSMTP.sent == []
+
+
+def test_the_message_carries_the_headers_a_real_mail_needs(mailed):
+    _mod, _c = mailed
+    import mailer as mailermod
+    m = mailermod.Mailer.from_env(SMTP_ENV)
+    assert m.send('wer@example.test', 'Betreff mit Umlaut: Grün', 'Inhalt') is None
+    msg = FakeSMTP.sent[0]
+    assert msg['Message-ID'].startswith('<') and msg['Message-ID'].endswith('>')
+    assert msg['Message-ID'].rstrip('>').endswith('example.test')
+    assert msg['Date']
+    # RFC 3834: haelt Abwesenheitsnotizen von einer Maschinenmail fern.
+    assert msg['Auto-Submitted'] == 'auto-generated'
+    assert msg.get_content_type() == 'text/plain'
+    assert str(msg['Subject']) == 'Betreff mit Umlaut: Grün'
+
+
+def test_an_address_with_a_line_break_gets_a_reason_not_an_exception(mailed):
+    """send() verspricht seinem Aufrufer, keine Ausnahme durchzulassen -- ein
+    Mailfehler darf nie ein Konto verhindern. Ueber /admin/users ist das nicht
+    auszuloesen (_EMAIL_RE verbietet Leerraum), die Zusage haengt aber nicht
+    an dieser zweiten Pruefung."""
+    _mod, _c = mailed
+    import mailer as mailermod
+    m = mailermod.Mailer.from_env(SMTP_ENV)
+    assert m.send('opfer@example.test\nBcc: heimlich@example.test', 'B', 'I') == 'bad_address'
+    assert FakeSMTP.sent == []
+
+
+def test_implicit_tls_verifies_the_certificate_too(mailed):
+    """Der zweite Weg (Port 465, Verschluesselung ab dem ersten Byte) hatte
+    dieselbe Luecke: smtplib.SMTP_SSL ohne Kontext prueft ebenfalls nichts."""
+    _mod, _c = mailed
+    import mailer as mailermod
+    env = dict(SMTP_ENV, REACTORSIM_SMTP_SECURITY='ssl', REACTORSIM_SMTP_PORT='465')
+    m = mailermod.Mailer.from_env(env)
+    assert m.send('wer@example.test', 'B', 'I') is None
+    ctx = next(c[4] for c in FakeSMTP.calls if c[0] == 'connect')
+    assert ctx is not None, 'SMTP_SSL ohne eigenen Kontext'
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
+    # Und kein STARTTLS obendrauf: die Leitung ist schon verschluesselt.
+    assert not any(c[0] == 'starttls' for c in FakeSMTP.calls)

@@ -984,6 +984,8 @@
   "admin_mail_error_connect_failed": "the mail server was unreachable (wrong name, port or encryption)",
   "admin_mail_error_smtp_error": "the mail server rejected the message (details in the log)",
   "admin_mail_error_recipient_refused": "the mail server rejected the recipient",
+  "admin_mail_error_tls_failed": "the mail server presented no trusted certificate (self-signed? then add it to the container trust store)",
+  "admin_mail_error_bad_address": "the recipient address is not a valid header",
   "admin_welcome_label": "Send welcome mail with the credentials",
   "admin_welcome_off": "No mail server set up — read the password below once and pass it on yourself.",
   "admin_error_mail_not_configured": "No mail server set up.",

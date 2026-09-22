@@ -167,6 +167,15 @@ der Container gerade zufällig angesprochen wurde. Ohne die Angabe rät
 ReactorSim aus der laufenden Anfrage; hinter einem Reverse Proxy stimmt das
 meistens, aber eben nicht immer.
 
+`starttls` und `ssl` prüfen seit 0.6.22 das Zertifikat des Mailservers und
+seinen Hostnamen. Ein Mailserver im eigenen Netz mit selbst ausgestelltem
+Zertifikat wird damit abgelehnt -- im Panel steht dann „kein
+vertrauenswürdiges Zertifikat". Der Weg dahin führt über den
+Zertifikatsspeicher des Containers (die ausstellende Stelle nach
+`/usr/local/share/ca-certificates/` legen und `update-ca-certificates` laufen
+lassen), nicht über eine Ausnahme im Versand: nach STARTTLS geht als
+nächstes das Postfachpasswort über die Leitung.
+
 **Zuerst die Testmail.** Im Panel unter „E-Mail-Server" eine Adresse eintragen
 und senden. Kommt sie nicht an, steht der Grund im Panel und ausführlicher im
 Protokoll (`docker compose logs reactorsim`):
