@@ -4,7 +4,7 @@
 // Property (--rs-a, Zeigerwinkel) und ein Textknoten geschrieben -- kein
 // Layout, kein innerHTML, keine neuen Knoten.
 
-import { el, svg, setText, setVar } from './dom.js';
+import { el, svg, setText, setVar, setAttr } from './dom.js';
 import { num, t } from './i18n.js';
 
 const A0 = -120;   // Winkel bei Skalenanfang
@@ -87,16 +87,30 @@ export function gauge({ label, min, max, digits = 1, unitKey = null, bands = [] 
   };
 }
 
-/** Senkrechter Balken -- für Stabstellungen und Füllstände. */
-export function bar({ label, invert = false }) {
+/**
+ * Senkrechter Balken -- fuer Stabstellungen und Fuellstaende.
+ *
+ * `fromBelow` dreht die Zeichenrichtung um: die Fuellung waechst von unten
+ * nach oben. Gebraucht wird das von den 24 verkuerzten Absorberstaeben des
+ * RBMK (USP, siehe plants/rbmk.js: rodBanks), die als einzige von UNTEN
+ * einfahren. Ohne die Umkehr zeigte der Balken eine Absorberlage im oberen
+ * Kernbereich, wo in Wirklichkeit gar keine ist -- und der Zusatz "von
+ * unten" in der Beschriftung widersprach dem Bild direkt darueber.
+ */
+export function bar({ label, invert = false, fromBelow = false, title = null }) {
   const fill = el('div.rs-bar-fill');
   const demand = el('div.rs-bar-demand');
   const value = el('div.rs-bar-v', { text: '—' });
+  const track = el('div.rs-bar-track', null, [fill, demand]);
+  if (fromBelow) track.classList.add('rs-bar-up');
   const node = el('div.rs-bar', null, [
-    el('div.rs-bar-track', null, [fill, demand]),
+    track,
     el('div.rs-bar-k', { text: label }),
     value,
   ]);
+  // Die Richtung steht im Bild, die Begruendung im Titel -- in eine
+  // Beschriftung von zehn Pixeln Breite passt sie nicht (siehe .rs-bar-k).
+  if (title) setAttr(node, 'title', title);
   return {
     node,
     /** @param {number} f 0..1 @param {number|null} d Sollwert 0..1 */

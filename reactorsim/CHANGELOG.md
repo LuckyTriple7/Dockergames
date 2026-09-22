@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.6.15
+
+- 🔧 **Der Zweitbildschirm blieb im Startbanner haengen.** `/monitor` zeigte
+  dauerhaft nur das Titelbild. Das Banner (`#rs-splash`) liegt per z-index
+  ueber allem und wartet auf die erste Nutzergeste, weil danach Musik laufen
+  darf -- ausgeblendet hat es bisher nur `initStart()` in `main.js`, und die
+  laeuft auf dem Monitor nie. Es faellt dort jetzt sofort weg, ohne Ton und
+  ohne Klick; Reaktorauswahl und Reaktorseite mit dazu, deren Knoepfe auf
+  diesem Schirm ohnehin tot waren.
+
+  Bis zum ersten Bild steht jetzt nur noch die Statuszeile mittig auf der
+  Flaeche. Leere Kacheln mit Zeigern am Anschlag sahen aus wie eine tote
+  Anlage, waren aber nur eine, die noch nicht angekommen war.
+
+  Mit Test, der auch den naechsten Fall dieser Art faengt: jeder Block, der
+  in `index.html` ohne `hidden` steht, muss in `monitor.js` eine Behandlung
+  haben (`tests/test_dockerfile.py`). Gegengeprobt -- ohne die Zeile im
+  Monitor schlaegt er fehl.
+
+- 🔧 **Die verkuerzten RBMK-Staebe wurden von der falschen Seite
+  gezeichnet.** Die 24 USP-Staebe fahren als einzige von UNTEN in den Kern
+  ein (die uebrigen 187 von oben, siehe `rodBanks` in `plants/rbmk.js`). Ihr
+  Balken fuellte sich trotzdem von oben -- bei 43 % Einfahrtiefe zeigte er
+  eine Absorberlage im oberen Kernbereich, wo gar keine ist. Der Zusatz „von
+  unten" in der Beschriftung widersprach damit dem Bild direkt darueber.
+  `bar()` kennt jetzt `fromBelow`, und die Richtung kommt aus der
+  Anlagendatei statt aus einer Sonderregel in der Oberflaeche. Der
+  angezeigte Prozentwert bleibt die Einfahrtiefe und wird NICHT gespiegelt:
+  sonst stuende dort „57 %", eine Zahl, die es in der Anlage nicht gibt.
+
+- 🔧 **Ein Balken mit langer Beschriftung schob den Balken daneben aus der
+  Flucht.** Die Stabstellungen standen unten buendig (`align-items:
+  flex-end`), also hob eine dreizeilige Beschriftung die Schiene darueber
+  an -- zwei Balken, die man vergleichen soll, standen auf zwei
+  verschiedenen Nulllinien, und im Uebersichtsfenster (Taste O) lief die
+  Karte ausserdem ueber ihren Rand. Jetzt teilen sich alle Balken ihre drei
+  Zeilen (`subgrid`), und ohne subgrid-Unterstuetzung bleiben die Schienen
+  wenigstens buendig. Die Beschriftung selbst ist wieder kurz („Verkuerzte
+  Gruppe"); die Erklaerung steht im Titel, wo sie Platz hat -- samt der
+  Zahlen 24 und 187 und dem Grund, warum ausgerechnet diese Gruppe den
+  positiven Schnellabschalteffekt nicht ausloesen kann.
+
 ## 0.6.14
 
 - ✨ **Zweitbildschirm: `/monitor` zeigt den laufenden Leitstand mit, auf

@@ -83,6 +83,32 @@ def test_every_reachable_module_is_copied():
         assert _covered(rel, targets), f'{rel} wird nicht ins Image kopiert'
 
 
+TOP_LEVEL_RE = re.compile(r'^<div [^>]*id="(rs-[\w-]+)"[^>]*>', re.M)
+
+
+def test_monitor_handles_every_block_the_page_starts_with():
+    """Jeder Block, der beim Laden SICHTBAR ist, muss auf dem Zweitbildschirm
+    eine Behandlung haben.
+
+    Anlass: der Startbanner (#rs-splash). Er liegt per z-index ueber allem und
+    wartet auf die erste Nutzergeste, weil danach Musik laufen darf -- das
+    blendet main.js aus, monitor.js kannte ihn nicht, und der Monitor zeigte
+    fuer immer nur das Banner. Ein Block, der schon `hidden` im Markup steht,
+    ist harmlos; einer ohne `hidden` verdeckt den Monitor, bis jemand ihn
+    anfasst.
+    """
+    with open(os.path.join(_ROOT, 'templates', 'index.html'), encoding='utf-8') as f:
+        html = f.read()
+    with open(os.path.join(_ROOT, 'static', 'js', 'monitor.js'), encoding='utf-8') as f:
+        monitor = f.read()
+    visible = [m.group(1) for m in TOP_LEVEL_RE.finditer(html)
+               if ' hidden' not in m.group(0)]
+    assert 'rs-splash' in visible and 'rs-start' in visible, \
+        f'Vorlage unerwartet aufgebaut: {visible}'
+    for node in visible:
+        assert f"'#{node}'" in monitor, f'monitor.js sagt nichts zu #{node}'
+
+
 def test_every_entry_module_is_reachable_from_its_template():
     """Ein Einstiegsmodul, das keine Seite laedt, ist toter Code -- und eine
     Seite, die ein nicht vorhandenes laedt, ist ein weisser Schirm."""

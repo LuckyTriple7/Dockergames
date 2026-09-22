@@ -126,9 +126,8 @@ function onFrame(frame) {
   if (run !== view.run || !view.engine) {
     const err = buildFor(frame);
     if (err) { view.error = err; return; }
-    $('#rs-start').hidden = true;
-    $('#rs-reactor').hidden = true;
-    $('#rs-app').hidden = false;
+    // Ab jetzt gibt es etwas zu zeigen: Kacheln und Instrumente sind gefuellt.
+    document.body.classList.remove('rs-monitor-waiting');
   }
   const err = applyFrame(frame, view.engine);
   if (err) {
@@ -193,7 +192,24 @@ function paintBar() {
 // ── Start ────────────────────────────────────────────────────────────────────
 
 document.title = `${t('monitor_title')} — ${t('app_title')}`;
-document.body.classList.add('rs-monitor', 'rs-ctl-locked');
+// rs-monitor-waiting faellt beim ersten Bild weg (siehe onFrame): bis dahin
+// stehen alle Kacheln leer, und leere Instrumente sehen aus wie kaputte.
+// Sichtbar ist so lange nur die Zeile oben, und die sagt, worauf gewartet
+// wird.
+document.body.classList.add('rs-monitor', 'rs-monitor-waiting', 'rs-ctl-locked');
+
+// Der Startbanner gehoert dem Leitstand: er wartet auf die erste Nutzergeste,
+// weil danach Musik laufen darf (initStart() in main.js). Auf einem Schirm,
+// der nur zusieht, wartet er auf eine Geste, die nie kommt -- und liegt per
+// z-index ueber allem, auch ueber der Zeile, die erklaeren soll warum. Er
+// faellt hier deshalb sofort weg, ohne Ton und ohne Klick.
+$('#rs-splash').hidden = true;
+// Reaktorauswahl und Reaktorseite genauso: ihre Knoepfe sind auf diesem
+// Schirm tot (initStart() laeuft nie), und tote Knoepfe sind schlimmer als
+// keine.
+$('#rs-start').hidden = true;
+$('#rs-reactor').hidden = true;
+$('#rs-app').hidden = false;
 $('#rs-monitor-bar').hidden = false;
 // Dauerhaft, nicht als Merker: es gibt auf diesem Schirm keinen Zustand, in
 // dem eine Bedienhandlung durchgreifen duerfte.

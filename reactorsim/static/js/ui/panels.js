@@ -175,7 +175,15 @@ export function buildPanels(engine, render, helperEnabled) {
   for (const x of gSec) secBox.append(x.g.node);
 
   // ── Stabstellungen ─────────────────────────────────────────────────────────
-  const rodBars = sp.rodBanks.map((b) => bar({ label: t('ctl_rod_bank_' + b.id) }));
+  // fromBelow kommt aus der Anlagendatei, nicht aus einer Sonderregel hier:
+  // beim RBMK fahren die 24 verkuerzten Staebe (USP) von unten ein, alle
+  // anderen von oben (siehe plants/rbmk.js: rodBanks). Der Balken zeichnet
+  // die Richtung, statt sie in die Beschriftung zu schreiben.
+  const rodBars = sp.rodBanks.map((b) => bar({
+    label: t('ctl_rod_bank_' + b.id),
+    fromBelow: !!b.fromBelow,
+    title: has('ctl_rod_bank_' + b.id + '_title') ? t('ctl_rod_bank_' + b.id + '_title') : null,
+  }));
   const rodsBox = $('#rs-rods');
   rodsBox.replaceChildren(el('div.rs-bars', null, rodBars.map((r) => r.node)));
 

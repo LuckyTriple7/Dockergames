@@ -64,6 +64,27 @@
 .rs-monitor-bar[data-sev="bad"]  ~ .rs-status,
 .rs-monitor-bar[data-sev="bad"]  ~ .rs-workspace { filter: grayscale(1) brightness(0.6); }
 
+/* Vor dem ersten Bild gibt es nichts anzuzeigen: die Kacheln sind leer, die
+   Zeiger stehen auf ihrem Anschlag. Das sieht aus wie eine tote Anlage, ist
+   aber nur eine, die noch nicht angekommen ist -- also erst gar nicht zeigen.
+   Sichtbar bleibt die Zeile oben, und die sagt, worauf gewartet wird. */
+body.rs-monitor-waiting .rs-status,
+body.rs-monitor-waiting .rs-workspace { display: none; }
+
+body.rs-monitor-waiting .rs-monitor-bar {
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  margin: auto;
+  padding: 24px;
+  border: 1px solid var(--rs-line);
+  border-radius: var(--rs-radius);
+  font-size: 14px;
+  text-align: center;
+}
+
+body.rs-monitor-waiting .rs-monitor-msg { flex: 0 0 auto; }
+
 /* Was auf einem Schirm, der nur zusieht, nichts zu suchen hat. Ausgeblendet
    statt weggelassen: die Vorlage ist dieselbe wie im Leitstand (siehe
    app.py: monitor_page()), und ein zweiter Satz Kacheln waere genau der
