@@ -145,11 +145,19 @@ export const spec = {
   // DREI Gruppen seit 0.6.11, und die dritte ist keine Aufteilung nach
   // Geschmack: der RBMK-1000 hat neben den von oben einfahrenden Staeben 24
   // verkuerzte Absorberstaebe (USP), die von UNTEN einfahren und die
-  // Leistungsverteilung im unteren Kernbereich formen. Fuer diese Uebung ist
-  // ihr Unterschied der entscheidende: ein von unten kommender Stab hat am
-  // Kernboden KEINEN Graphitverdraenger vor sich, er schiebt dort also auch
-  // keine Wassersaeule heraus und kann den positiven Schnellabschalteffekt
-  // gar nicht ausloesen (siehe _tipReactivity, das die Gruppe ueberspringt).
+  // Leistungsverteilung im unteren Kernbereich formen (INSAG-7, 2.2).
+  //
+  // Belegt ist der Mechanismus des positiven Schnellabschalteffekts UNTEN:
+  // bei ganz gezogenem Stab steht dort eine 1,25 m hohe Wassersaeule, und
+  // der Graphitverdraenger schiebt sie beim Losfahren heraus. Ein von unten
+  // kommender Stab faehrt in die andere Richtung, kann diese Saeule also
+  // nicht verdraengen.
+  //
+  // SETZUNG, nicht Quelle: dass die USP gar keinen Beitrag leisten, also
+  // auch keinen spiegelbildlichen am Kernoberteil. Die WNA nimmt von den
+  // Verdraengern nur die 12 AR-Staebe aus, nicht die USP -- ob die USP oben
+  // einen tragen, war nicht zu belegen. _tipReactivity ueberspringt die
+  // Gruppe deshalb als Annahme, siehe BACKLOG.md.
   //
   // Solange alle drei Gruppen zusammen fahren (rodBanksMoveTogether, der
   // Normalfall), aendert die Aufteilung nichts: die Wirksamkeiten summieren

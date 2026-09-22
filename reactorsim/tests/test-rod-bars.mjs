@@ -33,11 +33,41 @@ class Node {
     this._text = '';
     this.classList = new ClassList(this);
     this.style = { setProperty: (k, v) => { this.vars[k] = v; } };
+    this.dataset = {};
   }
-  get textContent() { return this._text + this.children.map((n) => n.textContent).join(''); }
+  // Das Fliessbild verdrahtet beim Bauen Tooltips und sucht sich seine
+  // Messwert- und Stabknoten -- beides braucht dieser Test nicht, es darf
+  // nur nicht abstuerzen.
+  addEventListener() {}
+  querySelectorAll(sel) {
+    const cls = sel.replace('.', '');
+    const out = [];
+    const walk = (n) => {
+      if (typeof n === 'string') return;
+      if (n.classList && n.classList.contains(cls)) out.push(n);
+      for (const c of n.children || []) walk(c);
+    };
+    walk(this);
+    return out;
+  }
+  querySelector(sel) {
+    return this.querySelectorAll(sel)[0] || null;
+  }
+  // svg() haengt Textkinder als rohe Zeichenkette an (siehe dom.js), das
+  // echte DOM macht daraus einen Textknoten -- hier reicht es, sie beim
+  // Auslesen mitzunehmen.
+  get textContent() {
+    return this._text + this.children
+      .map((n) => (typeof n === 'string' ? n : n.textContent)).join('');
+  }
   set textContent(value) { this._text = String(value); this.children = []; }
   append(...nodes) { this.children.push(...nodes); }
-  setAttribute(key, value) { this.attributes[key] = value; }
+  setAttribute(key, value) {
+    this.attributes[key] = value;
+    // svg() setzt die Klasse als Attribut (siehe dom.js), el() dagegen ueber
+    // .className -- beide Wege muessen hier zum selben Ergebnis fuehren.
+    if (key === 'class') this.className = value;
+  }
   getAttribute(key) { return Object.hasOwn(this.attributes, key) ? this.attributes[key] : null; }
   /** Nur was dieser Test braucht: den ersten Knoten mit dieser Klasse. */
   find(cls) {
@@ -55,6 +85,23 @@ globalThis.document = {
   createElement: (tag) => new Node(tag),
   createTextNode: (text) => { const n = new Node('#text'); n.textContent = text; return n; },
 };
+
+globalThis.document.createElementNS = (_ns, tag) => new Node(tag);
+
+/** Alle Knoten eines gebauten Fliessbilds flach einsammeln. */
+function collect(build) {
+  const container = new Node('div');
+  container.replaceChildren = (...n) => { container.children = n; };
+  build(container);
+  const out = [];
+  const walk = (n) => {
+    if (typeof n === 'string') return;
+    out.push(n);
+    for (const c of n.children || []) walk(c);
+  };
+  for (const c of container.children) walk(c);
+  return out;
+}
 
 const { bar } = await import('../static/js/ui/gauges.js');
 const { getPlant } = await import('../static/js/plants/index.js');
@@ -115,5 +162,31 @@ test('die Erklaerung der verkuerzten Gruppe nennt beide Zahlen', () => {
     const text = locales[lang].ctl_rod_bank_usp_title;
     assert.ok(text.includes('24'), lang);
     assert.ok(text.includes('187'), lang);
+  }
+});
+
+// ── Fliessbild: jede Stablinie erklaert sich selbst ──────────────────────────
+
+test('jede Stablinie im Fliessbild traegt Name und Richtung', async () => {
+  const { MIMICS } = await import('../static/js/ui/mimic.js');
+  const expected = {
+    'mimic-pwr': [['Regelgruppe', 'von oben'], ['Abschaltgruppe', 'von oben']],
+    'mimic-bwr': [['Regelgruppe', 'von unten'], ['Abschaltgruppe', 'von unten']],
+    'mimic-rbmk': [['Regelgruppe', 'von oben'], ['Abschaltgruppe', 'von oben'],
+      ['Verkürzte Gruppe', 'von unten']],
+  };
+  for (const [id, want] of Object.entries(expected)) {
+    const root = collect(MIMICS[id]);
+    const rods = root.filter((n) => String(n.className).includes('rs-rod'));
+    assert.equal(rods.length, want.length, id);
+    // Der Tooltip liest das erste .rs-label der umgebenden Hover-Gruppe
+    // (wireHoverTooltips) -- ohne eigene Gruppe je Linie griffe die des
+    // Kerns, und die sagt nur "Kanaele".
+    const labels = root.filter((n) => String(n.className).includes('rs-label'))
+      .map((n) => n.textContent);
+    for (const [name, dir] of want) {
+      assert.ok(labels.some((l) => l.includes(name) && l.includes(dir)),
+        `${id}: "${name} — ${dir}" fehlt in ${JSON.stringify(labels)}`);
+    }
   }
 });

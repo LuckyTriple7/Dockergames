@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.16
+
+- ✨ **Jede Stablinie im Fliessbild sagt jetzt, wer sie ist und aus welcher
+  Richtung sie kommt.** Bisher griff dort die Hover-Gruppe des Kerns, und die
+  sagt nur „Kanaele" -- ausgerechnet die eine Linie, die von unten kommt,
+  blieb unerklaert. Neu je Linie: „Regelgruppe — von oben",
+  „Verkuerzte Gruppe — von unten", und beim SWR beide von unten. Gilt fuer
+  alle drei Fliessbilder.
+
+- 📝 **Eine Aussage zu den verkuerzten RBMK-Staeben war zu stark
+  formuliert.** Im Quelltext stand, die USP koennten den positiven
+  Schnellabschalteffekt „gar nicht ausloesen". Belegt ist davon die eine
+  Haelfte: der dokumentierte Mechanismus sitzt am KERNBODEN (1,25 m
+  Wassersaeule, vom Graphitverdraenger herausgeschoben), und ein von unten
+  kommender Stab faehrt dort in die andere Richtung. Ob die USP oben einen
+  Verdraenger tragen -- und damit einen spiegelbildlichen Effekt haetten --,
+  war nicht zu belegen; die WNA nimmt von den Verdraengern nur die 12
+  AR-Staebe aus. `_tipReactivity` ueberspringt die Gruppe also als Annahme,
+  nicht als Befund. Gerechnet wird unveraendert; nur Kommentar und BACKLOG
+  sagen jetzt, was Quelle ist und was Setzung.
+
+  Die Anzahl selbst bleibt Anlagentechnik und ist belegt: 24 der 211 Staebe
+  fahren von unten ein (INSAG-7, Abschnitt 2.2).
+
 ## 0.6.15
 
 - 🔧 **Der Zweitbildschirm blieb im Startbanner haengen.** `/monitor` zeigte

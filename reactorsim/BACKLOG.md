@@ -411,7 +411,15 @@ Offen/bekannte Einschränkungen:
   19-minütige Haltephase nicht durch. Der Schritthinweis sagt das ausdrücklich.
 - **Die Stellung der USP-Gruppe ist gesetzt** (0,40 des Fahrwegs), nicht
   überliefert — gewählt so, dass die Anzeige in das dokumentierte Band 6-8
-  fällt. Ihre ANZAHL dagegen ist Anlagentechnik (24 von 211).
+  fällt. Ihre ANZAHL dagegen ist Anlagentechnik (24 von 211, INSAG-7 2.2).
+- **Dass die USP-Gruppe gar keinen Spitzeneffekt hat, ist eine Setzung.**
+  Belegt ist nur die eine Hälfte: der dokumentierte Mechanismus sitzt am
+  KERNBODEN (1,25 m Wassersäule, vom Graphitverdränger herausgeschoben), und
+  ein von unten kommender Stab fährt dort in die andere Richtung. Ob die USP
+  oben einen Verdränger tragen -- und damit einen spiegelbildlichen Effekt am
+  Kernoberteil hätten --, war nicht zu belegen; die WNA nimmt von den
+  Verdrängern nur die 12 AR-Stäbe aus, nicht die USP. `_tipReactivity`
+  überspringt die Gruppe deshalb als Annahme, nicht als Befund.
 - **Nicht gerechnet und nicht behauptet:** die zweite Explosion (ihre Ursache
   ist bis heute umstritten, INSAG-7 lässt sie offen), der Graphitbrand (das
   Graphit steht im Modell beim Ende bei 309 °C, Zündung bräuchte ~700 °C) und

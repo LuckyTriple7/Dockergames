@@ -444,6 +444,8 @@
   "ctl_rod_bank_ctrl_title": "Control rods entering from above. The automatic power control follows them.",
   "ctl_rod_bank_sd_title": "Shutdown rods entering from above. They carry most of the shutdown margin.",
   "ctl_rod_bank_usp_title": "24 shortened absorber rods (USP), the only ones entering the core from below — the other 187 come from above. They shape the power distribution in the lower core and have no graphite displacer ahead of them at the core bottom, so they cannot trigger the positive scram effect.",
+  "mimic_rod_top": "from above",
+  "mimic_rod_bottom": "from below",
   "ctl_rod_auto": "Rod control",
   "ctl_rod_in": "Insert",
   "ctl_rod_out": "Withdraw",

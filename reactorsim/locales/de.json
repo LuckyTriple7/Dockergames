@@ -444,6 +444,8 @@
   "ctl_rod_bank_ctrl_title": "Von oben einfahrende Regelstäbe. Ihnen folgt die automatische Leistungsregelung.",
   "ctl_rod_bank_sd_title": "Von oben einfahrende Abschaltstäbe. Sie tragen den Hauptteil der Abschaltreserve.",
   "ctl_rod_bank_usp_title": "24 verkürzte Absorberstäbe (USP), die als einzige von unten in den Kern einfahren — die übrigen 187 kommen von oben. Sie formen die Leistungsverteilung im unteren Kernbereich und haben am Kernboden keinen Graphitverdränger vor sich, können den positiven Schnellabschalteffekt also nicht auslösen.",
+  "mimic_rod_top": "von oben",
+  "mimic_rod_bottom": "von unten",
   "ctl_rod_auto": "Stabregelung",
   "ctl_rod_in": "Einfahren",
   "ctl_rod_out": "Ziehen",

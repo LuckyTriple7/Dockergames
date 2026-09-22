@@ -130,14 +130,21 @@ function valve(x, y, id, label, side = 'right', pctId) {
  * legt fest, ob der Stab von oben (DWR/RBMK) oder von unten (SWR, siehe
  * bwr.js) einfährt.
  */
-function rodLine(x, yTop, yBottom, bank, fromTop) {
+function rodLine(x, yTop, yBottom, bank, fromTop, bankId) {
   const anchor = fromTop ? yTop : yBottom;
   // Die Richtung steht an der Linie, nicht nur am Tracker: der RBMK hat seit
   // 0.6.11 BEIDES im selben Bild -- die Regel- und Abschaltgruppe faehrt von
   // oben ein, die 24 verkuerzten Staebe fahren von unten ein (rbmk.js
   // rodBanks: usp).
-  return svg('line', { class: 'rs-rod', x1: x, x2: x, y1: anchor, y2: anchor,
+  const line = svg('line', { class: 'rs-rod', x1: x, x2: x, y1: anchor, y2: anchor,
     'data-rod': bank, 'data-rod-dir': fromTop ? 'top' : 'bottom' });
+  if (!bankId) return line;
+  // Eigene Hover-Gruppe je Linie: ohne sie greift die des Kerns, und die
+  // sagt "Kanaele" -- die Linie, die als einzige von unten kommt, blieb
+  // damit unerklaert. .rs-label steht nie im Bild (siehe hoverGroup oben),
+  // der Tooltip liest nur ihren Text.
+  return hoverGroup([line, svg('text', { class: 'rs-label', x, y: anchor },
+    [`${t('ctl_rod_bank_' + bankId)} — ${t(fromTop ? 'mimic_rod_top' : 'mimic_rod_bottom')}`])]);
 }
 
 /** Sammelt die von rodLine() gebauten Linien und liefert eine update()-
@@ -228,8 +235,8 @@ export function buildPwrMimic(container) {
     svg('rect', { class: 'rs-core', x: 76, y: 112, width: 32, height: 56, rx: 4 }),
     // Steuerstäbe: Regel- und Abschaltgruppe (rodBanks[0]/[1] in pwr.js),
     // fahren von oben ein.
-    rodLine(86, 112, 168, 0, true),
-    rodLine(98, 112, 168, 1, true),
+    rodLine(86, 112, 168, 0, true, 'ctrl'),
+    rodLine(98, 112, 168, 1, true, 'sd'),
     svg('text', { class: 'rs-label', x: 92, y: 252, 'text-anchor': 'middle' }, [t('mimic_core')]),
     readout(92, 106, 'power', 'middle'),
     readout(100, 54, 'thot'),
@@ -470,8 +477,8 @@ export function buildBwrMimic(container) {
     svg('rect', { class: 'rs-core', x: 124, y: 150, width: 40, height: 56, rx: 4 }),
     // Steuerstäbe fahren beim SWR von UNTEN ein (siehe Dateikopf bwr.js) --
     // fromTop=false, die Wurzel sitzt unten am Kernboden.
-    rodLine(136, 150, 206, 0, false),
-    rodLine(152, 150, 206, 1, false),
+    rodLine(136, 150, 206, 0, false, 'ctrl'),
+    rodLine(152, 150, 206, 1, false, 'sd'),
     svg('path', { class: 'rs-comp', 'data-mimic': 'sep', d: 'M 122 64 L 166 64 L 158 86 L 130 86 Z' }),
     svg('text', { class: 'rs-label', x: 144, y: 236, 'text-anchor': 'middle' }, [t('mimic_rpv')]),
     readout(144, 140, 'power', 'middle'),
@@ -658,14 +665,14 @@ export function buildRbmkMimic(container) {
   // Normalbetrieb zusammen, siehe rbmk.js -- aber eine klemmende Gruppe
   // (alarm_rod_stuck) bleibt hier trotzdem einzeln sichtbar). Fahren von
   // oben ein, in zwei der sieben Kanäle oben gezeichnet.
-  coreNodes.push(rodLine(97, 92, 200, 0, true));
-  coreNodes.push(rodLine(141, 92, 200, 1, true));
+  coreNodes.push(rodLine(97, 92, 200, 0, true, 'ctrl'));
+  coreNodes.push(rodLine(141, 92, 200, 1, true, 'sd'));
   // Die dritte Gruppe seit 0.6.11: 24 verkürzte Absorberstäbe, die von UNTEN
   // einfahren (rbmk.js rodBanks: usp). Dass sie von der anderen Seite kommen,
   // ist kein Detail -- ihnen fehlt die Graphitspitze, die den anderen
   // Gruppen beim Einfahren zuerst Reaktivität hinzufügt. Deshalb stehen sie
   // hier auch sichtbar andersherum.
-  coreNodes.push(rodLine(119, 92, 200, 2, false));
+  coreNodes.push(rodLine(119, 92, 200, 2, false, 'usp'));
   coreNodes.push(svg('text', { class: 'rs-label', x: 72, y: 230, 'text-anchor': 'start' }, [t('mimic_channels')]));
   // y=94 statt 86: die Steigleitung faellt bei x=118 -- derselben Mitte --
   // bis y=78 herunter, 86 sass ihr noch im Weg. Tiefer stehen ein paar
