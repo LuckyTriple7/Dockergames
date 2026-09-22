@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.6.27
+
+- 🐛 **Der Netzabwurf war unsichtbar -- und eine Sackgasse.** Zwei
+  Fehler in einem Zustand, beide aus dem freien Spiel gemeldet.
+
+  `loss_of_load` (`game/events.js`) oeffnet NUR den Generatorschalter
+  (`s.breaker`), nicht `s.turbineTripped`. Daran hing beides:
+
+  **Unsichtbar:** keine einzige Meldung der drei Typdateien testete
+  `s.breaker`. `alarm_turbine_trip` haengt an `turbineTripped`, also meldete
+  gar nichts -- keine Kachel, keine Hupe, nur eine Zeile im
+  Ereignisprotokoll, die vorbeiscrollt, waehrend die Generatorleistung auf
+  null faellt. Neu ist deshalb die Meldung `alarm_grid_lost` in allen drei
+  Typen, mit Hilfetext und mit Zuordnung zum Generator im Anlagenbild. Sie
+  schliesst `turbineTripped` aus: nach einer Schnellabschaltung steht schon
+  `alarm_turbine_trip`, und zwei Kacheln fuer dieselbe Ursache sind eine zu
+  viel.
+
+  **Sackgasse:** `engine.resumeTurbine()` pruefte nur `turbineTripped` und
+  fiel bei offenem Schalter sofort heraus -- obwohl der Kommentar darueber
+  `loss_of_load` ausdruecklich als abgedeckten Fall nennt. Damit gab es
+  keine Bedienhandlung, die den Schalter je wieder eingelegt haette:
+  nachgemessen blieb die Anlage heil und lieferte fuer den Rest des Laufs
+  null MW, bei allen drei Reaktortypen. Der Instandhaltungstrupp sagte dazu
+  zu Recht, es gebe nichts zu reparieren -- eine offene Schaltanlage ist
+  kein Defekt.
+
+  Jetzt greift derselbe Knopf "Turbine zuschalten" auch hier, und der
+  automatische Helfer kennt den Fall ebenfalls. Gemessen nach dem
+  Zuschalten: DWR 1401 MW, SWR 1344 MW, RBMK 997 MW -- jeweils wieder der
+  Stand von vor dem Abwurf.
+
 ## 0.6.26
 
 - 🐛 **Die Chernobyl-Uebung widersprach sich selbst darueber, ob die

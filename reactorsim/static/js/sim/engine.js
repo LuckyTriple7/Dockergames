@@ -434,10 +434,24 @@ export function createEngine(plant, opts = {}) {
    * gerade abgeschalteten Reaktor zu koppeln, hat keinen Sinn und keinen
    * Dampf dafür.
    *
+   * Zwei verschiedene Zustände führen hierher, und bis 0.6.26 kannte diese
+   * Funktion nur einen davon:
+   *   - s.turbineTripped -- die Turbine ist abgeworfen, das Ventil gesperrt.
+   *   - !s.breaker -- die Turbine läuft, aber der Generatorschalter ist
+   *     offen. Genau das macht `loss_of_load` (Netzabwurf, siehe
+   *     game/events.js): es setzt NUR breaker, nicht turbineTripped.
+   * Die alte Bedingung `if (!s.turbineTripped) return false` fiel im zweiten
+   * Fall sofort heraus. Damit war ein Netzabwurf im freien Spiel eine
+   * Sackgasse: P_e bleibt null (siehe die P_e-Zeile jeder Typdatei), keine
+   * Bedienhandlung gibt den Schalter wieder frei, und der
+   * Instandhaltungstrupp sagt zu Recht, es gebe nichts zu reparieren -- eine
+   * offene Schaltanlage ist kein Defekt. Nachgemessen blieb die Anlage dabei
+   * heil und lieferte trotzdem für den Rest des Laufs null MW.
+   *
    * @returns {boolean} true, wenn wieder zugeschaltet wurde
    */
   function resumeTurbine() {
-    if (!s.turbineTripped) return false;
+    if (!s.turbineTripped && s.breaker) return false;
     if (s.scram.active) return false;
     s.turbineTripped = false;
     s.breaker = true;

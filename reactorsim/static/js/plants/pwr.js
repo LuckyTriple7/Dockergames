@@ -171,7 +171,7 @@ export const spec = {
     pzr_press_low: 'pzr', pzr_press_high: 'pzr', pzr_level_low: 'pzr', porv_open: 'pzr',
     sg_level_low: 'sg', sg_level_high: 'sg', sg_press_high: 'sg',
     rcp_lost: 'rcp',
-    turbine_trip: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
+    turbine_trip: 'gen', grid_lost: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
   },
 
   mimic: 'mimic-pwr',
@@ -220,6 +220,19 @@ export const spec = {
       test: (s, d) => !!d.porvStuck, delay_s: 0, hold_s: 0 },
     { id: 'turbine_trip', key: 'alarm_turbine_trip', severity: SEVERITY.WARN,
       test: (s) => s.turbineTripped, delay_s: 0 },
+    // Offener Generatorschalter OHNE Turbinenschnellschluss -- der
+    // Netzabwurf (loss_of_load in game/events.js setzt NUR s.breaker).
+    // Bis 0.6.26 sah der Spieler davon nichts: keine Kachel, keine Hupe,
+    // nur eine Zeile im Protokoll, die vorbeiscrollt -- waehrend die
+    // Generatorleistung auf null faellt und dort bleibt. Genau so gemeldet
+    // worden ("kam einfach so, kein Alarm nix").
+    //
+    // Die Bedingung schliesst turbineTripped aus, weil onScram() den
+    // Schalter mit oeffnet: nach einer Schnellabschaltung steht schon
+    // alarm_turbine_trip, und zwei Kacheln fuer dieselbe Ursache sind eine
+    // zu viel. Diese hier meldet den Zustand, den sonst keine meldet.
+    { id: 'grid_lost', key: 'alarm_grid_lost', severity: SEVERITY.WARN,
+      test: (s) => s.breaker === false && !s.turbineTripped, delay_s: 0 },
     { id: 'clad_temp', key: 'trip_clad_temp', severity: SEVERITY.TRIP,
       test: (s) => s.T_cl > 1477, delay_s: 0, action: 'scram' },
     // Eine klemmende Stabgruppe war vorher nur eine Zeile im Protokoll. Der

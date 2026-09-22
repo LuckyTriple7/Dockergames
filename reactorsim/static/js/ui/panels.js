@@ -629,7 +629,10 @@ export function buildPanels(engine, render, helperEnabled) {
     diagnostics.set();
     rbmkFeedDiagnostics?.set(d);
     demand.set(Math.round(s.P_demand));
-    turbineResume.disabled = !s.turbineTripped || s.scram.active;
+    // Auch bei bloss offenem Generatorschalter (Netzabwurf) -- dieselbe
+    // Bedingung wie engine.resumeTurbine(), sonst stuende der Knopf grau vor
+    // einem Zustand, den er aufloesen koennte.
+    turbineResume.disabled = (!s.turbineTripped && s.breaker !== false) || s.scram.active;
     if (rodAuto && rodCtl) rodAuto.set(rodCtl.auto);
     govStation.set();
     fwStation.set();

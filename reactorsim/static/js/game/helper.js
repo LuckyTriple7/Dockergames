@@ -132,6 +132,9 @@ const PWR_FIXES = {
   sg_level_high: (e) => { const a = []; ensureAuto(e.ctx.fwCtl, 'fw_auto', a); return fixed(a); },
   sg_press_high: (e) => { const a = []; ensureAuto(e.ctx.govCtl, 'gov_auto', a); return fixed(a); },
   turbine_trip: fixTurbineTrip,
+  // Derselbe Handgriff: resumeTurbine() legt auch den blossen
+  // Generatorschalter wieder ein (siehe dort).
+  grid_lost: fixTurbineTrip,
   // Auch hier: Kuehlung wiederherstellen ist automatisierbar, die
   // Schnellabschaltung selbst nicht.
   clad_temp: (e) => {
@@ -209,6 +212,9 @@ const BWR_FIXES = {
     return fixed(a);
   },
   turbine_trip: fixTurbineTrip,
+  // Derselbe Handgriff: resumeTurbine() legt auch den blossen
+  // Generatorschalter wieder ein (siehe dort).
+  grid_lost: fixTurbineTrip,
   clad_temp: (e) => {
     const s = e.state, ctx = e.ctx;
     const a = [];
@@ -272,6 +278,9 @@ const RBMK_FIXES = {
   // alarm_axial_tilt_help. Kein Handgriff, der das jetzt beheben wuerde.
   axial_tilt: () => UNFIXABLE,
   turbine_trip: fixTurbineTrip,
+  // Derselbe Handgriff: resumeTurbine() legt auch den blossen
+  // Generatorschalter wieder ein (siehe dort).
+  grid_lost: fixTurbineTrip,
   clad_temp: (e) => {
     const a = [];
     startPumps(e.ctx, a);

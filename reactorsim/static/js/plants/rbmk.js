@@ -342,7 +342,7 @@ export const spec = {
     rbmk_feed_limited: 'drum', rbmk_aux_ready: 'drum',
     rbmk_aux_low: 'drum', rbmk_aux_empty: 'drum',
     mcp_cavitation: 'rcp', mcp_stuck: 'rcp',
-    turbine_trip: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
+    turbine_trip: 'gen', grid_lost: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
     tg_stop_scram: 'gen', tg_stop_blocked: 'gen',
   },
 
@@ -383,6 +383,19 @@ export const spec = {
       test: (s, d) => Math.abs(d.axialOffset) > 0.35, delay_s: 5 },
     { id: 'turbine_trip', key: 'alarm_turbine_trip', severity: SEVERITY.WARN,
       test: (s) => s.turbineTripped, delay_s: 0 },
+    // Offener Generatorschalter OHNE Turbinenschnellschluss -- der
+    // Netzabwurf (loss_of_load in game/events.js setzt NUR s.breaker).
+    // Bis 0.6.26 sah der Spieler davon nichts: keine Kachel, keine Hupe,
+    // nur eine Zeile im Protokoll, die vorbeiscrollt -- waehrend die
+    // Generatorleistung auf null faellt und dort bleibt. Genau so gemeldet
+    // worden ("kam einfach so, kein Alarm nix").
+    //
+    // Die Bedingung schliesst turbineTripped aus, weil onScram() den
+    // Schalter mit oeffnet: nach einer Schnellabschaltung steht schon
+    // alarm_turbine_trip, und zwei Kacheln fuer dieselbe Ursache sind eine
+    // zu viel. Diese hier meldet den Zustand, den sonst keine meldet.
+    { id: 'grid_lost', key: 'alarm_grid_lost', severity: SEVERITY.WARN,
+      test: (s) => s.breaker === false && !s.turbineTripped, delay_s: 0 },
     // Reaktorschutz beim Schnellschluss BEIDER Turbosaetze.
     //
     // Der RBMK-1000 loeste AZ-5 aus, sobald die Schnellschluss- und
