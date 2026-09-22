@@ -548,15 +548,34 @@ Physikläufe. Prüfumfang und offene Punkte: [Trend-Audit](audit/TRENDS-2026-09-
 ## Entwicklung
 
 ```bash
+./dev_setup.sh              # einmal: Abhängigkeiten und Browser einrichten
 python3 dev_run.py          # http://127.0.0.1:17779, Daten in dev_data/
 node --test "tests/*.mjs"   # Physik, Spielschicht, Determinismus
 python -m pytest tests/     # Schnittstelle, Wertung, Struktur, Sprachdateien
+npm run test:browser        # Startbildschirm im echten Chromium
 ```
 
-Die gesamte Simulation läuft im Browser in reinen ES-Modulen — kein npm, kein
-Bundler, kein Framework. Die Module unter `static/js/sim/` haben bewusst keinen
-DOM-Bezug: dadurch sind sie unter `node --test` direkt importierbar und können
-später ohne Umbau in einen Web Worker wandern.
+Die gesamte Simulation läuft im Browser in reinen ES-Modulen — kein Bundler,
+kein Framework, und npm ausschließlich als Entwicklungswerkzeug: `package.json`
+bringt nur `playwright-core` für die Browsertests mit, weder das Spiel noch das
+Image brauchen es (beide stehen in `.dockerignore`). Die Module unter
+`static/js/sim/` haben bewusst keinen DOM-Bezug: dadurch sind sie unter
+`node --test` direkt importierbar und können später ohne Umbau in einen Web
+Worker wandern.
+
+Die Browsertests heißen `tests/browser-*.mjs` und laufen deshalb beim normalen
+`node --test tests/` nicht mit — sie brauchen einen Browser, die übrigen Tests
+nicht. Jeder von ihnen startet über `tests/browser_fixture.py` eine eigene
+Instanz auf einem freien Port mit frischem Datenverzeichnis, nie gegen
+`dev_data/` und nie gegen eine laufende Anlage. Sie prüfen, was erst im
+Zusammenspiel von Markup, CSS und `main.js` entsteht: ob eine Zeile wirklich
+sichtbar ist, ob ein Klick ankommt, ob die Konsole stumm bleibt.
+
+`playwright-core` lädt anders als `playwright` nie selbst einen Browser
+herunter, sondern nimmt den aus `~/.cache/ms-playwright`. Die Fassung in
+`package.json` gehört deshalb zur Revision dieses Zwischenspeichers — passt sie
+nicht, verlangt der erste Testlauf einen Download von einigen hundert MB statt
+zu starten.
 
 Aufbau in Kürze:
 

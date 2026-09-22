@@ -8,7 +8,11 @@
 
 dev_data/
 dev_run.py
+dev_setup.sh
 tests/
+node_modules/
+package.json
+package-lock.json
 docker-compose.yml
 DOCKGE.md
 BACKLOG.md
