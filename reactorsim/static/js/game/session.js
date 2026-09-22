@@ -17,6 +17,7 @@ import { TrendHistory } from './trendHistory.js';
 import { FreeFaults } from './freeEvents.js';
 import { ShiftLog } from './shift.js';
 import { Dispatch } from './dispatch.js';
+import { Repairs } from './repairs.js';
 
 // Freies Spiel ohne Bedarfskurve hiesse: "folge der Netzanforderung" waere
 // nichts als "lass die Anforderung, wie sie ist" -- kein Unterschied zum
@@ -134,6 +135,11 @@ export class Session {
     this.dispatch = this.free
       ? new Dispatch(engine, opts.dispatch || 'off', Number.isFinite(opts.dispatchSeed)
         ? opts.dispatchSeed : ((Date.now() >>> 0) ^ 0x85ebca6b), this.run) : null;
+    // Kein vierter Wuerfel: der Instandhaltungstrupp wuerfelt gar nicht,
+    // seine Dauern stehen fest (siehe game/repairs.js). Er haengt auch nicht
+    // an der Stoerungsstufe -- wer mit vielen Stoerungen und ohne Trupp
+    // spielen will, soll das koennen.
+    this.repairs = this.free ? new Repairs(engine, opts.repairs || 'off') : null;
   }
 
   start() {
@@ -173,6 +179,7 @@ export class Session {
         this.faults.begin(s.t_sim);
       }
       if (this.dispatch) this.dispatch.begin(s.t_sim);
+      if (this.repairs) this.repairs.begin();
     }
     this.engine.ctx.trends.sample();
   }
@@ -184,6 +191,7 @@ export class Session {
       demandNextChangeT: this.demandNextChangeT, rng: this.demandRng.snapshot(),
       faults: this.faults ? this.faults.snapshot() : undefined,
       dispatch: this.dispatch ? this.dispatch.snapshot() : undefined,
+      repairs: this.repairs ? this.repairs.snapshot() : undefined,
       shift: this.shift.snapshot() } : {};
   }
 
@@ -199,6 +207,7 @@ export class Session {
     this.demandRng.restore(data.rng);
     if (this.faults) this.faults.restore(data.faults);
     if (this.dispatch) this.dispatch.restore(data.dispatch);
+    if (this.repairs) this.repairs.restore(data.repairs);
     // Nach der RunState: persist.js spielt sie vor dieser Stelle ein (siehe
     // apply() dort), und der Schichtbericht braucht ihren wiederhergestellten
     // Stand als Bezugslinie, nicht den leeren vom Rundenbau.
@@ -255,6 +264,11 @@ export class Session {
       // dem sie ausgeloest wird, nicht erst im naechsten ueber die laufenden
       // Merker.
       if (this.faults) this.faults.step();
+      // NACH den Stoerungen: eine Stoerung, die in diesem Takt erst entsteht,
+      // soll nicht im selben Takt schon als offene Arbeit gelten -- und eine,
+      // die der Trupp gerade beendet hat, soll nicht von stepEvents() im
+      // selben Takt noch einmal verteidigt werden.
+      if (this.repairs) this.repairs.step();
       // Derselbe abgeleitete Zustand fuer Kennzahlen UND Trendschreiber --
       // sample() wuerde sich sonst seinen eigenen holen. Das freie Spiel
       // zahlt damit ein derive() je Rechenschritt, genau wie ein Szenario

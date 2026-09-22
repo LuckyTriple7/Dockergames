@@ -146,6 +146,23 @@
 }
 .rs-ctl-hint { font-size: 11px; color: var(--rs-fg-mute); }
 
+/* Instandhaltungstrupp (ui/repairs.js). Eine Zeile je offene Arbeit: links
+   ihr Name, rechts Dauer und Knopf. Rechts steht deshalb kein <b> wie in
+   jeder anderen .rs-row -- dort ist ein Messwert, hier etwas zum Anfassen. */
+.rs-repair-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.rs-repair-actions > small {
+  font-size: 11px;
+  color: var(--rs-fg-mute);
+  white-space: nowrap;
+}
+#rs-repair-list .rs-row { gap: 12px; align-items: center; }
+#rs-repairs > .rs-btn { margin-top: 6px; }
+
 .rs-switch {
   border: 1px solid var(--rs-line);
   background: var(--rs-panel-2);

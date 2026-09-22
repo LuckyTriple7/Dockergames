@@ -82,7 +82,8 @@ Das freie Spiel ist eine Schicht ohne Auftrag und ohne Wertung: sie endet
 nicht von selbst, nur ein Brennstoffschaden beendet sie. Seit 0.6.6 stellst du
 vor dem Start ein, wie unruhig sie werden soll; seit 0.6.7 auch, welche
 Jahreszeit draußen ist, und alle acht Stunden legt die Schicht Rechenschaft ab.
-Seit 0.6.8 gibt die Netzleitstelle dazu Aufträge mit Frist.
+Seit 0.6.8 gibt die Netzleitstelle dazu Aufträge mit Frist, und seit 0.6.18
+arbeitet ein Instandhaltungstrupp Störungen ab, statt sie liegen zu lassen.
 
 **Netzanforderung.** Die Last folgt einer Tageskurve statt einem
 Zufallsspaziergang: Nachttal bei 55 %, Morgenrampe, Mittagsplateau,
@@ -105,6 +106,38 @@ verfällt und staut sich nicht auf; nach dem Wiederanfahren beginnt die
 Einfahrzeit von vorn, damit die nächste Störung nicht in den Wiederanlauf
 hineinschlägt. Der Spielstand sichert den Würfelzustand, die Stufe selbst
 gilt aus der aktuellen Auswahl.
+
+**Instandhaltung.** Drei Stufen: *aus*, *normal* und *langsam* (Nachtschicht,
+doppelte Dauer). Bis 0.6.17 war jede Zufallsstörung endgültig — `stepEvents()`
+schreibt ihre Wirkung in jedem Rechenschritt neu, und keine Stelle im Programm
+hat je einen ihrer Merker wieder gelöscht. Auf der Stufe *hart* sammelte eine
+lange Schicht damit Defekte an, ohne dass je einer verschwand; das war nicht
+schwer, sondern zermürbend.
+
+Ein Trupp arbeitet genau eine Störung ab, während die Schicht weiterläuft. Du
+forderst ihn in der Meldetafel an, er braucht seine Zeit in *Simulationszeit*
+— im Zeitraffer vergeht sie schnell, bei einfacher Geschwindigkeit dauert sie
+wirklich so lange, und wer gerade eine Transiente fährt, kann den Zeitraffer
+nicht hochdrehen. Am Ende ist das Stellteil wieder frei; **angeworfen oder
+geöffnet hat er es nicht**, das bleibt eine Bedienhandlung. Es gibt genau einen
+Trupp: bei zwei Störungen ist zu entscheiden, welche zuerst drankommt.
+
+Was ein Trupp im laufenden Betrieb erreicht, ist wenig, und das mit Absicht:
+einen ausgelösten Motorschutz am Pumpenabgang (12 min, bei der SWR-Umwälzpumpe
+15 min), die Absperrung einer Zuspeisung bei unkontrollierter Bor-Verdünnung
+(6 min) und den Antrieb der Frischdampf-Absperrung (40 min, die Armatur sitzt
+draußen). Ein klemmender Steuerstab sitzt im Kern, ein Dampferzeuger-Rohrleck
+und ein klemmendes Abblaseventil sind nur über das Abfahren der Anlage zu
+erreichen — diese Störungen bleiben für den Rest der Schicht. Der Trupp nimmt
+der Schicht die Aufschaukelung, nicht die Folgen.
+
+Am Motorschutz ist ohne Motorstrom nichts zurückzustellen: nach einem
+Notstromfall ist die Arbeit gesperrt, und fällt der Strom *während* der Arbeit
+weg, bricht der Trupp ab. Dieselbe Abhängigkeit ist auch der Grund, warum die
+Tabelle am Anlagenzustand hängt und nicht am Ereignis — `ctx.recircPumpStuck`
+setzt sowohl der gewöhnliche Pumpenausfall als auch der Notstromfall, und nur
+im ersten Fall gibt es etwas zurückzustellen. Der Spielstand sichert den
+laufenden Auftrag; die Stufe selbst gilt aus der aktuellen Auswahl.
 
 **Kernalter.** Der Abbrand zu Rundenbeginn ist wählbar: frisch beladen,
 Zyklusmitte oder Zyklusende. Er senkt die Überschussreaktivität, aus der sich

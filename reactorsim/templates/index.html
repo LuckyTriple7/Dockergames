@@ -181,6 +181,14 @@
         </select>
       </label>
       <label class="rs-choice">
+        <span>{{ t.opt_repairs }}</span>
+        <select id="rs-repairs-level">
+          <option value="off">{{ t.opt_repairs_off }}</option>
+          <option value="normal">{{ t.opt_repairs_normal }}</option>
+          <option value="slow">{{ t.opt_repairs_slow }}</option>
+        </select>
+      </label>
+      <label class="rs-choice">
         <span>{{ t.opt_season }}</span>
         <select id="rs-season">
           <option value="spring">{{ t.opt_season_spring }}</option>
@@ -441,6 +449,17 @@
         <div class="rs-panel-body">
           <p class="rs-ctl-hint">{{ t.hint_annun }}</p>
           <div class="rs-annun" id="rs-annun"></div>
+          <!-- Instandhaltungstrupp: nur im freien Spiel mit Reparaturstufe
+               sichtbar (ui/repairs.js blendet ein). Ein Szenario bringt
+               seinen Zeitplan selbst mit, dort ist eine Stoerung Teil der
+               Aufgabe und nicht etwas, das man wegarbeitet. -->
+          <div class="rs-group" id="rs-repairs" hidden>
+            <button type="button" class="rs-btn rs-btn-ghost rs-btn-sm" id="rs-repair-help">{{ t.repair_title }}</button>
+            <p class="rs-tutorial-hint" id="rs-repair-current" role="status"></p>
+            <div id="rs-repair-list"></div>
+            <p class="rs-ctl-hint" id="rs-repair-hint"></p>
+            <button type="button" class="rs-btn rs-btn-sm" id="rs-repair-cancel" hidden>{{ t.btn_repair_cancel }}</button>
+          </div>
           <div class="rs-group rs-group-grow">
             <h3>{{ t.panel_alarms_log }}</h3>
             <ol class="rs-log" id="rs-log"></ol>

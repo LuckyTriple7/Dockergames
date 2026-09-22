@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.6.18
+
+- 🔧 **Ein Instandhaltungstrupp arbeitet Stoerungen ab, statt sie
+  liegen zu lassen.** Bis hierher war jede Zufallsstoerung im freien Spiel
+  endgueltig: `stepEvents()` (`game/events.js`) schreibt ihre Wirkung in
+  jedem Rechenschritt neu, und keine Stelle im Programm hat je einen ihrer
+  Merker wieder geloescht -- ein klemmender Pumpenschalter blieb geklemmt,
+  bis die Runde endete. Auf der Stufe "hart" (alle 10 bis 20 Minuten eine
+  Stoerung) sammelte eine lange Schicht damit Defekte an, ohne dass je einer
+  verschwand. Das war nicht schwer, sondern zermuerbend. Neu sind
+  `game/repairs.js` und `ui/repairs.js` plus eine eigene Stufe im
+  Startbildschirm (aus / normal / langsam, Vorgabe normal).
+
+- 🔌 **Der Trupp gibt das Stellteil frei, er bedient es nicht.** Nach
+  der Reparatur ist `ctx.pumpsStuck`/`ctx.msivStuck`/`ctx.boronRunaway`
+  geloescht -- anwerfen oder oeffnen muss der Bediener selbst. Das ist keine
+  Kleinigkeit, sondern der Punkt: solange der Merker steht, wirft
+  `stepEvents()` die Pumpe in JEDEM Takt erneut aus, und ein Klick auf den
+  Einschaltknopf war innerhalb eines Rechenschritts wieder ueberschrieben.
+
+- 🧭 **Die Tabelle haengt am Anlagenzustand, nicht am Ereignis.** Der
+  naheliegende Aufbau waere gewesen, jeder Stoerung in `events.js` neben
+  `apply()` ein `clear()` zu geben. Das waere falsch herum: `recircPumpStuck`
+  setzt sowohl `rcp_trip` (Motorschutz hat ausgeloest, der Elektriker stellt
+  ihn zurueck) als auch `station_blackout` (kein Motorstrom, da gibt es
+  nichts zurueckzustellen). Ein `clear()` an `rcp_trip` haette im zweiten
+  Fall eine Pumpe freigegeben, die gar keinen Strom hat. Jetzt steht die
+  Voraussetzung an der ARBEIT, wird bei der Vergabe geprueft und waehrend der
+  Arbeit erneut -- faellt sie weg, bricht der Trupp ab.
+
+- ⏱ **Vier Arbeiten, und mehr absichtlich nicht.** Motorschutz am
+  Pumpenabgang 12 min (SWR-Umwaelzpumpe 15 min), Zuspeisung absperren bei
+  unkontrollierter Bor-Verduennung 6 min, Antrieb der Frischdampf-Absperrung
+  40 min. Die Dauer ist Simulationszeit: im Zeitraffer vergeht sie schnell,
+  bei 1x dauert sie wirklich so lange -- und wer gerade eine Transiente
+  faehrt, kann den Zeitraffer nicht hochdrehen. Ein klemmender Steuerstab
+  sitzt im Kern, ein Dampferzeuger-Rohrleck und ein klemmendes Abblaseventil
+  sind nur ueber das Abfahren der Anlage zu erreichen; diese drei bleiben
+  fuer den Rest der Schicht. Der Trupp nimmt der Schicht die Aufschaukelung,
+  nicht die Folgen.
+
+- 👥 **Es gibt genau einen Trupp.** Stehen zwei Stoerungen an, ist zu
+  entscheiden, welche zuerst drankommt -- das ist der Inhalt der Mechanik,
+  nicht eine fehlende Ausbaustufe. "Trupp zurueckrufen" bricht die laufende
+  Arbeit ab; der Fortschritt ist damit verloren. Jeder Vorgang steht in der
+  Zeitleiste, mit der Arbeit als Schluessel und dem Vorgang als `kind` --
+  dieselbe Mechanik, mit der eine Meldung ihr "an"/"aus" bekommt.
+
+- 💾 **Der laufende Auftrag ueberlebt das Speichern**
+  (`Session.snapshot()`), die gewaehlte Stufe kommt dabei NICHT aus dem
+  Spielstand zurueck: sie wurde beim Start dieser Runde gewaehlt, gleiche
+  Regel wie bei Stoerungen und Netzauftraegen. Ein unschluessiger Auftrag aus
+  einem fremden Stand wird verworfen statt geglaubt -- er loescht am Ende
+  einen Stoerungsmerker.
+
 ## 0.6.17
 
 - 🔧 **Der Kernzerstoerungs-Klang kommt jetzt bei der Zerstoerung, nicht beim

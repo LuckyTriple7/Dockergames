@@ -101,7 +101,7 @@ function harness(readSave = async () => ({ ok: false })) {
     },
     setSpeed(v) { app.loop.setSpeed(v); },
     loadScores() {}, renderLearning() {}, buildTutorial() {}, renderTutorialResult() {}, renderObjectiveResult() {},
-    buildDispatch() {},
+    buildDispatch() {}, buildRepairs() {},
     closeSaveSlots() {}, resetSaveStatus() {},
     renderGuidance(host, def) { host.hidden = !def?.guidance; },
     // Debug-Protokoll (main.js finishDebugTape): die echte Sammelklasse, aber

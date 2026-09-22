@@ -34,11 +34,13 @@ Bild steht (`net/monitorFrame.js`, `net/monitorLink.js`,
   Leitstand ein reines Lesetoken, zehn Minuten gueltig, nur fuer DIESEN
   Lauf. Das ist ein zweiter Zugangsweg neben der Sitzung -- ein eigener
   Baustein, keine Zugabe.
-- **Anfahren-Tutorial und Netzauftrag fehlen auf dem Monitor.**
-  `buildTutorial()` und `buildDispatch()` brauchen eine `Session`, und die
-  gibt es auf einem Schirm ohne Engine-Takt nicht. Ihr Zustand steckt heute
-  nicht im Bild; ihn mitzuschicken hiesse, `Session.snapshot()` dafuer zu
-  oeffnen.
+- **Anfahren-Tutorial, Netzauftrag und Instandhaltung fehlen auf dem
+  Monitor.** `buildTutorial()`, `buildDispatch()` und seit 0.6.18 auch
+  `buildRepairs()` brauchen eine `Session`, und die gibt es auf einem Schirm
+  ohne Engine-Takt nicht. Beim Trupp kommt dazu, dass seine Anzeige Knoepfe
+  traegt -- ein mitlesender Zweitschirm duerfte sie ohnehin nicht bedienen.
+  Ihr Zustand steckt heute nicht im Bild; ihn mitzuschicken hiesse,
+  `Session.snapshot()` dafuer zu oeffnen.
 - **Die Trendkurve beginnt beim Zuschalten**, nicht beim Schichtbeginn. Die
   Historie kommt bewusst nicht ueber die Leitung (bis 28.800 Abtastungen).
   Ein einmaliger Erstabgleich beim Verbinden waere moeglich, braucht aber
@@ -48,6 +50,36 @@ Bild steht (`net/monitorFrame.js`, `net/monitorLink.js`,
   Wer auf zwei Geraeten gleichzeitig spielt, ueberschreibt sich selbst; der
   Monitor zeigt dann abwechselnd beide. Ein Schluessel je Lauf statt je
   Konto waere die Loesung, kostet aber eine Wahl auf dem Monitor.
+
+### Entstoerung -- was noch offen ist
+
+Umgesetzt in 0.6.18: ein Instandhaltungstrupp im freien Spiel
+(`game/repairs.js`, `ui/repairs.js`, Stufe im Startbildschirm). Vier Arbeiten,
+am Anlagenzustand festgemacht statt am ausloesenden Ereignis -- Begruendung
+im Kopfkommentar des Moduls. Offen bleibt:
+
+- **Die drei bleibenden Stoerungen bleiben absichtlich.** Klemmender
+  Steuerstab (`ctx.stuckRods`), Dampferzeuger-Rohrleck (`ctx.sgLeak`) und
+  klemmendes Abblaseventil (`ctx.porvStuck`) sind im laufenden Betrieb nicht
+  erreichbar. Ein ehrlicher Weg dorthin waere kein Reparaturauftrag, sondern
+  ein Abfahren mit Nachwaermeabfuhr und Wiederanfahren -- ein eigener
+  Baustein, kein Zusatz zu diesem.
+- **Der Notstromfall hat keinen Weg zurueck.** `s.acPower`/`s.dcPower` werden
+  heute nur beim Anlagenaufbau wieder true (`bwr.js`). Netzwiederkehr oder
+  Diesel waeren ein eigener Zustand mit eigener Bedienung, nicht die Arbeit
+  eines Trupps -- die Reparatur sperrt sich ja gerade an fehlendem Motorstrom.
+- **Ein zweiter Trupp ist nicht vorgesehen.** Die Klasse haelt genau einen
+  Auftrag (`this.job`). Mehrere waeren ein anderes Spiel: das Entscheiden,
+  was zuerst drankommt, ist der Inhalt dieser Mechanik.
+- **Der Schichtbericht zaehlt die Reparaturen nicht mit.** `RunState` hat
+  dafuer keinen Zaehler; `Repairs.done` steht nur in der Sitzung und im
+  Spielstand. Der Bericht haette sonst eine dritte und vierte Textfassung
+  gebraucht (mit/ohne Auftraege x mit/ohne Trupp), und jede Schicht ohne
+  Stoerung laese eine Zahl, die immer null ist.
+- **Die Dauern sind gesetzt**, nicht hergeleitet: zwoelf Minuten fuer einen
+  Motorschutz, vierzig fuer einen Armaturenantrieb draussen. Sie sind so
+  gewaehlt, dass eine Reparatur bei 1x spuerbar lange dauert und im
+  Zeitraffer nicht stoert.
 
 ### Simulation in einen Web Worker
 

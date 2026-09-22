@@ -13,6 +13,7 @@ import { FAULT_LEVEL_IDS } from './game/freeEvents.js';
 import { CORE_AGE_IDS, coreAgeBurnup } from './game/coreAge.js';
 import { SEASON_IDS, DEFAULT_SEASON, seasonCoolingWater } from './game/season.js';
 import { DISPATCH_LEVEL_IDS } from './game/dispatch.js';
+import { REPAIR_LEVEL_IDS } from './game/repairs.js';
 import { gridDeviationTrips } from './game/scenario.js';
 import { api } from './net/api.js';
 import { pack as packSave, apply as applySave } from './net/persist.js';
@@ -35,6 +36,7 @@ import { buildTutorial, renderTutorialResult } from './ui/tutorial.js';
 import { renderGuidance } from './ui/guidance.js';
 import { renderObjectiveResult } from './ui/objectives.js';
 import { buildDispatch } from './ui/dispatch.js';
+import { buildRepairs } from './ui/repairs.js';
 
 // Panel-Buchstaben fuer die Fenster-Tastenkuerzel (siehe initControls():
 // Tastatur am Rechner). Ungewandeltes Zeichen statt Kachel-Position, damit
@@ -153,11 +155,13 @@ function readFreeSetup() {
   const coreAge = $('#rs-core-age');
   const season = $('#rs-season');
   const dispatch = $('#rs-dispatch-level');
+  const repairs = $('#rs-repairs-level');
   return {
     faults: faults && FAULT_LEVEL_IDS.includes(faults.value) ? faults.value : 'off',
     coreAge: coreAge && CORE_AGE_IDS.includes(coreAge.value) ? coreAge.value : 'fresh',
     season: season && SEASON_IDS.includes(season.value) ? season.value : DEFAULT_SEASON,
     dispatch: dispatch && DISPATCH_LEVEL_IDS.includes(dispatch.value) ? dispatch.value : 'off',
+    repairs: repairs && REPAIR_LEVEL_IDS.includes(repairs.value) ? repairs.value : 'off',
   };
 }
 
@@ -244,6 +248,11 @@ function initStart() {
   // sinnvoll -- und wer die Stoerungen abschaltet, will nicht stillschweigend
   // auch die Auftraege verlieren.
   wireChoice($('#rs-dispatch-level'), 'dispatch', DISPATCH_LEVEL_IDS, 'normal');
+  // Instandhaltungstrupp: ebenfalls eigenes Feld, aus demselben Grund. Vorgabe
+  // ist 'normal' -- bis 0.6.17 war jede Stoerung endgueltig, und auf der Stufe
+  // "hart" sammelte eine lange Schicht damit Defekte an, ohne dass je einer
+  // verschwand. Wer genau das will, stellt hier 'aus' ein.
+  wireChoice($('#rs-repairs-level'), 'repairs', REPAIR_LEVEL_IDS, 'normal');
 
   for (const card of cards) {
     const id = card.dataset.reactor;
@@ -2255,6 +2264,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
   app.session = new Session(app.engine, scenarioDef, {
     faults: freeSetup ? freeSetup.faults : 'off',
     dispatch: freeSetup ? freeSetup.dispatch : 'off',
+    repairs: freeSetup ? freeSetup.repairs : 'off',
   });
   app.session.onEnd = (result, failed) => showDebrief(result, failed);
   // Akustische Vorwarnung, 2-5 Minuten vor einem geplanten Ereignis -- nur
@@ -2292,6 +2302,7 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
     app.prefs.helper !== false && scenarioDef?.guidance?.auto_helper !== false);
   buildTutorial(app.session, app.render);
   buildDispatch(app.session, app.render, built.showHelp);
+  buildRepairs(app.session, app.render, built.showHelp);
   app.horn = built.horn;
   // Je Runde neu: die Flanken sollen im naechsten Lauf wieder feuern.
   app.endSounds = createEndSounds(built.horn);
