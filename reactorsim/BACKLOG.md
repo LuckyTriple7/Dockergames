@@ -3,6 +3,63 @@
 Offene, bewusst zurückgestellte Punkte -- kein Anspruch auf Vollständigkeit,
 nur was beim Arbeiten aufgefallen ist und noch nicht dran war.
 
+## Bekannte Modellfehler
+
+### SWR: der Betriebspunkt unter 48 % Umwaelzstrom haengt nicht am Durchsatz
+
+Gefunden beim Nachziehen der Blasenkorrektur aus 0.6.28 auf den SWR.
+`_void()` in `plants/bwr.js` bildet `fBoil` -- den siedenden Anteil des
+Kanals -- aus der momentanen Spaltleistung `s.P_th`, waehrend der Dampfgehalt
+`s.x_e` in `coreCoolant()` aus der tatsaechlich uebergebenen Waerme kommt.
+Dieselbe Inkonsistenz wie beim RBMK, nur mit umgekehrtem Vorzeichen des
+Blasenkoeffizienten.
+
+Gemessen, Staebe unangetastet, 1800 s beruhigt, Dichtewellen-Schwinger
+stillgelegt (`sp.stability.drSlope = 0`), Mittel ueber 600 s:
+
+| Umwaelzstrom | n |
+|---|---|
+| 56 % | 72,1 % |
+| 52 % | 69,3 % |
+| 50 % | 67,8 % |
+| 48 % | **117,7 %** |
+| 44 % | **129,7 %** |
+| 40 % | **129,9 %** |
+| 35 % | **129,9 %** |
+| 30 % | **127,4 %** |
+
+Unterhalb von 48 % steht die Leistung auf einer flachen, vom Durchsatz
+unabhaengigen Branche bei rund 130 % -- das Regelorgan dieses Reaktortyps
+wirkt dort gar nicht mehr, und Durchsatz WEGnehmen erhoeht die Leistung.
+Daran haengt auch `tests/test-bwr.mjs`, "Instabilitaetszone": der Test
+erreicht die Instabilitaetsecke nur, weil die Anlage bei 45 % Durchsatz schon
+von selbst auf 130 % steht und damit `S = n/Fluss` ueber `sp.stability
+.sThreshold` hebt. Er besteht also wegen des Fehlers.
+
+Die naheliegende Korrektur -- `_void()` dieselbe Waerme nehmen lassen wie
+`s.x_e`, genau wie in 0.6.28 beim RBMK -- wurde gemessen und wieder
+verworfen. Sie raeumt die Branche weg und liefert eine saubere monotone
+Kennlinie bis 30 % Durchsatz (66,2 / 64,2 / 60,6 / 58,2 / 54,7 / 49,5 % bei
+46/44/42/40/38/35 % Fluss), und der Nennbetrieb bleibt unveraendert
+(n 1,000134 -> 0,999454, Blasenanteil 0,37887 -> 0,37891, Umwaelzstrom
+100 -> 80 % weiterhin -10,9 %). ABER: zwischen 45 und 50 % Durchsatz kippt
+die Anlage danach bei der kleinsten Stoerung in einen Grenzzyklus von 19 %
+bis ueber 2000 % Leistung, und der Mittelwert haengt dann nicht mehr an den
+Staeben. Ein Fehler gegen einen anderen getauscht.
+
+Der Blasenkollaps-Term (`sp.vessel.voidCollapse`) ist es nicht -- auf null
+gesetzt schwingt es genauso (17 ... 1686 %). Die Ursache ist noch nicht
+gefunden. Zu klaeren waere, welcher Pfad bei kleinem Durchsatz die hohe
+Schleifenverstaerkung liefert; Verdaechtige sind `averageVoid()` ueber
+`fBoil` nahe eins, die Unterkuehlung `_subcooling()` bei kleinem Kernstrom
+und `ctx.voidLag` gegen `fuel.tau = 6 s`.
+
+Zu beachten, wenn das angegangen wird: die Dichtewelleninstabilitaet dieses
+Typs ist ein SEPARATER empirischer Schwinger (`s.osc`, `ctx.decayRatio` in
+`stepLoop()`), kein Ergebnis der Blasenrueckkopplung. Eine physikalisch
+richtige Rueckkopplung bei kleinem Durchsatz wuerde sie teilweise doppelt
+zaehlen -- `sp.stability` gehoert dann mit auf den Tisch.
+
 ## Erweiterungen
 
 ### Wiedergabe eines Laufs mit Bild
