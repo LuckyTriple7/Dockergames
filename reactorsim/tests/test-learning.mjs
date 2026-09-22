@@ -62,6 +62,14 @@ test('BWR feedback loss hides actual IC position; diesel request does not promis
   assert.equal(diagnosticData(e).find(r => r.kind === 'measurement').available, true);
 });
 
+test('a boiled-out reference leg is reported as unreliable, not as available', () => {
+  const e = engine('bwr');
+  assert.equal(diagnosticData(e).find(r => r.kind === 'measurement').biased, false);
+  e.state.refLegFill = 0.2;
+  assert.equal(diagnosticData(e).find(r => r.kind === 'measurement').biased, true);
+  assert.match(content(buildDiagnostics(e).node), /Referenzschenkel/);
+});
+
 test('journal survives restore without replay recorder and does not repeat acknowledged alarms', () => {
   const e = engine();
   observeAlarms(e, [alarm]);

@@ -176,6 +176,26 @@ export const spec = {
   // Reihenfolge, die die Hilfe beschreibt: erst abschalten, dann venten.
   containment: { p0: 1.05, capacity: 520000, designLimit: 4.3, ventCv: 60 },
 
+  // Referenzschenkel der Fuellstandsmessung. Die Messung vergleicht den
+  // Druck einer stehenden Wassersaeule (Referenzschenkel, oben mit einem
+  // Kondensationsgefaess) mit dem Druck im Behaelter. Kocht diese Saeule
+  // weg, faellt der Vergleichsdruck -- und das Geraet meldet MEHR Wasser,
+  // als da ist. Sie kocht genau dann, wenn der Sicherheitsbehaelter heisser
+  // ist als die Saettigung zum Reaktordruck; der Schenkel haengt am
+  // Behaelterdruck, steht aber in der Behaelteratmosphaere. Im Normalbetrieb
+  // (70 bar im Dom, rund 1 bar im Sicherheitsbehaelter) kann das nicht
+  // passieren -- erst wenn der Reaktor abgesenkt und der Behaelter aufgeheizt
+  // ist, kehrt sich das Verhaeltnis um. Genau diese Lage hatte Fukushima-1:
+  // die Anzeige stand ueber der Kernoberkante, waehrend der Kern frei lag.
+  //
+  // dTmin ist der Abstand, ab dem ueberhaupt etwas passiert -- ohne ihn
+  // trocknete der Schenkel auch beim Kaltstart langsam aus, wo Dom und
+  // Sicherheitsbehaelter beide knapp ueber Umgebungsdruck stehen und die
+  // Rechnung ein Grad Unterschied findet. dTfull ist die Differenz, bei der
+  // dryoutS voll wirkt; darunter trocknet er entsprechend langsamer. biasMax
+  // ist der Fehler bei ganz leerem Schenkel, in Anteilen der Skala.
+  refLeg: { dryoutS: 1200, refillS: 2400, dTmin: 10, dTfull: 30, biasMax: 0.5 },
+
   // Wasserstoff aus der Zirkon-Wasser-Reaktion. Setzt oberhalb von 1200 °C
   // Hüllrohrtemperatur ein, lange bevor der Brennstoff selbst schmilzt --
   // historisch genau der Punkt, an dem Fukushima-1 die Hülle verlor, ohne
@@ -319,6 +339,9 @@ export const hooks = {
     s.pCont = sp.containment.p0;
     s.contVentOpen = false;
     s.contFailed = false;
+
+    // Fuellstand der Referenzsaeule (1 = voll). Siehe spec.refLeg.
+    s.refLegFill = 1;
 
     // Wasserstoff aus der Hüllrohrreaktion, in kg (grobe Näherung).
     s.h2Mass = 0;
@@ -607,6 +630,18 @@ export const hooks = {
     }
     if (s.contFailed) s.contMass = Math.max(0, s.contMass - sp.containment.ventCv * 2 * dt);
 
+    // ── Referenzschenkel der Fuellstandsmessung ─────────────────────────────
+    // Behaelteratmosphaere heisser als die Saettigung zum Reaktordruck: die
+    // Wassersaeule der Messung siedet aus. Umgekehrt fuellt das Kondensations-
+    // gefaess sie von selbst wieder auf. Der Fehler wirkt nur auf die ANZEIGE
+    // (siehe derived()), nicht auf s.L_rpv -- die Meldung "Fuellstand niedrig"
+    // kommt weiterhin am echten Stand, sonst haette der Spieler bei leerem
+    // Schenkel ueberhaupt keinen Hinweis mehr.
+    const dTleg = tsat(s.pCont) - tsat(Math.max(s.p_dome, 0.05)) - sp.refLeg.dTmin;
+    s.refLegFill = dTleg > 0
+      ? Math.max(0, s.refLegFill - (dTleg / sp.refLeg.dTfull) * (dt / sp.refLeg.dryoutS))
+      : Math.min(1, s.refLegFill + dt / sp.refLeg.refillS);
+
     // ── Wasserstoff ─────────────────────────────────────────────────────────
     // Simplified bounded oxidation source and two gas compartments. The
     // inert containment is not the oxygen-containing reactor building.
@@ -774,12 +809,19 @@ export const hooks = {
   },
 
   derived(s, sp, ctx, base) {
-    // Fuellstandsanzeige braucht wie der Notkondensator Gleichstrom (Referenz-
-    // leg-Messung) -- ohne ihn friert sie auf dem letzten echten Wert ein,
-    // waehrend der Kern in Wirklichkeit weiter leerlaeuft. Genau das hat 2011
-    // dazu gefuehrt, dass die Warte den Fuellstand fuer laenger stabil hielt,
-    // als er es war.
-    ctx.displayLevel = s.dcPower ? s.L_rpv : (ctx.displayLevel ?? s.L_rpv);
+    // Fuellstandsanzeige braucht wie der Notkondensator Gleichstrom -- ohne
+    // ihn friert sie auf dem letzten Wert ein, waehrend der Kern in
+    // Wirklichkeit weiter leerlaeuft. Genau das hat 2011 dazu gefuehrt, dass
+    // die Warte den Fuellstand fuer laenger stabil hielt, als er es war.
+    //
+    // Der zweite Fehler ist der gemeinere und der historisch entscheidende:
+    // ein ausgekochter Referenzschenkel (s.refLegFill, siehe stepLoop) laesst
+    // die Anzeige ZU HOCH lesen. In Fukushima-1 stand sie damit ueber der
+    // Kernoberkante, waehrend der Kern schon frei lag -- die Warte sah keinen
+    // Grund einzuspeisen. Der Fehler steht additiv auf dem echten Stand und
+    // wird eingefroren wie der Wert selbst, sobald der Gleichstrom fehlt.
+    const indicated = clamp(s.L_rpv + sp.refLeg.biasMax * (1 - s.refLegFill), 0, 1);
+    ctx.displayLevel = s.dcPower ? indicated : (ctx.displayLevel ?? indicated);
     return {
       p_sg: s.p_dome,
       L_sg: ctx.displayLevel,

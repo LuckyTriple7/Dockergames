@@ -19,7 +19,13 @@ export function diagnosticData(engine) {
   if (spec.id === 'bwr') {
     rows.push({ label: 'ctl_ic', kind: 'switch', requested: !!s.icDemand,
       actual: s.dcPower ? !!s.icOpen : null });
-    rows.push({ label: 'val_sg_level', kind: 'measurement', available: s.dcPower });
+    // Zwei verschiedene Fehler derselben Messung: ohne Gleichstrom zeigt das
+    // Instrument gar nichts Aktuelles mehr, mit ausgekochtem Referenzschenkel
+    // zeigt es zu viel Wasser (siehe plants/bwr.js, spec.refLeg). Der zweite
+    // Fall ist der gefaehrlichere, weil die Anzeige dabei voellig normal
+    // aussieht -- hier steht er deshalb ausdruecklich.
+    rows.push({ label: 'val_sg_level', kind: 'measurement', available: s.dcPower,
+      biased: s.refLegFill !== undefined && s.refLegFill < 0.97 });
     rows.push({ label: 'ctl_fire_inj', kind: 'injection', requested: s.fireInjOn,
       flow: s.acPower ? 0 : s.W_fw });
   }
@@ -34,7 +40,10 @@ export function diagnosticText(r) {
   if (r.kind === 'valve') return t('diag_valve', { request: num(r.requested, 0), actual: num(r.actual, 0) });
   if (r.kind === 'switch') return t('diag_switch', { request: on(r.requested),
     actual: r.actual === null ? t('diag_unavailable') : t(r.actual ? 'state_open' : 'state_closed') });
-  if (r.kind === 'measurement') return t(r.available ? 'diag_available' : 'diag_frozen');
+  if (r.kind === 'measurement') {
+    if (!r.available) return t('diag_frozen');
+    return t(r.biased ? 'diag_level_biased' : 'diag_available');
+  }
   if (r.kind === 'injection') return t('diag_injection', { request: on(r.requested), flow: flow(r.flow) });
   return flow(r.flow);
 }

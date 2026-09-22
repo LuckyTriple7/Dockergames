@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.6.20
+
+- 📉 **Die Fuellstandsanzeige des Siedewasserreaktors kann zu hoch
+  lesen.** Sie vergleicht den Druck einer stehenden Wassersaeule
+  (Referenzschenkel) mit dem Behaelterdruck. Ist der Sicherheitsbehaelter
+  heisser als die Saettigung zum Reaktordruck, kocht diese Saeule aus, der
+  Vergleichsdruck faellt -- und das Geraet meldet MEHR Wasser, als da ist.
+  `spec.refLeg` in `plants/bwr.js` fuehrt den Fuellstand der Saeule mit
+  (`s.refLegFill`), `derived()` legt den Fehler additiv auf den angezeigten
+  Wert. Im Normalbetrieb (70 bar im Dom gegen 1 bar im Behaelter) passiert
+  nichts; erst der abgesenkte Reaktor bei aufgeheiztem Behaelter kehrt das
+  Verhaeltnis um. Genau diese Lage hatte Fukushima-1: die Anzeige stand ueber
+  der Kernoberkante, waehrend der Kern frei lag.
+
+- 🔎 **Die Diagnose sagt es, das Instrument nicht.** Bisher kannte die
+  Zeile "Fuellstand" nur zwei Zustaende: Messung verfuegbar oder (ohne
+  Gleichstrom) eingefroren. Der ausgekochte Referenzschenkel ist der
+  gefaehrlichere dritte, weil das Instrument dabei voellig normal aussieht --
+  er steht jetzt als eigener Text unter den Bedienelementen. Die Meldung
+  "Fuellstand tief" arbeitet weiter am echten Stand: ohne sie haette der
+  Spieler bei leerem Schenkel gar keinen Hinweis mehr.
+
+- ✏️ **Szenarientext und Hilfe nennen den Fehler beim Namen.** Der
+  Auftrag zum Station-Blackout warnt jetzt davor, der Anzeige nach der
+  Druckabsenkung blind zu trauen, und die Hilfe zum Fuellstand fuehrt den zu
+  hohen Wert als eigene Ursache auf.
+
 ## 0.6.19
 
 - 🧹 **Die Einstellungen fuers freie Spiel zeigen sich nur noch dort.**

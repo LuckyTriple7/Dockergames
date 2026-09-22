@@ -189,6 +189,42 @@ test('six-hour blackout scenario remains survivable with restored IC and managed
   assert.ok(s.icWater > 0);
 });
 
+test('a boiled-out reference leg makes the level gauge read high, never low', () => {
+  const e = createEngine(bwr), s = e.state;
+  assert.equal(s.refLegFill, 1);
+  assert.equal(e.derive().L_sg, s.L_rpv, 'intact leg shows the true level');
+  s.refLegFill = 0;
+  assert.ok(e.derive().L_sg > s.L_rpv + 0.4, 'dry leg reads high');
+  // Der Fehler gehoert der Anzeige, nicht dem Behaelter: die Meldung
+  // "Fuellstand niedrig" arbeitet weiter am echten Stand.
+  assert.ok(bwr.spec.trips.find(t => t.id === 'level_low').test(s, e.derive()) === (s.L_rpv < 0.25));
+});
+
+test('reference leg only boils out when the containment is hotter than the reactor', () => {
+  const e = createEngine(bwr), s = e.state;
+  // Normalbetrieb: 70 bar im Dom gegen 1 bar im Behaelter -- nichts kocht.
+  for (let i = 0; i < 600; i++) e.step(0.05);
+  assert.equal(s.refLegFill, 1);
+  // Reaktor abgesenkt, Behaelter aufgeheizt: jetzt kocht die Saeule aus.
+  // Beide Druecke werden vor jedem Schritt gehalten -- geprueft wird die
+  // Regel selbst, nicht wie lange der Reaktor bis dorthin braucht.
+  e.scram('test');
+  s.msiv = 0;
+  const hold = (pDome, contFrac, steps) => {
+    for (let i = 0; i < steps; i++) {
+      s.p_dome = pDome;
+      s.contMass = contFrac * bwr.spec.containment.capacity;
+      e.step(0.05);
+    }
+  };
+  hold(1.2, 0.75, 24000);
+  assert.ok(s.refLegFill < 0.5, `leg ${s.refLegFill}`);
+  // Kuehlt der Behaelter ab, fuellt das Kondensationsgefaess sie wieder auf.
+  const dry = s.refLegFill;
+  hold(1.2, 0, 12000);
+  assert.ok(s.refLegFill > dry + 0.05, `refill ${s.refLegFill}`);
+});
+
 test('blackout without restored cooling has a physical failure consequence', async () => {
   const def = JSON.parse(await readFile(new URL('../static/data/scenarios/bwr_fukushima.json', import.meta.url), 'utf8'));
   const e = createEngine(bwr, { seed: def.seed });
