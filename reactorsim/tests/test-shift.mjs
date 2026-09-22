@@ -11,14 +11,15 @@ import assert from 'node:assert/strict';
 import { createEngine } from '../static/js/sim/engine.js';
 import { getPlant } from '../static/js/plants/index.js';
 import { Session } from '../static/js/game/session.js';
+import { getEvent } from '../static/js/game/events.js';
 import { ShiftLog, SHIFT_SECONDS } from '../static/js/game/shift.js';
 import { pack, apply } from '../static/js/net/persist.js';
 
 /** Freie Runde ohne Stoerungen -- die Bilanz soll hier gemessen werden, nicht
  *  der Zufall. */
-function freeSession(reactor = 'pwr') {
+function freeSession(reactor = 'pwr', opts = {}) {
   const engine = createEngine(getPlant(reactor), { n: 1.0 });
-  const session = new Session(engine, null, { faults: 'off', faultSeed: 1 });
+  const session = new Session(engine, null, { faults: 'off', faultSeed: 1, ...opts });
   session.start();
   const reports = [];
   session.onShift = (r) => reports.push(r);
@@ -37,6 +38,14 @@ function advance(engine, session, seconds, { step = 60, tiles = [] } = {}) {
 }
 
 const ALARM = [{ id: 'test', tile: 'new', key: 'alarm_test', severity: 2 }];
+
+/** Eine Pumpe ausfallen lassen und den Trupp sie fertig zuruecksetzen lassen.
+ *  Ohne Physik, wie advance(): der Trupp liest nur die Simulationszeit. */
+function repairOnePump(engine, session, loop = 0) {
+  getEvent('rcp_trip').apply(engine, { loop });
+  assert.equal(session.repairs.order(`pump:${loop}`), 'ordered');
+  advance(engine, session, 13 * 60, { step: 30 });
+}
 
 test('Freies Spiel sammelt Kennzahlen -- vor 0.6.7 gab es dort gar keine', () => {
   const { engine, session } = freeSession();
@@ -146,4 +155,87 @@ test('ShiftLog nimmt keinen kaputten Stand an', () => {
   // Und eine Zeit, die keine ist, dreht die Schleife nicht.
   log.step(NaN);
   assert.equal(log.count, 0);
+});
+
+test('Eine Schicht ohne fertige Reparatur bekommt gar keine zweite Zeile', () => {
+  // Nicht "Instandhaltung 0": wer ohne Trupp oder ohne Stoerung spielt, soll
+  // nicht jede Schicht dieselbe Null lesen muessen.
+  const { engine, session, reports } = freeSession('pwr', { repairs: 'normal' });
+  advance(engine, session, SHIFT_SECONDS + 600);
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0].repairs_done, 0);
+  assert.equal(ShiftLog.repairLogEntry(reports[0]), null);
+  assert.equal(engine.ctx.log.filter((e) => e.key === 'log_shift_repairs').length, 0);
+});
+
+test('Fertige Arbeiten stehen als eigene Zeile im Bericht -- und nur in ihrer Schicht', () => {
+  const { engine, session, reports } = freeSession('pwr', { repairs: 'normal' });
+  repairOnePump(engine, session, 0);
+  assert.equal(session.repairs.done, 1);
+  advance(engine, session, SHIFT_SECONDS);
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0].repairs_done, 1);
+  const line = engine.ctx.log.find((e) => e.key === 'log_shift_repairs');
+  assert.ok(line, 'keine Reparaturzeile');
+  assert.deepEqual(line.params, { n: 1, done: 1 });
+  // Beide Zeilen tragen denselben Zeitpunkt, sonst reisst die Zeitleiste sie
+  // auseinander.
+  const report = engine.ctx.log.find((e) => e.key === 'log_shift_report');
+  assert.equal(line.t, report.t);
+
+  // Zweite Schicht ohne Arbeit: ein Zuwachs von null, und keine zweite Zeile.
+  advance(engine, session, SHIFT_SECONDS);
+  assert.equal(reports.length, 2);
+  assert.equal(reports[1].repairs_done, 0);
+  assert.equal(engine.ctx.log.filter((e) => e.key === 'log_shift_repairs').length, 1);
+});
+
+test('Ein Stand ohne Reparatur-Bezugslinie schreibt der naechsten Schicht nichts gut', () => {
+  // Staende von vor 0.6.21 kennen base.repairs nicht. Stuende die Bezugslinie
+  // dann auf null, zaehlte die erste Schicht nach dem Laden alles mit, was
+  // vor dem Speichern schon fertig war.
+  const { engine, session } = freeSession('pwr', { repairs: 'normal' });
+  repairOnePump(engine, session, 0);
+  repairOnePump(engine, session, 1);
+  advance(engine, session, 3600);
+  const blob = JSON.parse(JSON.stringify(pack(engine, null, session.run, session)));
+  // Nur die Bezugslinie faellt weg, nicht der Zaehler des Trupps: genau so
+  // sieht ein Stand aus, der vor dieser Groesse geschrieben wurde.
+  assert.ok(Object.hasOwn(blob.session.shift.base, 'repairs'));
+  delete blob.session.shift.base.repairs;
+
+  const engine2 = createEngine(getPlant('pwr'), { n: 1.0 });
+  const session2 = new Session(engine2, null, { faults: 'off', faultSeed: 1, repairs: 'normal' });
+  session2.start();
+  const reports2 = [];
+  session2.onShift = (r) => reports2.push(r);
+  assert.equal(apply(blob, engine2, session2.run, session2), null);
+  assert.equal(session2.repairs.done, 2, 'Trupp-Zaehler nicht wiederhergestellt');
+
+  advance(engine2, session2, SHIFT_SECONDS);
+  assert.equal(reports2.length, 1);
+  assert.equal(reports2[0].repairs_done, 0);
+});
+
+test('Ein Stand MIT Bezugslinie behaelt die Reparaturen der laufenden Schicht', () => {
+  // Die Gegenprobe zum Stand ohne base.repairs: hier ist die Bezugslinie da
+  // (null, die Schicht laeuft ja noch), und die beiden fertigen Arbeiten
+  // gehoeren in den ersten Bericht nach dem Laden.
+  const { engine, session } = freeSession('pwr', { repairs: 'normal' });
+  repairOnePump(engine, session, 0);
+  repairOnePump(engine, session, 1);
+  advance(engine, session, 3600);
+  const blob = JSON.parse(JSON.stringify(pack(engine, null, session.run, session)));
+
+  const engine2 = createEngine(getPlant('pwr'), { n: 1.0 });
+  const session2 = new Session(engine2, null, { faults: 'off', faultSeed: 1, repairs: 'normal' });
+  session2.start();
+  const reports2 = [];
+  session2.onShift = (r) => reports2.push(r);
+  assert.equal(apply(blob, engine2, session2.run, session2), null);
+  assert.equal(session2.repairs.done, 2, 'Trupp-Zaehler nicht wiederhergestellt');
+
+  advance(engine2, session2, SHIFT_SECONDS);
+  assert.equal(reports2.length, 1);
+  assert.equal(reports2[0].repairs_done, 2);
 });

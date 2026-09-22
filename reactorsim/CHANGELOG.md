@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.6.21
+
+- ✨ **Der Schichtbericht zaehlt die Arbeiten des Instandhaltungstrupps
+  mit.** Bis 0.6.20 stand die Zahl nur im Spielstand (`Repairs.done`): wer
+  eine Nachtschicht lang Stoerungen abarbeiten liess, las alle acht Stunden
+  eine Bilanz, in der davon nichts vorkam. `ShiftLog` haelt jetzt einen
+  Verweis auf den Trupp und bilanziert dessen Zaehler wie jede andere
+  Groesse -- als Zuwachs dieser Schicht, nicht als Summe seit Rundenbeginn
+  (`game/shift.js`, `game/session.js`).
+
+- ✏️ **Als eigene Protokollzeile, nicht als weiterer Platzhalter.**
+  Die Zeile `log_shift_repairs` steht direkt hinter dem Bericht, mit
+  demselben Zeitpunkt, und nur dann, wenn in dieser Schicht ueberhaupt etwas
+  fertig geworden ist. Der Bericht selbst hat fuer die Netzauftraege schon
+  zwei Textfassungen; ein zweiter solcher Zweig haette vier gebraucht, je
+  eine fuer jede Kombination aus Auftraegen und Trupp. Getrennt bleibt es
+  bei zwei unabhaengigen Entscheidungen -- und eine stoerungsfreie Schicht
+  liest gar keine Zahl statt immer derselben Null.
+
+- 🐛 **Ein alter Spielstand schreibt der naechsten Schicht nichts
+  gut.** `ShiftLog.restore()` uebersprang bisher jede Groesse, die im Stand
+  fehlte, und liess ihre Bezugslinie auf der Null aus dem Rundenbau stehen.
+  Fuer die Reparaturen haette das geheissen: die erste Schicht nach dem
+  Laden meldet alles, was vor dem Speichern schon fertig war. Eine fehlende
+  Bezugslinie bekommt jetzt den JETZIGEN Wert -- das gilt fuer jede kuenftige
+  Groesse mit.
+
 ## 0.6.20
 
 - 📉 **Die Fuellstandsanzeige des Siedewasserreaktors kann zu hoch

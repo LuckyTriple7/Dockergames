@@ -25,9 +25,20 @@
 export const SHIFT_SECONDS = 8 * 3600;
 
 export class ShiftLog {
-  /** @param {object} run  RunState, dessen Kennzahlen bilanziert werden */
-  constructor(run) {
+  /**
+   * @param {object} run  RunState, dessen Kennzahlen bilanziert werden
+   * @param {?object} repairs  Repairs der Runde, oder null ohne Trupp (jedes
+   *   Szenario, und das freie Spiel auf Stufe "aus"). Als Verweis, nicht als
+   *   Zahl: der Trupp fuehrt seinen Zaehler bereits im Spielstand
+   *   (Repairs.done), und eine zweite Kopie in der RunState waere dieselbe
+   *   Groesse an zwei Stellen -- die eine davon frueher oder spaeter falsch.
+   *   Deshalb auch anders als bei den Netzauftraegen: die haben ausser dem
+   *   Bericht keinen eigenen Spielstand, an dem sie haengen koennten (siehe
+   *   ordersMet in game/scenario.js).
+   */
+  constructor(run, repairs = null) {
     this.run = run;
+    this.repairs = repairs;
     this.count = 0;
     this.nextAt = SHIFT_SECONDS;
     this.base = this._mark();
@@ -51,6 +62,7 @@ export class ShiftLog {
       scram: r.scramCount,
       ordersMet: r.ordersMet || 0,
       ordersFailed: r.ordersFailed || 0,
+      repairs: this.repairs ? this.repairs.done : 0,
     };
   }
 
@@ -80,6 +92,7 @@ export class ShiftLog {
         orders_met: now.ordersMet - this.base.ordersMet,
         orders_total: (now.ordersMet - this.base.ordersMet)
           + (now.ordersFailed - this.base.ordersFailed),
+        repairs_done: now.repairs - this.base.repairs,
       };
       this.base = now;
       this.last = report;
@@ -113,6 +126,28 @@ export class ShiftLog {
     return { t: report.t, key: 'log_shift_report', severity: 1, params };
   }
 
+  /**
+   * Zweite Zeile fuer den Instandhaltungstrupp, oder null, wenn er in dieser
+   * Schicht nichts fertig hatte.
+   *
+   * Eigene Zeile und nicht ein weiterer Platzhalter in logEntry(): die
+   * Auftraege haben dort schon zwei Textfassungen (mit und ohne), und ein
+   * zweiter solcher Zweig haette vier gebraucht, je einen Satz fuer jede
+   * Kombination aus Auftraegen und Trupp. Getrennt bleibt es bei zwei
+   * unabhaengigen Entscheidungen -- und wer ohne Trupp spielt oder eine
+   * stoerungsfreie Schicht hatte, liest gar keine Zahl statt immer derselben
+   * Null.
+   */
+  static repairLogEntry(report) {
+    if (!report.repairs_done) return null;
+    return {
+      t: report.t,
+      key: 'log_shift_repairs',
+      severity: 1,
+      params: { n: report.n, done: report.repairs_done },
+    };
+  }
+
   snapshot() {
     return { count: this.count, nextAt: this.nextAt, base: { ...this.base } };
   }
@@ -126,8 +161,14 @@ export class ShiftLog {
     // eingespielt hat, und ist deshalb null. Ohne diesen Zweig zaehlte die
     // erste Schicht nach dem Laden die gesamte bisherige Runde noch einmal.
     if (d.base && typeof d.base === 'object') {
+      // Was der Stand nicht kennt, bekommt den JETZIGEN Wert und nicht die
+      // Null aus dem Rundenbau: ein Stand von vor dieser Groesse (die
+      // Reparaturen, seit 0.6.21) hat zu ihr keine Bezugslinie, und eine
+      // Bezugslinie bei null schriebe der ersten Schicht nach dem Laden alles
+      // gut, was vor dem Speichern schon fertig war.
+      const now = this._mark();
       for (const k of Object.keys(this.base)) {
-        if (Number.isFinite(d.base[k])) this.base[k] = d.base[k];
+        this.base[k] = Number.isFinite(d.base[k]) ? d.base[k] : now[k];
       }
     }
   }

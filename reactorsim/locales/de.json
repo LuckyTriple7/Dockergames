@@ -1066,6 +1066,7 @@
   "tut_chernobyl_hint_dip_recover": "Die Regelung zieht die Stäbe zurück. Sieh zu, wie weit sie dafür herauskommen müssen.",
   "log_shift_report": "Schichtbericht {n}: {mwh} MWh geliefert, Lastfolgefehler {dev} MWh, Alarm {min} min, {scram} RESA",
   "log_shift_report_orders": "Schichtbericht {n}: {mwh} MWh geliefert, Lastfolgefehler {dev} MWh, Alarm {min} min, {scram} RESA, Aufträge {met}/{total}",
+  "log_shift_repairs": "Schichtbericht {n}: Instandhaltung {done} Arbeiten abgeschlossen",
   "order_title": "Netzleitstelle",
   "order_target": "Auftrag",
   "order_deadline": "Frist",

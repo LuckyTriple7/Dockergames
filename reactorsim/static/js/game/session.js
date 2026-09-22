@@ -95,15 +95,6 @@ export class Session {
     // wird davon nichts -- eine Runde ohne Ende hat kein Ergebnis --, aber
     // der Schichtbericht liest daraus alle acht Stunden seine Bilanz.
     this.run = new RunState(this.scenario, engine.spec);
-    this.shift = new ShiftLog(this.run);
-    this.shift.onReport = (report) => {
-      // Als Protokollzeile, nicht als Dialog: der Bericht stellt sich in
-      // dieselbe Zeitleiste wie Stoerungen und Meldungen und unterbricht
-      // niemanden. ui/panels.js holt ihn beim naechsten Renderlauf ab
-      // (engine.drainLog()), persist.js nimmt ihn im Verlauf mit.
-      engine.ctx.log.push(ShiftLog.logEntry(report));
-      if (this.onShift) this.onShift(report);
-    };
     this.onShift = null;
     this.objectives = scenarioDef?.score_mode === 'incident_v1'
       ? new ScenarioObjectives(engine, this.scenario) : null;
@@ -140,6 +131,22 @@ export class Session {
     // an der Stoerungsstufe -- wer mit vielen Stoerungen und ohne Trupp
     // spielen will, soll das koennen.
     this.repairs = this.free ? new Repairs(engine, opts.repairs || 'off') : null;
+    // Erst hier, nach dem Trupp: der Bericht bilanziert dessen Zaehler und
+    // haelt dafuer einen Verweis auf ihn (siehe ShiftLog), also muss es ihn
+    // zu diesem Zeitpunkt schon geben.
+    this.shift = new ShiftLog(this.run, this.repairs);
+    this.shift.onReport = (report) => {
+      // Als Protokollzeile, nicht als Dialog: der Bericht stellt sich in
+      // dieselbe Zeitleiste wie Stoerungen und Meldungen und unterbricht
+      // niemanden. ui/panels.js holt ihn beim naechsten Renderlauf ab
+      // (engine.drainLog()), persist.js nimmt ihn im Verlauf mit.
+      engine.ctx.log.push(ShiftLog.logEntry(report));
+      // Direkt dahinter, damit beide Zeilen denselben Zeitpunkt tragen und
+      // die Zeitleiste sie nicht auseinanderreisst.
+      const repairLine = ShiftLog.repairLogEntry(report);
+      if (repairLine) engine.ctx.log.push(repairLine);
+      if (this.onShift) this.onShift(report);
+    };
   }
 
   start() {

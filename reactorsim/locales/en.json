@@ -1066,6 +1066,7 @@
   "tut_chernobyl_hint_dip_recover": "The controller is withdrawing the rods. Watch how far out they have to come.",
   "log_shift_report": "Shift report {n}: {mwh} MWh delivered, load-following error {dev} MWh, alarms {min} min, {scram} SCRAM",
   "log_shift_report_orders": "Shift report {n}: {mwh} MWh delivered, load-following error {dev} MWh, alarms {min} min, {scram} SCRAM, orders {met}/{total}",
+  "log_shift_repairs": "Shift report {n}: maintenance completed {done} jobs",
   "order_title": "Grid control centre",
   "order_target": "Order",
   "order_deadline": "Deadline",

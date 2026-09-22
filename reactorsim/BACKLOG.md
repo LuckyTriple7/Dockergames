@@ -56,26 +56,44 @@ Bild steht (`net/monitorFrame.js`, `net/monitorLink.js`,
 Umgesetzt in 0.6.18: ein Instandhaltungstrupp im freien Spiel
 (`game/repairs.js`, `ui/repairs.js`, Stufe im Startbildschirm). Vier Arbeiten,
 am Anlagenzustand festgemacht statt am ausloesenden Ereignis -- Begruendung
-im Kopfkommentar des Moduls. Offen bleibt:
+im Kopfkommentar des Moduls.
 
-- **Die drei bleibenden Stoerungen bleiben absichtlich.** Klemmender
-  Steuerstab (`ctx.stuckRods`), Dampferzeuger-Rohrleck (`ctx.sgLeak`) und
-  klemmendes Abblaseventil (`ctx.porvStuck`) sind im laufenden Betrieb nicht
-  erreichbar. Ein ehrlicher Weg dorthin waere kein Reparaturauftrag, sondern
-  ein Abfahren mit Nachwaermeabfuhr und Wiederanfahren -- ein eigener
-  Baustein, kein Zusatz zu diesem.
+Seit 0.6.21 meldet der Schichtbericht die fertigen Arbeiten in einer eigenen
+Protokollzeile (`log_shift_repairs`, siehe `game/shift.js`). Eine eigene Zeile
+statt eines weiteren Platzhalters: die Netzauftraege haben dort schon zwei
+Textfassungen, ein zweiter solcher Zweig haette vier gebraucht. Getrennt bleibt
+es bei zwei unabhaengigen Entscheidungen, und eine Schicht ohne fertige Arbeit
+liest gar keine Zahl statt immer derselben Null.
+
+Offen bleibt:
+
 - **Der Notstromfall hat keinen Weg zurueck.** `s.acPower`/`s.dcPower` werden
   heute nur beim Anlagenaufbau wieder true (`bwr.js`). Netzwiederkehr oder
   Diesel waeren ein eigener Zustand mit eigener Bedienung, nicht die Arbeit
   eines Trupps -- die Reparatur sperrt sich ja gerade an fehlendem Motorstrom.
+  Das Muster stuende bereit: `ctl_emergency_dc` (`bwr.js`) gibt dem Bediener
+  den Gleichstrom schon heute zurueck, dem Wechselstrom fehlt nur derselbe
+  Knopf. Ein Notstromdiesel mit Anlaufzeit waere die ehrliche Form; `s.breaker`
+  bliebe dabei aus, denn ein Diesel traegt den Eigenbedarf und nicht das Netz.
+  Nur SWR -- `acPower` modelliert kein anderer Typ (siehe `freeEvents.js`).
+- **Zwei der drei bleibenden Stoerungen bleiben.** Klemmender Steuerstab
+  (`ctx.stuckRods`) sitzt im Kern, das Dampferzeuger-Rohrleck (`ctx.sgLeak`)
+  trifft einen zusammengefassten Dampferzeuger ohne Einzelisolation. Ein
+  ehrlicher Weg dorthin waere kein Reparaturauftrag, sondern ein Abfahren mit
+  Nachwaermeabfuhr und Wiederanfahren -- ein eigener Baustein, kein Zusatz zu
+  diesem.
+
+  Das klemmende Abblaseventil (`ctx.porvStuck`) gehoert seit Anfang an nicht
+  in diese Liste: das Blockventil davor existiert (`ctl_porv_block`,
+  `pwr.js`), und `stepEvents()` (`events.js`) haelt sich daran -- zu heisst
+  zu. Der Merker bleibt stehen, die Folge nicht. Genau dafuer gibt es das
+  Blockventil in der Wirklichkeit auch.
+
+Bewusst so und kein offener Punkt:
+
 - **Ein zweiter Trupp ist nicht vorgesehen.** Die Klasse haelt genau einen
   Auftrag (`this.job`). Mehrere waeren ein anderes Spiel: das Entscheiden,
   was zuerst drankommt, ist der Inhalt dieser Mechanik.
-- **Der Schichtbericht zaehlt die Reparaturen nicht mit.** `RunState` hat
-  dafuer keinen Zaehler; `Repairs.done` steht nur in der Sitzung und im
-  Spielstand. Der Bericht haette sonst eine dritte und vierte Textfassung
-  gebraucht (mit/ohne Auftraege x mit/ohne Trupp), und jede Schicht ohne
-  Stoerung laese eine Zahl, die immer null ist.
 - **Die Dauern sind gesetzt**, nicht hergeleitet: zwoelf Minuten fuer einen
   Motorschutz, vierzig fuer einen Armaturenantrieb draussen. Sie sind so
   gewaehlt, dass eine Reparatur bei 1x spuerbar lange dauert und im
