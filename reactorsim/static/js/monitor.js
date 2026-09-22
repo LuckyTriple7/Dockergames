@@ -29,6 +29,7 @@ import { gridDeviationTrips } from './game/scenario.js';
 import { sanitizeStatusKeys } from './ui/statusStats.js';
 import { buildStatusBar, applyStatusSelection, setStatusTileLabel } from './ui/statusBar.js';
 import { setMuted } from './ui/music.js';
+import { createEndSounds } from './game/endSounds.js';
 import { initInstrumentsWindow } from './ui/instruments.js';
 import { api } from './net/api.js';
 import { applyFrame } from './net/monitorFrame.js';
@@ -39,6 +40,7 @@ const view = {
   engine: null,
   render: new Render(),
   built: null,
+  endSounds: null,
   run: null,
   prefs: {},
   /** Letzter uebernommener Protokolleintrag, als Simulationszeit. Der
@@ -101,6 +103,10 @@ function buildFor(frame) {
   // Schirm, der nur zusieht, waere das ein Angebot, das nichts bewirkt --
   // sein Ergebnis ueberschreibt das naechste Bild eine halbe Sekunde spaeter.
   view.built = buildPanels(view.engine, view.render, false);
+  // Je Lauf neu, wie im Leitstand: die Flanken sollen beim naechsten wieder
+  // feuern. Ein Schirm, der beim Alarm hupt, aber bei der Zerstoerung
+  // schweigt, waere die schlechtere Haelfte von beidem.
+  view.endSounds = createEndSounds(view.built.horn);
   applyAudio();
   view.run = frame.meta?.run ?? null;
   return null;
@@ -150,6 +156,11 @@ function onFrame(frame) {
     const last = frame.history[frame.history.length - 1];
     if (last && Number.isFinite(last.t)) view.lastLogT = Math.max(view.lastLogT, last.t);
   }
+
+  // Erst nach applyFrame, also mit dem Zustand des neuen Bildes: hier
+  // entscheidet sich, ob Brennstoffversagen oder Explosion dazugekommen
+  // sind (siehe game/endSounds.js).
+  view.endSounds?.step(view.engine.state);
 
   // Eigene Trendhistorie, aus den ankommenden Bildern gebaut. Sie kommt
   // bewusst NICHT mit: acht Stunden Historie sind bis zu 28.800 Abtastungen

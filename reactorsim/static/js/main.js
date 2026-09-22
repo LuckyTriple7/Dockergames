@@ -17,6 +17,7 @@ import { gridDeviationTrips } from './game/scenario.js';
 import { api } from './net/api.js';
 import { pack as packSave, apply as applySave } from './net/persist.js';
 import { MonitorSender } from './net/monitorLink.js';
+import { createEndSounds } from './game/endSounds.js';
 import { GLOSSARY } from './ui/glossary.js';
 import { SHORTCUTS } from './ui/shortcuts.js';
 import { MusicLoop, playClip, setMuted } from './ui/music.js';
@@ -1672,7 +1673,9 @@ function showDestroyed() {
   finishDebugTape('destroyed');
   setSpeed(0);
   app.bgMusic.stop();
-  if (app.horn) app.horn.meltdown();
+  // Kein Klang hier: er gehoert zum Vorgang, nicht zum Fenster. Bis dahin
+  // sind mindestens drei Sekunden vergangen, beim RBMK bis zu fuenfzehn
+  // (siehe deferEnd) -- gespielt hat ihn laengst game/endSounds.js.
   const s = app.engine.state;
   // Der Grund gehoert auf den Endbildschirm. Es gibt inzwischen vier Wege,
   // eine Anlage zu verlieren (siehe engine.js checkLoss) -- vorher stand hier
@@ -1976,7 +1979,7 @@ function showDebriefNow(result, failed) {
     // Keep loss details and score in one screen, including score submission.
     app.endShown = true;
     $('#rs-destroyed').hidden = true;
-    if (app.horn) app.horn.meltdown();
+    // Dito -- siehe showDestroyed().
     const key = app.engine.state.destroyedKey || 'event_fuel_dispersal';
     parts.append(el('p', { text: t(key + '_body') }));
     app.engine.drainLog();
@@ -2290,6 +2293,8 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
   buildTutorial(app.session, app.render);
   buildDispatch(app.session, app.render, built.showHelp);
   app.horn = built.horn;
+  // Je Runde neu: die Flanken sollen im naechsten Lauf wieder feuern.
+  app.endSounds = createEndSounds(built.horn);
   app.jogRod = built.jogRod;
   app.rodSound = built.rodSound;
   app.sampleTrends = built.sampleTrends;
@@ -2310,6 +2315,9 @@ async function boot(reactorId, scenarioDef, loadSlot, cold, savedMeta = null, fr
     // Die Engine hält bei einem unmöglichen Zustand von selbst an und legt den
     // Grund ab; hier wird er nur sichtbar gemacht.
     if (state.fault) showFault(state.fault);
+    // VOR deferEnd: der Klang gehoert in den Augenblick des Vorgangs, das
+    // Fenster kommt erst Sekunden spaeter (siehe deferEnd).
+    app.endSounds?.step(state);
     if (state.destroyed && !app.endShown && !app.endPending) deferEnd(showDestroyed);
 
     // Vorfuehrmodus sichtbar machen: dieselbe Abblendung wie bei angehaltener

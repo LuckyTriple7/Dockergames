@@ -198,3 +198,21 @@ test('jeder Grund hat einen Text in beiden Sprachen', async () => {
     assert.ok(en[key], `en fehlt ${key}`);
   }
 });
+
+test('der Nachlauf kommt beim Monitor an -- sonst hebt der Schild dort nie ab', () => {
+  const live = stirred('rbmk');
+  // Zustand so setzen, wie stepAftermath() ihn hinterlaesst.
+  live.state.aftermath = { cause: 'test', t0: 10, energy_J: 2e10, steam_kg: 13800,
+    water_kg: 24000, work_J: 1.96e8, lift_bar: 0.86, share: 0.0098, lid: true, done: true };
+  const seen = createEngine(getPlant('rbmk'));
+  assert.equal(applyFrame(json(packFrame(live, {}, 1)), seen), null);
+  // mimic.js liest genau diese beiden Felder (data-aftermath), endSounds.js
+  // ebenso -- ohne sie bliebe der Monitor beim Brennstoffversagen stehen.
+  assert.equal(seen.state.aftermath.done, true);
+  assert.equal(seen.state.aftermath.lid, true);
+  assert.equal(seen.state.aftermath.lift_bar, 0.86);
+
+  // Ein Lauf ohne Nachlauf traegt das Feld gar nicht erst mit.
+  const plain = stirred('pwr');
+  assert.equal(packFrame(plain, {}, 1).aftermath, undefined);
+});

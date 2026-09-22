@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.6.17
+
+- 🔧 **Der Kernzerstoerungs-Klang kommt jetzt bei der Zerstoerung, nicht beim
+  Endbildschirm.** Er haengt nicht mehr an `showDestroyed()`/`showDebrief()`,
+  sondern an der Zustandsgroesse selbst (`game/endSounds.js`). Zwischen
+  Brennstoffversagen und Fenster liegen naemlich mindestens drei Sekunden
+  (`DESTROY_PAUSE_MS`, damit der Ausschlag auf den Anzeigen ueberhaupt
+  sichtbar wird), und beim RBMK bis zu fuenfzehn, weil `deferEnd()` den
+  Nachlauf abwartet -- der Ton kam also, wenn alles vorbei war. Er faellt
+  weiterhin genau einmal je Lauf.
+
+- ✨ **Die Explosion bekommt einen eigenen Klang.** Eine eigene Stelle
+  (`Horn.explosion()`, `EXPLOSION_CLIP`), ein eigener Ausloeser: der
+  abhebende obere Schild beim RBMK (`s.aftermath.lid`, nicht schon
+  `done` -- ein haltender Deckel ist keine Explosion) und die
+  Wasserstoffexplosion beim SWR (`s.h2Exploded`, die auch in einem Lauf
+  kommen kann, den der Spieler danach noch haelt). Bis der eigene Clip
+  vorliegt, spielt sie denselben wie die Kernzerstoerung; dann wird genau
+  `EXPLOSION_CLIP` umgesetzt und sonst nichts.
+
+- 🔧 **Der Zweitbildschirm bekam vom Nachlauf gar nichts mit.**
+  `s.aftermath` haengt als Objekt am Zustand und fiel deshalb durch
+  `packState()`. Auf dem Monitor hob der obere Schild damit nie ab -- weder
+  im Fliessbild (`data-aftermath`) noch als Klang. Das Feld kommt jetzt im
+  Bild mit; es ist klein und aendert sich genau zweimal je Lauf. Damit hupt
+  der zweite Schirm nicht nur beim Alarm, sondern meldet auch das Ende.
+
 ## 0.6.16
 
 - ✨ **Jede Stablinie im Fliessbild sagt jetzt, wer sie ist und aus welcher

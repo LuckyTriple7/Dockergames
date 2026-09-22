@@ -55,6 +55,13 @@ export function packFrame(engine, meta, seq) {
       .map((key) => [key, ctx[key]])),
     components: packComponents(ctx),
     trips: ctx.trips.snapshot(),
+    // Der Nachlauf haengt als Objekt an engine.state und faellt deshalb
+    // durch packState() (das nimmt Zahlen, Merker und die drei Bloecke aus
+    // NESTED_STATE). Ohne ihn zeigte der Monitor den abgehobenen Schild nie
+    // -- weder im Fliessbild (mimic.js: data-aftermath) noch als Klang
+    // (game/endSounds.js). Das Feld ist klein und aendert sich genau
+    // zweimal je Lauf.
+    ...(s.aftermath ? { aftermath: { ...s.aftermath } } : {}),
     // Die Reaktivitaet wird MITGESCHICKT und nicht drueben nachgerechnet.
     // Sie ist die einzige Anzeigegroesse, die nicht aus dem Zustand allein
     // folgt: engine.step() bildet sie VOR der Vergiftung, derive() liest sie
@@ -124,6 +131,26 @@ export function applyFrame(frame, engine) {
   // jedem neuen Lauf ohnehin neu (siehe monitor.js), aber innerhalb eines
   // Laufs soll ein einmal gesetzter Grund auch nicht stumm verschwinden.
   if (typeof src.destroyedKey === 'string') s.destroyedKey = src.destroyedKey;
+
+  // Nachlauf: nur Zahlen und Merker uebernehmen, und nur die Felder, die
+  // startAftermath() selbst anlegt -- der Block kommt von einem anderen
+  // Browser, und eine Anzeige ist kein Grund, ihm fremde Schluessel zu
+  // glauben.
+  if (frame.aftermath && typeof frame.aftermath === 'object') {
+    const a = frame.aftermath;
+    s.aftermath = {
+      cause: typeof a.cause === 'string' ? a.cause : null,
+      t0: Number(a.t0) || 0,
+      energy_J: Number(a.energy_J) || 0,
+      steam_kg: Number(a.steam_kg) || 0,
+      water_kg: Number(a.water_kg) || 0,
+      work_J: Number(a.work_J) || 0,
+      lift_bar: Number(a.lift_bar) || 0,
+      share: Number(a.share) || 0,
+      lid: a.lid === null ? null : !!a.lid,
+      done: !!a.done,
+    };
+  }
 
   restoreComponents(engine.ctx, frame.components);
   if (numbers(s).some((x) => !Number.isFinite(x))) return 'not_finite';

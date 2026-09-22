@@ -85,6 +85,11 @@ export class Annunciator {
  * Bis Version 0.0.47 synthetisiert über die Web Audio API -- jetzt echte
  * Klangeffekte, weil ein Spieler welche gefunden hat, die besser klingen.
  */
+/** Dateiname des Explosionsklangs -- die EINE Stelle, die zu ändern ist,
+ *  sobald der eigene Clip vorliegt. Bis dahin derselbe wie bei der
+ *  Kernzerstörung, damit der Vorgang überhaupt hörbar ist. */
+const EXPLOSION_CLIP = 'game_over.mp3';
+
 export class Horn {
   constructor() {
     this._enabled = true;
@@ -165,6 +170,16 @@ export class Horn {
   /** Kernzerstörung -- einmaliger Clip, kein Loop. */
   meltdown() {
     if (this.enabled) playClip('game_over.mp3');
+  }
+
+  /** Explosion -- oberer Schild hebt ab (RBMK) oder Wasserstoff zündet
+   *  (SWR). Einmaliger Clip, kein Loop.
+   *
+   *  Vorläufig derselbe Clip wie die Kernzerstörung: ein eigener kommt noch.
+   *  Er ist deshalb schon hier von meltdown() getrennt -- wenn die Datei da
+   *  ist, wird EXPLOSION_CLIP umgesetzt und sonst nichts. */
+  explosion() {
+    if (this.enabled) playClip(EXPLOSION_CLIP);
   }
 
   /**

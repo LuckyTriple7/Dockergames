@@ -12,6 +12,7 @@ import { attachRecorder } from '../static/js/game/recorder.js';
 import { TrendHistory } from '../static/js/game/trendHistory.js';
 import { Loop } from '../static/js/loop.js';
 import { DebugTape } from '../static/js/game/debugTape.js';
+import { createEndSounds } from '../static/js/game/endSounds.js';
 
 const source = readFileSync(new URL('../static/js/main.js', import.meta.url), 'utf8');
 function deferred() {
@@ -30,7 +31,7 @@ function harness(readSave = async () => ({ ok: false })) {
   // Spielhistorie im Admin-Panel (siehe reportRun()). `runStarts` dasselbe
   // fuer /api/runs/start, mit dem der Server die Dauer selbst misst.
   const counters = { starts: 0, autosaves: 0, samples: 0, panels: 0,
-    runs: [], runStarts: [], downloads: [] };
+    runs: [], runStarts: [], downloads: [], sounds: [] };
   // Aufgezeichnet statt real verzoegert: deferEnd() (siehe main.js) nutzt
   // window.setTimeout fuer die kurze Pause vor der Kernzerstoerungs-Anzeige --
   // der Test loest sie ueber flushTimeouts() gezielt aus, statt drei echte
@@ -67,6 +68,10 @@ function harness(readSave = async () => ({ ok: false })) {
     // nicht die Sperre (die haengt an test-rbmk-chernobyl-tutorial.mjs und
     // test-xenon-skip.mjs).
     setControlsLocked(fn) { counters.lockedFn = fn; }, isControlsLocked: () => false,
+    // Die echte Flankenerkennung, nicht gestubbt: WANN der Klang faellt, ist
+    // genau die Frage dieses Lebenszyklus -- er gehoert in den Augenblick der
+    // Zerstoerung, nicht in das Fenster, das Sekunden spaeter aufgeht.
+    createEndSounds,
     document: { body: { classList: { toggle() {} } } },
     scramLabel: () => 'SCRAM', refreshResumeList() {}, playClip() {},
     showFault() {}, AUTOSAVE_INTERVAL_MS: 60000, XENON_SKIP_TARGET: 1, DESTROY_PAUSE_MS: 3000,
@@ -80,8 +85,15 @@ function harness(readSave = async () => ({ ok: false })) {
     buildPanels(engine, render, helperEnabled) {
       counters.panels++;
       counters.helperEnabled = helperEnabled;
-      return { horn: { silence() {}, meltdown() {} }, annun: { log() {} },
-        sampleTrends() { counters.samples++; } };
+      return {
+        horn: {
+          silence() {},
+          meltdown() { counters.sounds.push('meltdown'); },
+          explosion() { counters.sounds.push('explosion'); },
+        },
+        annun: { log() {} },
+        sampleTrends() { counters.samples++; },
+      };
     },
     Loop: class {
       constructor(engine, render) { this.engine = engine; this.render = render; }
@@ -191,7 +203,12 @@ test('loss leaves only one end dialog; menu and restart clear both', async () =>
   // anderen Verlust-Test unten) -- erst nach der Pause erscheint es.
   assert.equal(h.$('#rs-debrief').hidden, true);
   assert.equal(h.$('#rs-destroyed').hidden, true);
+  // Der Klang aber NICHT: er gehoert in den Augenblick des Vorgangs, und
+  // der liegt genau hier -- drei Sekunden vor dem Fenster.
+  assert.deepEqual(h.counters.sounds, ['meltdown']);
   h.flushTimeouts();
+  // Und das Fenster legt keinen zweiten nach.
+  assert.deepEqual(h.counters.sounds, ['meltdown']);
   assert.equal(h.$('#rs-debrief').hidden, true);
   assert.equal(h.$('#rs-destroyed').hidden, false);
   h.ctx.toMenu();
