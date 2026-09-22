@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.19
+
+- 🧹 **Die Einstellungen fuers freie Spiel zeigen sich nur noch dort.**
+  Kaltstart-Haekchen und die fuenf Regler (Zufallsstoerungen, Kernalter,
+  Netzauftraege, Instandhaltung, Jahreszeit) standen auch dann im
+  Startbildschirm, wenn eine Szenarienkarte gewaehlt war -- wirkungslos, denn
+  ein Szenario bringt Startzustand, Zeitplan und frischen Kern selbst mit
+  (`start_overrides`/`events` in der JSON, siehe `game/scenario.js`).
+  `syncFreeSetupVisibility()` in `main.js` haengt die Zeilen jetzt an
+  `app.chosen === null` und wird an beiden Stellen gerufen, die die Auswahl
+  setzen: beim Aufbau der Liste und im Karten-Klick. Bei Reaktortypen ohne
+  Szenario bleiben sie stehen, dort gibt es nur freies Spiel.
+
+- ✏️ **Zwei Hinweise sind damit ueberfluessig geworden.** Der Vorsatz
+  "Alle fuenf gelten nur fuers freie Spiel" und der Zusatz "-- nur freies
+  Spiel" am Kaltstart-Haekchen sind raus (`locales/de.json`,
+  `locales/en.json`); die Erklaerungen zu den einzelnen Stufen bleiben.
+
 ## 0.6.18
 
 - 🔧 **Ein Instandhaltungstrupp arbeitet Stoerungen ab, statt sie

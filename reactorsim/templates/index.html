@@ -129,8 +129,10 @@
     <div class="rs-scn-list" id="rs-scn-list"></div>
 
     <!-- Gilt nur fuer das freie Spiel -- ein Szenario bringt seine eigenen
-         Startwerte per start_overrides mit, siehe scenario.js. -->
-    <label class="rs-cold-start">
+         Startwerte per start_overrides mit, siehe scenario.js. Deshalb blendet
+         syncFreeSetupVisibility() in main.js die Zeile bei einem gewaehlten
+         Szenario aus, genau wie den Block darunter. -->
+    <label class="rs-cold-start" id="rs-cold-start-row">
       <input type="checkbox" id="rs-cold-start">
       {{ t.opt_cold_start }}
     </label>
@@ -150,11 +152,13 @@
       {{ t.opt_debug }}
     </label>
 
-    <!-- Beides gilt wie das Kaltstart-Haekchen nur fuer das freie Spiel: ein
-         Szenario bringt seinen Zeitplan selbst mit (events in der JSON) und
-         startet stets mit frischem Kern. Siehe game/freeEvents.js und
-         game/coreAge.js. -->
-    <div class="rs-free-setup">
+    <!-- Alle fuenf gelten wie das Kaltstart-Haekchen nur fuer das freie Spiel:
+         ein Szenario bringt seinen Zeitplan selbst mit (events in der JSON)
+         und startet stets mit frischem Kern. Siehe game/freeEvents.js und
+         game/coreAge.js. Bei gewaehltem Szenario blendet
+         syncFreeSetupVisibility() in main.js den Block aus -- deshalb muss der
+         Hinweistext darunter nicht mehr sagen, wofuer er gilt. -->
+    <div class="rs-free-setup" id="rs-free-setup">
       <label class="rs-choice">
         <span>{{ t.opt_faults }}</span>
         <select id="rs-faults">
@@ -198,7 +202,7 @@
         </select>
       </label>
     </div>
-    <p class="rs-free-setup-hint">{{ t.opt_free_setup_hint }}</p>
+    <p class="rs-free-setup-hint" id="rs-free-setup-hint">{{ t.opt_free_setup_hint }}</p>
 
     <div class="rs-start-actions">
       <button class="rs-btn rs-btn-primary" id="rs-start-go" type="button" disabled>{{ t.start_free_play }}</button>

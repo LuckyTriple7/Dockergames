@@ -165,6 +165,22 @@ function readFreeSetup() {
   };
 }
 
+/**
+ * Kaltstart-Haekchen und die fuenf freien Einstellungen gelten nur fuers freie
+ * Spiel -- ein Szenario bringt Startzustand, Zeitplan und frischen Kern selbst
+ * mit (start_overrides/events in der JSON, siehe game/scenario.js). Bei
+ * gewaehltem Szenario sind die Regler also wirkungslos und verschwinden.
+ * app.chosen === null ist das freie Spiel; renderScenarios() und der
+ * Karten-Klick rufen hier herein, sonst niemand.
+ */
+function syncFreeSetupVisibility() {
+  const free = !app.chosen;
+  for (const id of ['rs-cold-start-row', 'rs-free-setup', 'rs-free-setup-hint']) {
+    const node = $('#' + id);
+    if (node) node.hidden = !free;
+  }
+}
+
 function initStart() {
   // Startbanner: liegt nur optisch ueber dem Startbildschirm (siehe
   // rs-splash in base.css), der baut sich im Hintergrund unveraendert auf.
@@ -740,6 +756,9 @@ function renderScenarios(reactorId) {
 
   app.chosen = null;
   setText(go, t('start_free_play'));
+  // Vor dem Aussteigen fuer Reaktortypen ohne Szenario -- dort ist immer
+  // freies Spiel, die Regler muessen also stehen bleiben.
+  syncFreeSetupVisibility();
   list.replaceChildren();
   headline.hidden = mine.length === 0;
   if (!mine.length) return;
@@ -761,6 +780,7 @@ function renderScenarios(reactorId) {
       app.chosen = scn.id ? scn : null;
       for (const b of buttons) b.setAttribute('aria-pressed', String(b === btn));
       setText(go, scn.id ? t('brief_title') : t('start_free_play'));
+      syncFreeSetupVisibility();
     });
     buttons.push(btn);
     list.append(btn);

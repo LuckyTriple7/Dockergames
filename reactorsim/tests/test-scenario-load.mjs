@@ -36,7 +36,7 @@ function harness() {
     showBriefing(def) { briefs.push(def); $('#rs-brief').hidden = false; },
     async boot(...args) { boots.push(args); ctx.cancelScenarioLoad(); app.bootId++; },
   });
-  for (const name of ['cancelScenarioLoad', 'loadScenario', 'renderScenarios']) {
+  for (const name of ['cancelScenarioLoad', 'loadScenario', 'renderScenarios', 'syncFreeSetupVisibility']) {
     const fn = source.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
     assert.ok(fn, name);
     vm.runInContext(fn[0], ctx);
@@ -168,6 +168,26 @@ test('changing a reactor or scenario selection cancels outstanding intent', asyn
   await other;
   assert.equal(h.$('#rs-start-retry').hidden, true);
   assert.equal(h.$('#rs-start-message').textContent, '');
+});
+
+test('the free-play settings only show while free play is selected', async () => {
+  const h = harness();
+  const rows = ['#rs-cold-start-row', '#rs-free-setup', '#rs-free-setup-hint'];
+  h.ctx.renderScenarios('pwr');
+  for (const row of rows) assert.equal(h.$(row).hidden, false);
+
+  // The first card is free play, the second the first scenario of this reactor.
+  h.$('#rs-scn-list').children[1].listeners.click();
+  for (const row of rows) assert.equal(h.$(row).hidden, true);
+
+  h.$('#rs-scn-list').children[0].listeners.click();
+  for (const row of rows) assert.equal(h.$(row).hidden, false);
+
+  // A scenario stays selected until the list is rebuilt -- switching reactors
+  // resets to free play and has to bring the settings back with it.
+  h.$('#rs-scn-list').children[1].listeners.click();
+  h.ctx.renderScenarios('bwr');
+  for (const row of rows) assert.equal(h.$(row).hidden, false);
 });
 
 test('resume retains exact scenario, reactor, slot and metadata through retry', async () => {
