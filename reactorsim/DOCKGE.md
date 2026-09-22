@@ -115,10 +115,18 @@ Fassung — ändern heißt also: Wert in Dockge ändern, Stack neu starten, fert
 Jedes Spielerkonto hat eigene Spielstände, Einstellungen und eine eigene
 Ratenbegrenzung — mehrere Leute können also gleichzeitig denselben Server
 nutzen, ohne sich gegenseitig zu überschreiben. Zugleich gilt **je
-Spielerkonto genau eine aktive Sitzung**: meldet sich dasselbe Konto auf
-einem zweiten Gerät an, wird die Sitzung auf dem ersten sofort ungültig.
-Dasselbe Spielerkonto kann also nie auf zwei Geräten gleichzeitig
-weiterspielen — für zwei Geräte gleichzeitig braucht es zwei Konten. Das
+Spielerkonto genau eine SPIELENDE Sitzung**: meldet sich dasselbe Konto auf
+einem zweiten Gerät zum Spielen an, wird die Sitzung auf dem ersten sofort
+ungültig. Dasselbe Spielerkonto kann also nie auf zwei Geräten gleichzeitig
+weiterspielen — für zwei Geräte gleichzeitig braucht es zwei Konten.
+
+Daneben gibt es seit 0.6.24 die **mitlesende Anmeldung** für den
+Zweitbildschirm: im Anmeldeformular das Kästchen „Nur mitlesen" ankreuzen.
+Eine solche Sitzung verdrängt nichts, wird von nichts verdrängt und darf
+ausschließlich `/monitor` — kein Spielstand, keine Einstellung, kein eigenes
+Bild. Bis zu fünf Schirme gleichzeitig; der sechste verdrängt den ältesten.
+Ohne sie war `/monitor` auf einem zweiten Gerät unbenutzbar, weil die
+Anmeldung dort den Leitstand hinauswarf. Das
 Admin-Konto ist davon ausgenommen: es spielt nicht, mehrere Admin-Sitzungen
 (Tabs, Geräte) gleichzeitig sind erlaubt.
 
@@ -295,7 +303,7 @@ Unter `./data` liegen:
 data/
 ├── auth.json             Hash des Admin-Passworts (0600)
 ├── secret.key            Signierschlüssel der Sitzungen (0600)
-├── sessions.json         Sitzungskennung je Spielerkonto (Ein-Geraet-Sperre)
+├── sessions.json         Sitzungskennungen je Spielerkonto (spielend + mitlesend)
 ├── users.db              Spielerkonten, Anmelde- und Spielhistorie, offene
 │                         Passwort-Links (SQLite)
 ├── runs.db               Zeitmessung der gerade laufenden Spiele (SQLite),

@@ -339,3 +339,117 @@ def test_session_survives_restart(tmp_path, monkeypatch):
     c2 = mod2.app.test_client()
     c2.set_cookie('rs_session', token)
     assert c2.get('/api/meta').status_code == 200
+
+
+# ── Zweitbildschirm: mitlesende Sitzung ──────────────────────────────────────
+#
+# Der Fehler dahinter: /monitor braucht dieselbe Sitzung wie der Leitstand,
+# und bis 0.6.23 entwertete jede Anmeldung die vorherige. Wer sich am Tablet
+# anmeldete, warf damit den Leitstand hinaus -- und umgekehrt. Der Zweitschirm
+# war in der ausgelieferten Form unbenutzbar.
+
+
+def _login_monitor(client, user=PLAYER_EMAIL, password=PLAYER_PASSWORD):
+    return _login(client, user=user, password=password, monitor='1')
+
+
+def test_a_watching_login_does_not_kick_the_playing_one(tmp_path, monkeypatch):
+    mod = _fresh(tmp_path, monkeypatch)
+    _add_player(mod)
+    leitstand = mod.app.test_client()
+    tablet = mod.app.test_client()
+
+    _login(leitstand, user=PLAYER_EMAIL, password=PLAYER_PASSWORD)
+    assert leitstand.get('/api/meta').status_code == 200
+
+    r = _login_monitor(tablet)
+    # Mitleser landen direkt auf dem Zweitschirm, nicht im Leitstand.
+    assert r.headers['Location'].endswith('/monitor')
+    assert tablet.get('/monitor').status_code == 200
+    # Und der Leitstand lebt weiter. Das ist der ganze Punkt.
+    assert leitstand.get('/api/meta').status_code == 200
+
+
+def test_a_playing_login_does_not_kick_the_watchers(tmp_path, monkeypatch):
+    """Die Gegenrichtung: wer am Leitstand neu anfaengt, soll nicht jedes Mal
+    den Fernseher im Nebenraum schwarz schalten."""
+    mod = _fresh(tmp_path, monkeypatch)
+    _add_player(mod)
+    tablet = mod.app.test_client()
+    leitstand = mod.app.test_client()
+
+    _login_monitor(tablet)
+    _login(leitstand, user=PLAYER_EMAIL, password=PLAYER_PASSWORD)
+    assert tablet.get('/monitor').status_code == 200
+    assert leitstand.get('/api/meta').status_code == 200
+
+
+def test_a_watcher_may_read_the_frame_and_nothing_else(tmp_path, monkeypatch):
+    """Mitlesen heisst mitlesen. Die Liste in _MONITOR_ENDPOINTS sagt, was
+    geht; alles andere ist gesperrt, auch das Hochladen eines eigenen Bildes."""
+    mod = _fresh(tmp_path, monkeypatch)
+    _add_player(mod)
+    tablet = mod.app.test_client()
+    _login_monitor(tablet)
+
+    assert tablet.get('/api/monitor').status_code == 200
+    # Kein Bild senden: der Zweitschirm liest, er sendet nicht.
+    assert tablet.post('/api/monitor', json={'seq': 1}).status_code == 403
+    for path in ('/api/meta', '/api/saves', '/api/prefs', '/api/highscores'):
+        r = tablet.get(path)
+        assert r.status_code == 403, f'{path} war offen: {r.status_code}'
+        assert r.get_json()['error'] == 'monitor_only'
+    # Und keine Seite ausserhalb des Zweitschirms.
+    r = tablet.get('/')
+    assert r.status_code == 302 and r.headers['Location'].endswith('/monitor')
+
+
+def test_a_watcher_signing_out_leaves_the_control_room_alone(tmp_path, monkeypatch):
+    """Sonst waere der Fehler nur umgezogen: erst wirft die Anmeldung den
+    Leitstand raus, dann eben das Abmelden."""
+    mod = _fresh(tmp_path, monkeypatch)
+    _add_player(mod)
+    leitstand = mod.app.test_client()
+    tablet = mod.app.test_client()
+    _login(leitstand, user=PLAYER_EMAIL, password=PLAYER_PASSWORD)
+    _login_monitor(tablet)
+
+    tablet.get('/logout')
+    assert tablet.get('/monitor').status_code == 302
+    assert leitstand.get('/api/meta').status_code == 200
+
+
+def test_locking_an_account_ends_watchers_too(tmp_path, monkeypatch):
+    """Eine Sperre muss alle Geraete treffen, sonst liest der Zweitschirm
+    weiter mit, waehrend das Konto laengst gesperrt ist."""
+    mod = _fresh(tmp_path, monkeypatch)
+    row = _add_player(mod)
+    tablet = mod.app.test_client()
+    _login_monitor(tablet)
+    assert tablet.get('/api/monitor').status_code == 200
+
+    mod.USERS.set_status(row['id'], mod.usersmod.STATUS_LOCKED)
+    assert tablet.get('/api/monitor').status_code == 401
+
+
+def test_only_five_screens_at_once(tmp_path, monkeypatch):
+    """Die aelteste Anmeldung faellt heraus, nicht die neueste -- wer sich
+    gerade anmeldet, will hereinkommen."""
+    mod = _fresh(tmp_path, monkeypatch)
+    _add_player(mod)
+    schirme = []
+    for _ in range(mod.authmod.MAX_MONITOR_SESSIONS + 1):
+        c = mod.app.test_client()
+        _login_monitor(c)
+        schirme.append(c)
+    assert schirme[0].get('/api/monitor').status_code == 401
+    for c in schirme[1:]:
+        assert c.get('/api/monitor').status_code == 200
+
+
+def test_a_watching_admin_login_stays_an_admin_login(client):
+    """Das Kaestchen gilt nur fuer Spielerkonten: der Admin hat keinen
+    Leitstand, den er mitlesen koennte."""
+    r = _login(client, monitor='1')
+    assert r.headers['Location'].endswith('/admin')
+    assert client.get('/admin').status_code == 200

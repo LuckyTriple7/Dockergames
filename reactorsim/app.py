@@ -461,6 +461,14 @@ PLAYER_COOKIE = 'rs_player'
 # Anmeldung vorbei. Beide sind deshalb gesondert ratenbegrenzt (siehe dort).
 _PUBLIC_ENDPOINTS = frozenset({'health', 'login', 'set_lang', 'forgot', 'reset'})
 
+# Was eine MITLESENDE Sitzung darf, und das ist alles (siehe Auth.issue()).
+# Sie ist der Zugang des Zweitschirms: sie soll das Bild des Leitstands
+# sehen und sonst nichts anfassen -- kein Spielstand, keine Einstellung,
+# kein Hochladen eines eigenen Bildes. Deshalb eine Liste dessen, was geht,
+# und nicht eine Liste dessen, was nicht geht: eine neue Route ist damit
+# von sich aus gesperrt und nicht von sich aus offen.
+_MONITOR_ENDPOINTS = frozenset({'monitor_page', 'monitor_get', 'vstatic', 'logout'})
+
 # Nur der Admin darf hier hinein, ein Spieler nie -- siehe _require_login().
 _ADMIN_ENDPOINTS = frozenset({
     'admin_panel', 'admin_create_user', 'admin_lock_user',
@@ -478,7 +486,7 @@ def _require_login():
     RUNS.touch()
     if request.endpoint in _PUBLIC_ENDPOINTS:
         return None
-    user = AUTH.valid(request.cookies.get(authmod.SESSION_COOKIE))
+    user, role = AUTH.resolve(request.cookies.get(authmod.SESSION_COOKIE))
     if user and not AUTH.is_admin(user):
         # Eine Sitzung kann laenger gueltig sein als das Konto aktiv ist --
         # eine Sperre soll sofort wirken, nicht erst nach Ablauf des Cookies.
@@ -489,12 +497,22 @@ def _require_login():
     if user:
         g.user = user
         g.is_admin = AUTH.is_admin(user)
+        g.monitor_only = role == authmod.ROLE_MONITOR
         # Abmelden geht immer, unabhaengig von der Rolle -- sonst kaeme der
         # Admin nie am eigenen logout()-View vorbei (er faellt in KEINER der
         # beiden Rollenpruefungen unten durch, _ADMIN_ENDPOINTS ist nur fuer
         # die Verwaltungsrouten gedacht).
         if request.endpoint == 'logout':
             return None
+        # Mitlesende Sitzung: nur der Zweitschirm. Vor der Admin-Pruefung,
+        # damit ein Mitleser nicht ueber den Umweg "ist kein Admin" in
+        # Spielrouten faellt.
+        if g.monitor_only:
+            if request.endpoint in _MONITOR_ENDPOINTS:
+                return None
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'monitor_only'}), 403
+            return redirect('/monitor')
         # Rollentrennung: der Admin spielt nicht, ein Spieler verwaltet nicht.
         if g.is_admin:
             if request.endpoint not in _ADMIN_ENDPOINTS:
@@ -537,8 +555,13 @@ def login():
                 row = USERS.find_for_login(uname)
                 if row:
                     USERS.record_login(row['id'], addr)
-            resp = make_response(redirect('/admin' if is_admin else nxt))
-            resp.set_cookie(authmod.SESSION_COOKIE, AUTH.issue(uname),
+            # Mitlesen gilt nur fuer Spielerkonten: der Admin spielt
+            # ohnehin nicht und hat keinen Leitstand, den er mitlesen
+            # koennte.
+            watch = bool(request.form.get('monitor')) and not is_admin
+            resp = make_response(redirect(
+                '/admin' if is_admin else ('/monitor' if watch else nxt)))
+            resp.set_cookie(authmod.SESSION_COOKIE, AUTH.issue(uname, monitor=watch),
                             max_age=authmod.SESSION_MAX_AGE, httponly=True,
                             samesite='Lax', secure=request.is_secure)
             return resp
@@ -552,6 +575,7 @@ def login():
         # bleibt der Hinweis weg, statt auf ein Formular zu zeigen, das nichts
         # tun kann (der Admin setzt das Passwort dann wie bisher im Panel).
         can_reset=MAIL.configured,
+        monitor_checked=bool(request.form.get('monitor')) if request.method == 'POST' else False,
         prefill=request.form.get('user', '') if request.method == 'POST' else ''))
     resp.headers['Cache-Control'] = 'no-store'
     return resp, (401 if error else 200)
@@ -561,8 +585,10 @@ def login():
 def logout():
     # Sitzungskennung mitentwerten, nicht nur das Cookie loeschen -- sonst
     # wirkt ein Cookie, das anderswo noch im Browser laege, bis es abgelaufen
-    # ist (siehe Auth.revoke()).
-    AUTH.revoke(AUTH.valid(request.cookies.get(authmod.SESSION_COOKIE)))
+    # ist. NUR die eigene Sitzung (siehe Auth.revoke_session()): seit 0.6.24
+    # kann daneben ein Zweitschirm haengen, und der Leitstand soll nicht
+    # ausgehen, weil am Tablet jemand auf "abmelden" tippt.
+    AUTH.revoke_session(request.cookies.get(authmod.SESSION_COOKIE))
     resp = make_response(redirect('/login'))
     resp.delete_cookie(authmod.SESSION_COOKIE)
     return resp

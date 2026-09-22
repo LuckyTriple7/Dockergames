@@ -14,6 +14,15 @@
       <input type="password" name="password" autocomplete="current-password" required>
     </label>
 
+    {# Der Zugang des Zweitbildschirms. Eine mitlesende Anmeldung wirft die
+       spielende NICHT hinaus -- ohne sie war /monitor auf einem zweiten
+       Geraet unbenutzbar (siehe Auth.issue()). #}
+    <label class="check">
+      <input type="checkbox" name="monitor" value="1" {% if monitor_checked %}checked{% endif %}>
+      {{ t.login_monitor }}
+    </label>
+    <p class="note">{{ t.login_monitor_hint }}</p>
+
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="hidden" name="next" value="{{ next_url }}">
     <button type="submit">{{ t.login_submit }}</button>

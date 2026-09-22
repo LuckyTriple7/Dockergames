@@ -40,6 +40,11 @@
     color: #c9d6e3; padding: 10px 12px; font: inherit; min-height: 42px;
   }
   input:focus { outline: none; border-color: #64d8ff; }
+  /* Kaestchen statt Eingabefeld: label steht sonst als Raster untereinander
+     und input waere ueber die volle Breite aufgeblasen. 44 px Zielflaeche,
+     weil das hier meistens auf einem Tablet angetippt wird. */
+  label.check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+  label.check input { min-height: 0; width: 20px; height: 20px; padding: 0; flex: none; }
   button {
     background: #12405f; border: 1px solid #1d6c9c; border-radius: 6px;
     color: #dff1ff; font: 600 14px/1 inherit; padding: 12px; min-height: 44px;

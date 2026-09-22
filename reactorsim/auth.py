@@ -21,11 +21,19 @@ Grundsaetze:
 * Der Hash entsteht ueber werkzeug.security (scrypt). Das Klartextpasswort aus
   der Umgebung wird beim Start gehasht und danach nicht mehr angefasst.
 * Die Sitzung haengt an einem signierten Token (itsdangerous) UND -- fuer
-  Spielerkonten -- an einer je Konto gemerkten Sitzungskennung: meldet sich
-  ein Spielerkonto anderswo neu an, wird die vorherige Kennung ungueltig, und
-  die alte Sitzung stirbt beim naechsten Zugriff, genau eine aktive Sitzung
-  je Konto, das Spiel kann nie auf zwei Geraeten gleichzeitig weiterlaufen.
-  Das Admin-Konto ist davon ausgenommen: es spielt nicht, Speicherstand-
+  Spielerkonten -- an einer je Konto gemerkten Sitzungskennung. Es gibt zwei
+  Arten davon:
+  - SPIELEND: genau eine je Konto. Meldet sich ein Spielerkonto anderswo neu
+    zum Spielen an, wird die vorherige Kennung ungueltig und die alte Sitzung
+    stirbt beim naechsten Zugriff. Das muss so bleiben: der Server haelt
+    einen Spielstandsatz je Konto (persist.Store.account_key), zwei spielende
+    Geraete wuerden sich gegenseitig ueberschreiben.
+  - MITLESEND: bis MAX_MONITOR_SESSIONS gleichzeitig, und sie entwerten
+    nichts. Das ist der Zugang des Zweitbildschirms (/monitor); er darf nur
+    das Bild lesen und sonst nichts (_MONITOR_ENDPOINTS in app.py). Bis
+    0.6.23 gab es diese Art nicht, und damit war /monitor auf einem zweiten
+    Geraet unbenutzbar: die Anmeldung dort warf den Leitstand hinaus.
+  Das Admin-Konto ist von beidem ausgenommen: es spielt nicht, Speicherstand-
   Konflikte durch mehrere Sitzungen koennen also nicht entstehen, und mehrere
   Tabs/Geraete fuer die Verwaltung sollen nicht gegenseitig ausloggen.
 * Der Signierschluessel liegt in /data und wird beim ersten Start erzeugt.
@@ -56,6 +64,29 @@ log = logging.getLogger(__name__)
 
 SESSION_COOKIE = 'rs_session'
 SESSION_MAX_AGE = 30 * 24 * 3600      # 30 Tage
+
+# Wie viele MITLESENDE Geraete gleichzeitig an einem Spielerkonto haengen
+# duerfen.
+#
+# Bis 0.6.23 gab es je Spielerkonto genau eine Sitzung, und jede Anmeldung
+# entwertete die vorherige. Damit war der Zweitschirm (/monitor, seit
+# 0.6.14) unbenutzbar: er braucht dieselbe Sitzung wie der Leitstand, also
+# meldet man sich am Tablet an -- und genau dadurch fliegt der Leitstand
+# raus. Meldet man sich dort wieder an, fliegt das Tablet raus.
+#
+# Die SPIELENDE Sitzung bleibt trotzdem einmalig. Sie muss es sein: der
+# Server haelt einen Spielstandsatz je Konto (persist.Store.account_key),
+# zwei spielende Geraete wuerden sich gegenseitig ueberschreiben. Deshalb
+# zwei ARTEN von Sitzung statt einfach mehr davon -- eine mitlesende darf
+# nur den Zweitschirm und sonst nichts (siehe _require_login() in app.py).
+#
+# Fuenf mitlesende, weil mehr Schirme niemand gleichzeitig aufstellt. Ist
+# die Zahl voll, faellt die AELTESTE heraus, nicht die neueste: wer sich
+# gerade anmeldet, will auch hereinkommen.
+MAX_MONITOR_SESSIONS = 5
+
+ROLE_PLAY = 'play'
+ROLE_MONITOR = 'monitor'
 CSRF_MAX_AGE = 3600                    # eine Stunde fuer das Anmeldeformular
 
 # Kein Zeichen, das sich in einer Protokollzeile oder beim Abtippen
@@ -167,49 +198,122 @@ class Auth:
         ok_pass = check_password_hash(real_hash, password or '')
         return bool(row) and row['status'] == 'active' and ok_pass
 
-    def issue(self, user: str) -> str:
+    def issue(self, user: str, monitor: bool = False) -> str:
         """Neues Sitzungstoken fuer `user`.
 
-        Fuer Spielerkonten zusaetzlich eine neue Sitzungskennung, die jede
-        vorher fuer dieses Konto ausgegebene Sitzung entwertet (siehe
-        valid()) -- genau eine aktive Sitzung je Spielerkonto, gleich von
-        welchem Geraet zuletzt angemeldet wurde. Das Admin-Konto bekommt
-        keine Sitzungskennung: es spielt nicht, mehrere gleichzeitige
-        Admin-Sitzungen (Tabs, Geraete) sind erlaubt."""
+        Eine SPIELENDE Anmeldung entwertet die vorherige spielende -- genau
+        eine je Konto, gleich von welchem Geraet zuletzt angemeldet wurde.
+        Eine MITLESENDE reiht sich daneben ein und entwertet gar nichts: sie
+        ist der Zugang des Zweitschirms und darf den Leitstand nicht
+        hinauswerfen, das war der ganze Anlass (siehe
+        MAX_MONITOR_SESSIONS).
+
+        Das Admin-Konto bekommt keine Sitzungskennung: es spielt nicht,
+        mehrere gleichzeitige Admin-Sitzungen (Tabs, Geraete) sind
+        erlaubt."""
         if self.is_admin(user):
             return self._serializer.dumps({'u': user})
         sid = secrets.token_hex(16)
         with self._session_lock:
-            self._sessions[user] = sid
+            entry = self._entry(user)
+            if monitor:
+                # Vorne abschneiden: der aelteste Schirm geht, der neue bleibt.
+                entry['mon'] = (entry['mon'] + [sid])[-MAX_MONITOR_SESSIONS:]
+            else:
+                entry['play'] = sid
+            self._sessions[user] = entry
             self._write_sessions()
-        return self._serializer.dumps({'u': user, 's': sid})
+        return self._serializer.dumps(
+            {'u': user, 's': sid, **({'m': 1} if monitor else {})})
 
     def valid(self, token: str | None) -> str | None:
         """@return den Benutzernamen der gueltigen Sitzung, sonst None."""
+        return self.resolve(token)[0]
+
+    def resolve(self, token: str | None) -> tuple:
+        """@return (Benutzername, Rolle) der gueltigen Sitzung, sonst
+        (None, None).
+
+        Die Rolle steht im Token UND wird an sessions.json geprueft: ein
+        Mitleser, der sein 'm' herausschneidet, findet seine Kennung dann
+        unter 'play' nicht wieder und ist schlicht abgemeldet. Die Signatur
+        schuetzt das Token ohnehin -- das hier ist der zweite Riegel, damit
+        die Rolle nicht allein am Inhalt des Cookies haengt."""
         if not token:
-            return None
+            return (None, None)
         try:
             data = self._serializer.loads(token, max_age=SESSION_MAX_AGE)
         except (BadSignature, SignatureExpired):
-            return None
+            return (None, None)
         if not isinstance(data, dict):
-            return None
+            return (None, None)
         user = data.get('u')
         if not user:
-            return None
+            return (None, None)
         if self.is_admin(user):
-            return user
+            return (user, ROLE_PLAY)
         sid = data.get('s')
         if not sid:
-            return None
+            return (None, None)
         with self._session_lock:
-            current = self._sessions.get(user)
-        return user if sid == current else None
+            entry = self._entry(user)
+        if data.get('m'):
+            return (user, ROLE_MONITOR) if sid in entry['mon'] else (None, None)
+        return (user, ROLE_PLAY) if sid and sid == entry['play'] else (None, None)
+
+    def _entry(self, user: str) -> dict:
+        """Die Sitzungen eines Kontos als {'play': sid|None, 'mon': [sid]}.
+
+        sessions.json von vor 0.6.24 haelt hier EINE Kennung als
+        Zeichenkette. Sie gilt als die spielende -- sonst waere nach dem
+        Update jeder angemeldete Spieler abgemeldet, und zwar ausgerechnet
+        durch die Aenderung, die das ungewollte Abmelden abstellen soll.
+        Der Aufrufer haelt dabei das Schloss."""
+        value = self._sessions.get(user)
+        if isinstance(value, str):
+            return {'play': value, 'mon': []}
+        if isinstance(value, dict):
+            play = value.get('play')
+            mon = value.get('mon')
+            return {
+                'play': play if isinstance(play, str) else None,
+                'mon': [v for v in mon if isinstance(v, str)] if isinstance(mon, list) else [],
+            }
+        return {'play': None, 'mon': []}
+
+    def revoke_session(self, token: str | None) -> None:
+        """NUR die Sitzung dieses Tokens beenden.
+
+        Fuers Abmelden. Bis 0.6.23 war das dasselbe wie revoke(), weil es je
+        Konto nur eine Sitzung gab. Jetzt nicht mehr: wer sich am
+        Zweitschirm abmeldet, darf nicht den Leitstand mitreissen -- das
+        waere genau das Verhalten, das diese Aenderung abstellt."""
+        user, role = self.resolve(token)
+        if not user or self.is_admin(user):
+            return
+        try:
+            sid = self._serializer.loads(token, max_age=SESSION_MAX_AGE).get('s')
+        except (BadSignature, SignatureExpired):
+            return
+        with self._session_lock:
+            entry = self._entry(user)
+            if role == ROLE_MONITOR:
+                entry['mon'] = [v for v in entry['mon'] if v != sid]
+            elif entry['play'] == sid:
+                entry['play'] = None
+            if entry['play'] is None and not entry['mon']:
+                self._sessions.pop(user, None)
+            else:
+                self._sessions[user] = entry
+            self._write_sessions()
 
     def revoke(self, user: str | None) -> None:
-        """Sitzungskennung des Kontos loeschen -- ein Cookie, das nach dem
-        Abmelden trotzdem noch im Browser laege, wirkt damit sofort nicht
-        mehr, nicht erst nach Ablauf. Fuer das Admin-Konto gibt es keine
+        """ALLE Sitzungen des Kontos loeschen -- ein Cookie, das nach dem
+        Abmelden trotzdem noch irgendwo im Browser laege, wirkt damit sofort
+        nicht mehr, nicht erst nach Ablauf. Absichtlich alle und nicht nur
+        die eigene: gerufen wird das beim Abmelden, beim Sperren, beim
+        Passwortwechsel und beim Loeschen eines Kontos, und in jedem dieser
+        Faelle ist "alle Geraete" gemeint. Fuer das Admin-Konto gibt es keine
         gespeicherte Sitzungskennung (siehe issue()) -- Abmelden loescht dort
         nur das Cookie im eigenen Browser, andere Admin-Sitzungen bleiben
         wie gewollt bestehen."""
@@ -232,8 +336,8 @@ class Auth:
             self._dir.mkdir(parents=True, exist_ok=True)
             atomic_io.write_json(str(self._sessions_path), self._sessions)
         except OSError as exc:
-            log.error('sessions.json nicht schreibbar (%s) -- die '
-                      'Ein-Geraet-Sperre wirkt bis zum naechsten Neustart nicht',
+            log.error('sessions.json nicht schreibbar (%s) -- Abmelden und '
+                      'Geraetegrenze wirken bis zum naechsten Neustart nicht',
                       exc.__class__.__name__)
 
     # ── CSRF fuer Anmelde- und Admin-Formulare ────────────────────────────────

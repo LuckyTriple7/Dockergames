@@ -795,6 +795,8 @@
   "login_user": "User",
   "login_password": "Password",
   "login_submit": "Sign in",
+  "login_monitor": "Watch only (second screen)",
+  "login_monitor_hint": "Mirrors the running control room without operating it — and without signing the playing device out.",
   "login_failed": "Wrong user or password.",
   "login_rate_limited": "Too many attempts. Please wait a minute.",
   "login_expired": "Your session expired. Please sign in again.",

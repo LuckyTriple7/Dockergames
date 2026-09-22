@@ -795,6 +795,8 @@
   "login_user": "Benutzer",
   "login_password": "Passwort",
   "login_submit": "Anmelden",
+  "login_monitor": "Nur mitlesen (Zweitbildschirm)",
+  "login_monitor_hint": "Zeigt den laufenden Leitstand mit, ohne ihn zu bedienen — und ohne das spielende Gerät abzumelden.",
   "login_failed": "Benutzer oder Passwort falsch.",
   "login_rate_limited": "Zu viele Versuche. Bitte eine Minute warten.",
   "login_expired": "Die Anmeldung ist abgelaufen. Bitte erneut anmelden.",

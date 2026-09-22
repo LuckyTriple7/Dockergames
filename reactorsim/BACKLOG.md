@@ -28,12 +28,15 @@ zweiten Geraet mit, lesend, mit Altersangabe und benanntem Grund, wenn das
 Bild steht (`net/monitorFrame.js`, `net/monitorLink.js`,
 `net/monitorStatus.js`, `monitor.js`). Offen bleibt:
 
-- **Kopplungscode fuer ein Geraet ohne Anmeldung.** Heute braucht der
-  Monitor dieselbe Sitzung wie der Leitstand. Ein Fernseher oder ein
-  Tablet ohne Tastatur bekaeme mit einer sechsstelligen Zahl aus dem
-  Leitstand ein reines Lesetoken, zehn Minuten gueltig, nur fuer DIESEN
-  Lauf. Das ist ein zweiter Zugangsweg neben der Sitzung -- ein eigener
-  Baustein, keine Zugabe.
+- **Kopplungscode fuer ein Geraet ohne Anmeldung.** Seit 0.6.24 hat der
+  Monitor eine eigene Sitzungsart: im Anmeldeformular "Nur mitlesen"
+  ankreuzen, dann verdraengt der Zweitschirm den Leitstand nicht mehr
+  (siehe `Auth.issue()`, `_MONITOR_ENDPOINTS` in `app.py`). Ein Passwort
+  muss dort aber weiterhin getippt werden. Ein Fernseher ohne Tastatur
+  bekaeme mit einer sechsstelligen Zahl aus dem Leitstand ein reines
+  Lesetoken, zehn Minuten gueltig, nur fuer DIESEN Lauf. Das ist ein
+  zweiter Zugangsweg neben der Sitzung -- ein eigener Baustein, keine
+  Zugabe. Seit 0.6.24 aber Komfort und kein Blocker mehr.
 - **Anfahren-Tutorial, Netzauftrag und Instandhaltung fehlen auf dem
   Monitor.** `buildTutorial()`, `buildDispatch()` und seit 0.6.18 auch
   `buildRepairs()` brauchen eine `Session`, und die gibt es auf einem Schirm

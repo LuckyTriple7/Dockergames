@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.6.24
+
+- 🐛 **Der Zweitbildschirm hat den Leitstand abgemeldet -- und
+  umgekehrt.** `/monitor` braucht dieselbe Sitzung wie der Leitstand, und
+  bis hierher entwertete jede Anmeldung die vorherige: genau eine Sitzung je
+  Spielerkonto. Wer sich also am Tablet anmeldete, warf damit den PC hinaus;
+  meldete er sich dort wieder an, flog das Tablet. Das Zweitschirm-Feature
+  aus 0.6.14 setzte zwei Geraete voraus, die Sitzungsregel erlaubte eines --
+  in der ausgelieferten Form war es unbenutzbar.
+
+- ✨ **Neu: die mitlesende Anmeldung.** Im Anmeldeformular steht ein
+  Kaestchen "Nur mitlesen (Zweitbildschirm)". Eine solche Sitzung verdraengt
+  nichts, wird von nichts verdraengt und landet direkt auf `/monitor`. Bis
+  zu fuenf Schirme gleichzeitig; der sechste verdraengt den aeltesten.
+
+  Zwei ARTEN von Sitzung und nicht einfach mehr davon: die spielende bleibt
+  einmalig je Konto. Sie muss es bleiben, denn der Server haelt einen
+  Spielstandsatz je Konto (`persist.Store.account_key`) -- zwei spielende
+  Geraete wuerden sich gegenseitig ueberschreiben.
+
+- 🔒 **Mitlesen heisst mitlesen.** `_MONITOR_ENDPOINTS` in `app.py`
+  sagt, was so eine Sitzung darf: die Seite, das Bild lesen, Statics,
+  abmelden. Alles andere gibt 403 -- auch das Senden eines eigenen Bildes.
+  Eine Liste dessen, was geht, statt dessen, was nicht geht: eine neue Route
+  ist damit von sich aus gesperrt. Die Rolle steht im Token UND in
+  `sessions.json`; wer sein `m` herausschneidet, findet seine Kennung unter
+  den spielenden nicht wieder und ist schlicht abgemeldet.
+
+- ♻️ **Abmelden beendet nur noch die eigene Sitzung**
+  (`Auth.revoke_session()`). Vorher war das dasselbe wie "alle", weil es nur
+  eine gab -- sonst waere der Fehler nur umgezogen: erst wirft die Anmeldung
+  am Tablet den Leitstand raus, dann eben das Abmelden dort. Sperre,
+  Passwortwechsel und Kontoloeschung beenden weiterhin ALLE Geraete.
+
+  Bestehende Anmeldungen ueberleben das Update: eine `sessions.json` von
+  vorher haelt je Konto eine Zeichenkette, und die gilt als die spielende.
+
 ## 0.6.23
 
 - ✨ **Der Siedewasserreaktor hat einen Notstromdiesel.** Bis 0.6.22 war

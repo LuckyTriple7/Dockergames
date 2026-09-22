@@ -36,9 +36,11 @@ unter `/admin`, wo er **Spielerkonten** anlegt (E-Mail-Adresse als
 Benutzername), sperrt/entsperrt, Passwörter zurücksetzt und sieht, wer sich
 wann von welcher Adresse angemeldet und was er gespielt hat — jeden beendeten
 Lauf mit Art, Dauer, Ausgang und Punktestand, je Konto auf einer eigenen
-Seite. Je Spielerkonto ist genau eine Sitzung gleichzeitig aktiv — meldet es
-sich auf einem zweiten Gerät an, endet die Sitzung auf dem ersten; das
-Admin-Konto ist davon ausgenommen.
+Seite. Je Spielerkonto ist genau eine **spielende** Sitzung gleichzeitig
+aktiv — meldet es sich auf einem zweiten Gerät zum Spielen an, endet die
+Sitzung auf dem ersten; das Admin-Konto ist davon ausgenommen. Für den
+Zweitbildschirm gibt es daneben die Anmeldung „Nur mitlesen": sie verdrängt
+nichts, wird von nichts verdrängt und darf ausschließlich `/monitor`.
 
 Ist zusätzlich ein Mailserver konfiguriert (`REACTORSIM_SMTP_*`, siehe
 [DOCKGE.md](DOCKGE.md)), bekommt ein neues Konto auf Wunsch eine
