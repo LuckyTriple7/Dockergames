@@ -1122,11 +1122,12 @@
   "opt_repairs_normal": "Normal -- crew on site",
   "opt_repairs_slow": "Slow -- night shift, twice as long",
   "repair_title": "Maintenance",
-  "repair_help": "A maintenance crew works off one fault while the shift carries on. You call them out, they take their time, and at the end the control is released again -- they do not start the pump or open the valve. That stays your action.\n\nThere is exactly ONE crew. With two faults standing, you have to decide which one goes first. \"Recall crew\" aborts the running job; the progress is lost with it.\n\n### What a crew can reach\n\nLittle, and deliberately so. A tripped motor protection in the switchgear, an isolating valve on a make-up line, a valve actuator -- those are jobs you can do while the plant runs. A stuck control rod sits inside the core; a steam generator tube leak and a stuck relief valve are only reachable by shutting the plant down. Those faults stay for the rest of the shift.\n\n### Time\n\nThe stated duration is simulated time. Under time lapse it passes quickly; at normal speed it really takes that long -- and while you are riding a transient, you cannot turn the time lapse up.",
+  "repair_help": "A maintenance crew works off one fault while the shift carries on. You call them out, and they take their time. What is cleared at the end is the fault, not the operating state: where a control was blocked by it, it is free again -- the crew did not start the pump or open the valve. That stays your action. And where there is no control at all, the plant finds its own way back, with its own inertia.\n\nThere is exactly ONE crew. With two faults standing, you have to decide which one goes first. \"Recall crew\" aborts the running job; the progress is lost with it.\n\n### What a crew can reach\n\nLittle, and deliberately so. A tripped motor protection in the switchgear, an isolating valve on a make-up line, a valve actuator, a gas circuit in its plant room -- those are jobs you can do while the plant runs. A stuck control rod sits inside the core; a steam generator tube leak and a stuck relief valve are only reachable by shutting the plant down. Those faults stay for the rest of the shift.\n\n### Time\n\nThe stated duration is simulated time. Under time lapse it passes quickly; at normal speed it really takes that long -- and while you are riding a transient, you cannot turn the time lapse up. Whatever the plant still needs afterwards is a second clock: the graphite stack, for one, cools on its own inertia, not on the crew's.",
   "repair_job_pump": "Coolant pump {n}: reset motor protection",
   "repair_job_recirc": "Recirculation pump: reset motor protection",
   "repair_job_msiv": "Main steam isolation: repair the actuator",
   "repair_job_boron": "Isolate the make-up line",
+  "repair_job_graphite_gas": "Return the graphite gas circuit to service",
   "repair_duration": "{min} min",
   "repair_running": "Crew out: {job} — {rest} left",
   "repair_idle": "No fault a crew could clear while the plant runs.",
@@ -1136,7 +1137,7 @@
   "btn_repair_order": "Call out crew",
   "btn_repair_cancel": "Recall crew",
   "event_repair_ordered": "crew called out",
-  "event_repair_done": "fault cleared, control released",
+  "event_repair_done": "fault cleared",
   "event_repair_cancelled": "crew recalled",
   "event_repair_aborted": "job aborted, precondition gone"
 }

@@ -719,14 +719,23 @@ nur die Folge auf dem Schirm steht. Sie ist INFO und nicht WARN: der Spieler
 bekommt sie nicht weg, und ein pauschaler Abzug über die ganze Schicht wäre
 ein Minus für etwas, das er nicht entscheiden kann.
 
+**In 0.6.31 nachgezogen: der Trupp nimmt den Kreislauf wieder in Betrieb.**
+Fünfte Arbeit in `game/repairs.js`, 25 Minuten, ohne Voraussetzung. Die
+umwälzende Technik steht in Anlagenräumen, nicht im Reaktorschacht -- damit
+gehört sie in dieselbe Klasse wie die anderen vier, erreichbar im laufenden
+Betrieb. Die Dauer ist eine Setzung wie alle Dauern dort.
+
+Sie ist die erste Arbeit, die KEIN Stellteil freigibt: es gibt keines. Der
+Weg zurück läuft stattdessen von selbst, weil `ctx.graphiteUA` ohnehin gegen
+den Merker läuft -- erst der Gasaustausch, dann der Stapel mit seiner
+eigenen Trägheit. Der Trupp gibt den Weg frei, nicht das Ergebnis. Der
+Meldetext beim Abschluss sagte bis dahin „Störung behoben, Stellteil wieder
+frei"; das stimmte schon bei der abgesperrten Zuspeisung nicht und heißt
+jetzt nur noch „Störung behoben". Im Szenario gibt es den Trupp ohnehin
+nicht, dort bleibt der Kreislauf weg.
+
 Offen bleibt daran:
 
-- **Der Kreislauf kommt nicht zurück.** Im freien Spiel (die Störung steht
-  seit 0.6.30 auch in `freeEvents.js`) wäre ein Auftrag für den
-  Instandhaltungstrupp (`game/repairs.js`) der naheliegende Weg -- die
-  Klasse hängt ihre Arbeiten ohnehin am Anlagenzustand fest, und
-  `ctx.graphiteGasLost` ist genau so ein Zustand. Im Szenario soll er
-  bewusst nicht zurückkommen.
 - **Der Stapel ist EIN Knoten.** 1700 t Graphit mit einer einzigen
   Temperatur, kein Profil über Höhe oder Radius. Oxidation, Maßänderung und
   Graphitbrand rechnet das Modell nicht; die 760 °C sind eine Meldegrenze,

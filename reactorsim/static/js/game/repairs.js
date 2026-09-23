@@ -106,6 +106,34 @@ const JOBS = {
     blockKey: null,
     clear(e) { e.ctx.msivStuck = false; },
   },
+  graphite_gas: {
+    // Der Gaskreislauf des Graphitstapels (siehe sp.graphite in
+    // plants/rbmk.js). Die umwaelzende Technik -- Geblaese, Trockner, Filter
+    // -- steht in Anlagenraeumen, nicht im Reaktorschacht: damit gehoert sie
+    // in dieselbe Klasse wie die anderen vier Arbeiten, erreichbar im
+    // laufenden Betrieb. Anders als ein klemmender Steuerstab, der im Kern
+    // sitzt.
+    //
+    // Die 25 Minuten sind eine SETZUNG wie alle Dauern hier: laenger als ein
+    // Motorschutz im Schaltraum (12), kuerzer als ein Armaturenantrieb
+    // draussen (40). Ein Gaskreislauf wird nicht mit einem Schalter
+    // angeworfen -- die Schiene wird geprueft, gelegt und angefahren.
+    //
+    // KEIN Stellteil danach: die anderen Arbeiten geben einen Knopf frei, den
+    // der Bediener selbst druecken muss. Hier gibt es keinen. Zurueck kommt
+    // die Temperatur trotzdem nicht sofort, und zwar von selbst: ctx.graphiteUA
+    // laeuft gegen diesen Merker, also erst der Gasaustausch (gasTau) und dann
+    // der Stapel mit seiner eigenen Traegheit. Der Trupp gibt den Weg frei,
+    // nicht das Ergebnis.
+    key: 'repair_job_graphite_gas',
+    minutes: 25,
+    // acPower modelliert dieser Typ nicht (siehe BACKLOG.md: nur der SWR
+    // rechnet Netz und Wechselstrom getrennt durch). Eine Strombedingung,
+    // die nie falsch werden kann, waere Schmuck statt Voraussetzung.
+    ready: () => true,
+    blockKey: null,
+    clear(e) { e.ctx.graphiteGasLost = false; },
+  },
   boron: {
     // Die Zuspeisung wird abgesperrt -- ein Ventil, kein Rohrbruch. Deshalb
     // die kuerzeste Arbeit von allen.
@@ -176,6 +204,7 @@ export function openRepairs(engine, factor = 1) {
   if (ctx.recircPumpStuck && ctx.recircPump) push('recirc', null);
   if (ctx.msivStuck && s.msiv !== undefined) push('msiv', null);
   if (ctx.boronRunaway && s.C_B_cmd !== undefined) push('boron', null);
+  if (ctx.graphiteGasLost && ctx.graphiteUA) push('graphite_gas', null);
   return out;
 }
 

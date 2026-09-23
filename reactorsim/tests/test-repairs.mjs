@@ -364,3 +364,51 @@ test('openRepairs() liest den Zustand, nicht die Vorgeschichte', () => {
   engine.ctx.pumpsStuck = new Set([9]);
   assert.deepEqual(openRepairs(engine), []);
 });
+
+test('Graphit-Gaskreislauf: der Trupp gibt den Weg frei, nicht das Ergebnis', () => {
+  const { engine, session } = freeRun('rbmk');
+  const r = session.repairs;
+  assert.deepEqual(jobIds(r), []);
+
+  fire(engine, 'rbmk_graphite_gas_loss');
+  assert.deepEqual(jobIds(r), ['graphite_gas']);
+  const job = r.jobs()[0];
+  assert.equal(job.key, 'repair_job_graphite_gas');
+  assert.equal(job.ready, true, 'diese Arbeit hat keine Voraussetzung');
+  assert.equal(job.minutes, 25);
+
+  // Erst den Durchgang wirklich absacken lassen -- sonst prueft der Test
+  // nur einen Merker, den noch gar nichts bewegt hat.
+  run(engine, session, 900);
+  const degraded = engine.ctx.graphiteUA.v;
+  assert.ok(degraded < 400, `UA ${degraded.toFixed(0)} kW/K`);
+
+  assert.equal(r.order('graphite_gas'), 'ordered');
+  advance(engine, r, 26 * 60);
+  assert.equal(engine.ctx.graphiteGasLost, false, 'Merker steht noch');
+  assert.deepEqual(jobIds(r), [], 'Arbeit steht nach Abschluss noch in der Liste');
+
+  // Kein Knopf, kein Sprung: die Anlage holt sich den Durchgang selbst
+  // zurueck, ueber gasTau und dann die Traegheit des Stapels.
+  const atDone = engine.ctx.graphiteUA.v;
+  run(engine, session, 60);
+  assert.ok(engine.ctx.graphiteUA.v > atDone, 'der Durchgang kommt nicht zurueck');
+  assert.ok(engine.ctx.graphiteUA.v < engine.spec.graphite.UA,
+    'der Durchgang springt statt zu laufen');
+  run(engine, session, 2 * 3600);
+  assert.ok(Math.abs(engine.ctx.graphiteUA.v - engine.spec.graphite.UA) < 1,
+    `nach zwei Stunden erst ${engine.ctx.graphiteUA.v.toFixed(1)} kW/K`);
+  assert.equal(engine.derive().graphiteGasLost, false);
+});
+
+test('Graphit-Gaskreislauf: eine abgebrochene Arbeit laesst den Defekt stehen', () => {
+  const { engine, session } = freeRun('rbmk');
+  const r = session.repairs;
+  fire(engine, 'rbmk_graphite_gas_loss');
+  r.order('graphite_gas');
+  advance(engine, r, 20 * 60);
+  r.cancel();
+  advance(engine, r, 20 * 60);
+  assert.equal(engine.ctx.graphiteGasLost, true, 'abgebrochen und trotzdem repariert');
+  assert.deepEqual(jobIds(r), ['graphite_gas']);
+});

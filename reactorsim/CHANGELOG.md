@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.6.31
+
+- ✨ **Der Instandhaltungstrupp nimmt den Graphit-Gaskreislauf wieder in
+  Betrieb.** Fünfte Arbeit in `game/repairs.js`, 25 Minuten, ohne
+  Voraussetzung -- die umwälzende Technik (Gebläse, Trockner, Filter) steht
+  in Anlagenräumen und nicht im Reaktorschacht, damit gehört sie in dieselbe
+  Klasse wie die anderen vier: erreichbar im laufenden Betrieb, anders als
+  ein klemmender Steuerstab. Die 25 Minuten sind eine Setzung wie alle
+  Dauern dort -- länger als ein Motorschutz im Schaltraum (12), kürzer als
+  ein Armaturenantrieb draußen (40).
+
+  Sie ist die erste Arbeit, die KEIN Stellteil freigibt, weil es keines
+  gibt. Der Weg zurück läuft stattdessen von selbst: `ctx.graphiteUA` läuft
+  ohnehin gegen den Merker, also erst der Gasaustausch und dann der Stapel
+  mit seiner eigenen Trägheit. Der Trupp gibt den Weg frei, nicht das
+  Ergebnis.
+
+  Nur im freien Spiel, wie der ganze Trupp. Im Szenario
+  `rbmk_graphite_gas` bleibt der Kreislauf weg -- dort ist der Defekt die
+  Aufgabe und nicht etwas, das man wegarbeitet.
+
+  Gegen die laufende Anlage nachgesehen, freies Spiel am RBMK mit
+  Störungen „selten“: 01:04:15 Gaskreislauf weg, 01:05:11 Trupp angefordert,
+  Graphittemperatur währenddessen 578 → 597 → 619 °C, 01:30:11 fertig und
+  die Meldung gegangen.
+
+- 🐛 **„Störung behoben, Stellteil wieder frei“ stimmte nicht für jede
+  Arbeit.** Die abgesperrte Zuspeisung gibt schon seit 0.6.18 keines frei,
+  der Gaskreislauf jetzt auch nicht. Die Meldung heißt deshalb nur noch
+  „Störung behoben“; wo ein Stellteil dazugehört und wo nicht, sagt der
+  Hilfetext der Kachel, und der nennt jetzt auch die zweite Uhr: Was die
+  Anlage nach der Reparatur noch braucht, ist ihre eigene Trägheit und
+  nicht die des Trupps.
+
 ## 0.6.30
 
 - ✨ **Der Graphit-Gaskreislauf -- und damit eine Meldung, die es seit je

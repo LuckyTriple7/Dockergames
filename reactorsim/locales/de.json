@@ -1122,11 +1122,12 @@
   "opt_repairs_normal": "Normal -- Trupp im Haus",
   "opt_repairs_slow": "Langsam -- Nachtschicht, doppelte Dauer",
   "repair_title": "Instandhaltung",
-  "repair_help": "Ein Instandhaltungstrupp arbeitet eine Störung ab, während die Schicht weiterläuft. Du forderst ihn an, er braucht seine Zeit, und am Ende ist das Stellteil wieder frei -- angeworfen oder geöffnet hat er es nicht. Das bleibt deine Handlung.\n\nEs gibt genau EINEN Trupp. Stehen zwei Störungen an, musst du entscheiden, welche zuerst drankommt. „Trupp zurückrufen\" bricht die laufende Arbeit ab; der Fortschritt ist damit verloren.\n\n### Was ein Trupp erreicht\n\nWenig, und das mit Absicht. Ein ausgelöster Motorschutz im Schaltraum, eine abgesperrte Zuspeisung, ein Ventilantrieb -- das sind Handgriffe im laufenden Betrieb. Ein klemmender Steuerstab sitzt im Kern, ein Dampferzeuger-Rohrleck und ein klemmendes Abblaseventil sind nur über das Abfahren der Anlage zu erreichen. Diese Störungen bleiben für den Rest der Schicht.\n\n### Zeit\n\nDie genannte Dauer ist Simulationszeit. Im Zeitraffer vergeht sie schnell, bei einfacher Geschwindigkeit dauert sie wirklich so lange -- und wer gerade eine Transiente fährt, kann den Zeitraffer nicht hochdrehen.",
+  "repair_help": "Ein Instandhaltungstrupp arbeitet eine Störung ab, während die Schicht weiterläuft. Du forderst ihn an, und er braucht seine Zeit. Behoben ist am Ende die Störung, nicht der Betriebszustand: Wo ein Stellteil durch sie blockiert war, ist es wieder frei -- angeworfen oder geöffnet hat der Trupp es nicht. Das bleibt deine Handlung. Und wo es gar kein Stellteil gibt, findet die Anlage von selbst zurück, mit ihrer eigenen Trägheit.\n\nEs gibt genau EINEN Trupp. Stehen zwei Störungen an, musst du entscheiden, welche zuerst drankommt. „Trupp zurückrufen“ bricht die laufende Arbeit ab; der Fortschritt ist damit verloren.\n\n### Was ein Trupp erreicht\n\nWenig, und das mit Absicht. Ein ausgelöster Motorschutz im Schaltraum, eine abgesperrte Zuspeisung, ein Ventilantrieb, ein Gaskreislauf in seinem Anlagenraum -- das sind Handgriffe im laufenden Betrieb. Ein klemmender Steuerstab sitzt im Kern, ein Dampferzeuger-Rohrleck und ein klemmendes Abblaseventil sind nur über das Abfahren der Anlage zu erreichen. Diese Störungen bleiben für den Rest der Schicht.\n\n### Zeit\n\nDie genannte Dauer ist Simulationszeit. Im Zeitraffer vergeht sie schnell, bei einfacher Geschwindigkeit dauert sie wirklich so lange -- und wer gerade eine Transiente fährt, kann den Zeitraffer nicht hochdrehen. Womit die Anlage danach noch Zeit braucht, ist eine zweite Uhr: Der Graphitstapel etwa kühlt nach seiner eigenen Trägheit, nicht nach der des Trupps.",
   "repair_job_pump": "Kühlmittelpumpe {n}: Motorschutz zurückstellen",
   "repair_job_recirc": "Umwälzpumpe: Motorschutz zurückstellen",
   "repair_job_msiv": "Frischdampf-Absperrung: Antrieb instand setzen",
   "repair_job_boron": "Zuspeisung absperren",
+  "repair_job_graphite_gas": "Graphit-Gaskreislauf wieder in Betrieb nehmen",
   "repair_duration": "{min} min",
   "repair_running": "Trupp unterwegs: {job} — noch {rest}",
   "repair_idle": "Keine Störung, die ein Trupp im Betrieb beheben könnte.",
@@ -1136,7 +1137,7 @@
   "btn_repair_order": "Trupp anfordern",
   "btn_repair_cancel": "Trupp zurückrufen",
   "event_repair_ordered": "Trupp angefordert",
-  "event_repair_done": "Störung behoben, Stellteil wieder frei",
+  "event_repair_done": "Störung behoben",
   "event_repair_cancelled": "Trupp zurückgerufen",
   "event_repair_aborted": "Arbeit abgebrochen, Voraussetzung entfallen"
 }
