@@ -854,3 +854,20 @@ def test_player_cannot_reach_admin_routes(admin):
                                 'csrf': _csrf(player), 'next': '/'})
     assert player.get('/admin').status_code == 403
     assert player.post('/admin/users', data={'email': 'x@y.test'}).status_code == 403
+
+
+def test_reset_password_survives_an_account_that_vanishes_in_between(admin, monkeypatch):
+    """Zwei Admin-Reiter: im einen laeuft der Passwort-Reset, im anderen wird
+    dasselbe Konto geloescht.
+
+    Zwischen `reset_password()` und dem `get_by_id()` fuer die Anzeige passt
+    genau dieses Rennen. Vorher stand danach `row['email']` ohne Pruefung da
+    und die Antwort war ein Absturz statt einer Meldung -- der Admin saehe
+    eine leere Fehlerseite und wuesste nicht, ob das Passwort nun gesetzt ist.
+    """
+    mod, c = admin
+    user, err = mod.USERS.create_user('rennen@example.test', 'altes-passwort-1')
+    assert err is None
+    monkeypatch.setattr(mod.USERS, 'get_by_id', lambda _uid: None)
+    r = c.post(f"/admin/users/{user['id']}/reset-password", data={'csrf': _admin_csrf(c)})
+    assert r.status_code == 404

@@ -1,5 +1,80 @@
 # Changelog
 
+## 0.6.32
+
+- 🐛 **Wertung: Client und Server hätten sich bei `difficulty: 0`
+  widersprochen.** `scoring.js` rechnete `Number(sum.difficulty) || 1`, und
+  weil `0` falsch ist, wurde daraus eine 1 -- also 250 Bonuspunkte.
+  `scoring.py` rechnet `_num(difficulty, 1.0)`, und das ist bei einer
+  lesbaren Null eine Null -- also keine. Der Browser hätte im Debrief 250
+  Punkte mehr gezeigt, als der Server dann vergeben hätte.
+
+  Kein Szenario trägt heute den Wert 0; der Fehler schlief. Gefunden mit
+  20 000 gewürfelten Zusammenfassungen gegen beide Seiten: 1214
+  Abweichungen, alle mit `difficulty: 0`, alle genau ±250, sonst bitgleich.
+  Der Incident-Zweig machte es schon richtig -- jetzt rechnen beide Zweige
+  über dasselbe `numOr()`, das `_num()` aus `scoring.py` nachbildet.
+  `tests/fixtures/scoring.json` hält den Fall von beiden Seiten fest; ohne
+  einen Legacy-Datensatz mit difficulty 0 hatte der Paritätstest dort nie
+  hingesehen.
+
+- 🔒 **Die Nachrechnung eines Laufs hat eine eigene Grenze bekommen.** Sie
+  ist die einzige wirklich teure Stelle des Servers: ein eigener
+  Node-Prozess, gemessen rund zweieinhalb Sekunden, und solange er läuft,
+  hängt einer der 24 waitress-Fäden daran. Davor stand bisher nur die weite
+  Flutgrenze (60/min), die enge Eintragsgrenze (1/min) kommt erst danach --
+  und zwar mit gutem Grund, sonst sperrte eine einzige fehlerhafte Anfrage
+  den nächsten gültigen Eintrag aus. Dazwischen lagen damit sechzig
+  Nachrechnungen je Minute, zusammen mehr Rechenzeit, als die Minute hat.
+  `VERIFY_PER_MINUTE` = 5 steht jetzt direkt vor dem Aufruf. Sie trifft nur
+  Anfragen MIT Protokoll: eine Einreichung ohne rechnet nichts nach und
+  verbraucht deshalb auch nichts davon.
+
+- 🧹 **`save()`/`load()` aus `net/persist.js` entfernt.** Zwei Hüllen, die
+  nie jemand gerufen hat -- `main.js` nimmt `pack()`/`apply()` direkt. Sie
+  waren eine Falle für den ersten Aufrufer, der käme: `apply()` nimmt vier
+  Argumente, `load()` reichte drei weiter, und der Sitzungsstand
+  (Störungen, Netzaufträge, Trupp) wäre stillschweigend unter den Tisch
+  gefallen.
+
+- 🐛 **Ein unbekannter Pfad ist jetzt ein 404 und keine Einladung zur
+  Anmeldung.** Vorher schickte jeder Tippfehler in der Adresse den Besucher
+  auf die Anmeldeseite -- und nach dem Anmelden stand der 404 dann doch da,
+  nur zwei Schritte später. Für den Admin endete derselbe Weg in einer
+  Weiterleitung nach `/admin`. Verraten wird durch den 404 nichts, was nicht
+  ohnehin offenliegt.
+
+- 🐛 **Der Admin darf Dateien aus `static/` holen.** `vstatic` stand in
+  `_MONITOR_ENDPOINTS`, aber nicht in `_ADMIN_ENDPOINTS` -- jede Anfrage auf
+  `/s/<ver>/...` aus einer Admin-Sitzung ging nach `/admin` um. Folgenlos,
+  solange das Panel sein CSS inline mitbringt, aber die erste Stilvorlage
+  und jedes Favicon dort wären stumm danebengegangen.
+
+- 🐛 **`OpenRuns` hielt dauerhaft einen Lauf mehr, als der Deckel erlaubt.**
+  `open()` fegte VOR dem Eintragen, der neue Lauf kam danach obendrauf:
+  `MAX_OPEN + 1` statt `MAX_OPEN`. `MonitorRelay.put()` macht es seit jeher
+  andersherum und erklärt im Kommentar auch warum -- jetzt beide gleich.
+
+- 🐛 **Passwort-Reset im Panel stürzte ab, wenn das Konto zwischendurch
+  verschwand.** Zwei Admin-Reiter, im zweiten wird gelöscht: zwischen
+  `reset_password()` und dem `get_by_id()` für die Anzeige passt genau
+  dieses Rennen, und danach stand `row['email']` ohne Prüfung da. Jetzt
+  eine 404-Meldung statt einer leeren Fehlerseite.
+
+- 🧹 **Ein toter Zweig weg.** `/api/account/password` bildete einen Grund
+  `rate_limited` auf 429 ab, den `users.change_password()` nie zurückgibt --
+  die Ratenbegrenzung steht in der Route selbst.
+
+- 📝 **`!Object.hasOwn(a, 'id')` in `replay.js` hat einen Kommentar
+  bekommen.** Die Bedingung steht in einer Kette, die `a.id === 'helper'`
+  schon voraussetzt, und sieht deshalb ueberfluessig aus. Sie ist es nicht:
+  ein GEERBTES `id` liest sich genau wie ein eigenes, `a.id === 'helper'`
+  ist also auch fuer `Object.create({ id: 'helper' })` wahr -- ohne die
+  Pruefung liefe so ein Eintrag als Hilfestellung durch. Genau daran ist der
+  Versuch gescheitert, sie zu entfernen; `tests/test-replay.mjs`
+  ("inherited event properties") hat es gefangen. Jetzt steht der Grund
+  daneben.
+
 ## 0.6.31
 
 - ✨ **Der Instandhaltungstrupp nimmt den Graphit-Gaskreislauf wieder in

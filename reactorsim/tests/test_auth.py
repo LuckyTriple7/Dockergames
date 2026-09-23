@@ -458,3 +458,44 @@ def test_a_watching_admin_login_stays_an_admin_login(client):
     r = _login(client, monitor='1')
     assert r.headers['Location'].endswith('/admin')
     assert client.get('/admin').status_code == 200
+
+
+@pytest.mark.parametrize('path', ['/gibtsnicht', '/api/gibtsnicht', '/admin/gibtsnicht'])
+def test_an_unknown_path_is_a_404_and_not_an_invitation_to_log_in(client, path):
+    """Ein Tippfehler in der Adresse ist kein Zugangsproblem.
+
+    Vorher schickte JEDER unbekannte Pfad den Besucher auf die Anmeldung --
+    und nach dem Anmelden stand der 404 dann doch da, nur zwei Schritte
+    spaeter. Verraten wird damit nichts: welche Pfade es gibt, steht im
+    Quelltext.
+    """
+    assert client.get(path).status_code == 404
+
+
+def test_an_unknown_path_stays_a_404_for_both_rollen(tmp_path, monkeypatch):
+    """Auch angemeldet, in beiden Rollen -- fuer den Admin lief der Weg
+    vorher ueber die Admin-Pruefung und endete in einer Weiterleitung nach
+    /admin statt in einem 404."""
+    mod = _fresh(tmp_path, monkeypatch)
+    _add_player(mod)
+
+    als_admin = mod.app.test_client()
+    _login(als_admin)
+    assert als_admin.get('/gibtsnicht').status_code == 404
+
+    als_spieler = mod.app.test_client()
+    _login(als_spieler, user=PLAYER_EMAIL, password=PLAYER_PASSWORD)
+    assert als_spieler.get('/gibtsnicht').status_code == 404
+
+
+def test_the_admin_may_fetch_files_from_static(client):
+    """Eine Datei aus static/ ist keine Verwaltungshandlung.
+
+    Das Panel bringt sein CSS bisher inline mit -- aber ohne 'vstatic' in
+    _ADMIN_ENDPOINTS ginge die erste Stilvorlage, das erste Bild und jedes
+    Favicon dort stumm nach /admin um, statt anzukommen.
+    """
+    _login(client)
+    r = client.get('/s/0.0.0/js/main.js')
+    assert r.status_code == 200
+    assert r.headers['Cache-Control'].endswith('31536000')

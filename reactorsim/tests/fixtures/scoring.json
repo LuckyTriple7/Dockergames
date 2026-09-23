@@ -165,5 +165,23 @@
     "summary": {"score_mode": "incident_v1", "completed": true, "difficulty": 0, "objectives": [{"id": "power", "met": true}, {"id": "stable", "met": true}]},
     "score": 3000,
     "parts": {"mission": 1000, "bonus": 0}
+  },
+  {
+    "name": "legacy zero difficulty has zero bonus",
+    "summary": {"completed": true, "difficulty": 0},
+    "score": 1000,
+    "parts": {"mission": 1000, "bonus": 0}
+  },
+  {
+    "name": "legacy missing difficulty counts as one",
+    "summary": {"completed": true},
+    "score": 1250,
+    "parts": {"mission": 1000, "bonus": 250}
+  },
+  {
+    "name": "legacy unreadable difficulty counts as one",
+    "summary": {"completed": true, "difficulty": ""},
+    "score": 1250,
+    "parts": {"mission": 1000, "bonus": 250}
   }
 ]

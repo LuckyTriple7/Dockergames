@@ -5,7 +5,6 @@
 // die Engine, sonst rechnet sie mit NaN weiter und der Spieler sieht Striche
 // statt Zahlen, ohne zu wissen warum.
 
-import { api } from './api.js';
 import { learningReport, restoreJournal } from '../game/learning.js';
 import { numbers } from '../sim/state.js';
 import { decaySum, equilibriumDecay } from '../sim/decayheat.js';
@@ -343,15 +342,11 @@ export function apply(blob, engine, runState, session) {
   return null;
 }
 
-export async function save(engine, scenarioId, slot = 'auto', runState, session) {
-  const r = await api.writeSave(slot, pack(engine, scenarioId, runState, session));
-  return r.ok;
-}
-
-export async function load(engine, slot = 'auto', runState) {
-  const r = await api.readSave(slot);
-  if (!r.ok || !r.data) return 'not_found';
-  return apply(r.data, engine, runState);
-}
-
-export { api };
+// Frueher standen hier noch save()/load() -- zwei Huellen, die api.writeSave()
+// bzw. api.readSave() mit pack()/apply() verbanden, und ein Weiterreichen von
+// `api`. Niemand hat sie je benutzt: main.js nimmt pack()/apply() direkt und
+// ruft die Schnittstelle selbst (saveGame()/boot()), weil es an beiden Enden
+// noch mehr zu tun hat als ein Ein- und Auspacken. Weg sind sie, weil load()
+// dabei eine Falle war: apply() nimmt vier Argumente, load() reichte drei
+// weiter -- der Sitzungsstand (Stoerungen, Netzauftraege, Trupp) waere beim
+// ersten Aufrufer stillschweigend unter den Tisch gefallen.

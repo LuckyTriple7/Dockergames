@@ -1040,3 +1040,57 @@ def test_rbmk_post_az5_nonsensical_controls_leave_idle_failure_and_supply_cap(cl
     assert data['entry']['completed'] is False
     assert data['parts']['objectives'] == 0
     assert data['score'] == idle['score']
+
+
+def test_verification_has_its_own_limit_before_the_node_process(client, monkeypatch):
+    """Die Nachrechnung ist die teuerste Stelle des Servers -- sie braucht
+    eine eigene Grenze VOR dem Start des Node-Prozesses.
+
+    Vorher stand davor nur die weite Flutgrenze (60/min) und dahinter die
+    enge Eintragsgrenze (1/min), die absichtlich erst kurz vor dem Schreiben
+    greift. Dazwischen lagen sechzig Nachrechnungen je Minute zu gemessen
+    rund zweieinhalb Sekunden -- zusammen mehr Rechenzeit, als die Minute
+    hat, und jede davon haelt einen der 24 waitress-Faeden.
+    """
+    import app as appmod
+    calls = []
+    monkeypatch.setattr(appmod, '_verify_run',
+                        lambda *args: calls.append(args) or _summary())
+    body = {'name': 'X', 'summary': _summary(), 'log': []}
+    for _ in range(appmod.VERIFY_PER_MINUTE):
+        assert client.post('/api/highscores', json=body).status_code in (200, 429)
+    r = client.post('/api/highscores', json=body)
+    assert r.status_code == 429
+    assert r.get_json() == {'error': 'rate_limited'}
+    # Entscheidend: der teure Aufruf ist gar nicht erst passiert.
+    assert len(calls) == appmod.VERIFY_PER_MINUTE
+
+
+def test_a_submission_without_a_log_does_not_spend_the_verify_budget(client):
+    """Die Grenze trifft nur Anfragen MIT Protokoll. Eine Einreichung ohne
+    rechnet nichts nach und darf deshalb auch nichts davon aufbrauchen --
+    sonst sperrte der Legacy-Weg den Wiedergabe-Weg aus."""
+    import app as appmod
+    body = {'name': 'X', 'summary': _summary()}
+    for _ in range(appmod.VERIFY_PER_MINUTE * 2):
+        r = client.post('/api/highscores', json=body)
+        assert r.status_code in (200, 429)
+        if r.status_code == 429:
+            # Die enge Eintragsgrenze (1/min) -- nicht die Wiedergabegrenze.
+            assert r.get_json() == {'error': 'rate_limited'}
+
+
+def test_the_open_run_directory_never_grows_past_its_cap():
+    """MAX_OPEN ist ein Deckel und kein Richtwert.
+
+    open() fegte frueher VOR dem Eintragen: der neue Lauf kam danach obendrauf,
+    und das Verzeichnis stand dauerhaft auf MAX_OPEN + 1. MonitorRelay.put()
+    macht es seit jeher andersherum und erklaert im Kommentar auch warum.
+    """
+    import app as appmod
+    runs = appmod.OpenRuns(None)
+    tokens = [runs.open('konto', 'pwr', None, 0.0)
+              for _ in range(appmod.OpenRuns.MAX_OPEN + 5)]
+    assert len(runs._runs) == appmod.OpenRuns.MAX_OPEN
+    # Der zuletzt eroeffnete Lauf ueberlebt: gefegt wird der aelteste.
+    assert runs.close('konto', tokens[-1]) is not None

@@ -46,6 +46,29 @@ export function roundScore(x) {
 }
 
 /**
+ * Gegenstueck zu _num() in scoring.py -- umgewandelt wird, was sich umwandeln
+ * laesst, sonst greift der Rueckfallwert.
+ *
+ * Gebraucht wird das nur dort, wo der Rueckfallwert NICHT null ist, also beim
+ * Schwierigkeitsgrad. Bei allen anderen Kennzahlen faellt `Number(x) || 0`
+ * mit Pythons `_num(x)` zusammen, weil beide Wege auf dieselbe Null kommen.
+ * Beim Rueckfallwert 1 tun sie das nicht: `Number(0) || 1` ist 1, Pythons
+ * `_num(0, 1.0)` ist 0 -- ein Szenario mit difficulty 0 haette im Browser
+ * 250 Bonuspunkte gezeigt und auf dem Server keine. Heute hat keines den
+ * Wert; das ist kein Grund, die beiden Formeln auseinanderlaufen zu lassen.
+ *
+ * `''` und Objekte fallen bewusst auf den Rueckfallwert zurueck: `Number('')`
+ * waere 0, `float('')` wirft -- und an dieser Stelle zaehlt, was Python tut.
+ */
+export function numOr(value, fallback) {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'object' || typeof value === 'symbol') return fallback;
+  if (typeof value === 'string' && value.trim() === '') return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
  * @param {object} sum Zusammenfassung aus RunState.summary()
  * @returns {{score:number, parts:object}} sum(parts) === score, IMMER exakt
  *   (siehe rounding_adjustment/floor_adjustment unten), nicht nur ungefaehr.
@@ -79,7 +102,7 @@ export function score(sum) {
     fuel: fuelDamage ? -WEIGHTS.fuelDamage : 0,
     cont_failed: contFailed ? -WEIGHTS.contFailed : 0,
     h2_exploded: h2Exploded ? -WEIGHTS.h2Exploded : 0,
-    bonus: completed ? WEIGHTS.difficultyBonus * (Number(sum.difficulty) || 1) : 0,
+    bonus: completed ? WEIGHTS.difficultyBonus * numOr(sum.difficulty, 1) : 0,
   };
 
   const incident = sum.score_mode === 'incident_v1';
@@ -90,8 +113,7 @@ export function score(sum) {
     const success = completed && objectives.length === 2 && met === 2 && !catastrophic;
     parts.objectives = Math.min(met, 2) * 1000;
     parts.mission = success ? WEIGHTS.mission : 0;
-    const difficulty = sum.difficulty == null ? NaN : Number(sum.difficulty);
-    parts.bonus = success ? WEIGHTS.difficultyBonus * (Number.isFinite(difficulty) ? difficulty : 1) : 0;
+    parts.bonus = success ? WEIGHTS.difficultyBonus * numOr(sum.difficulty, 1) : 0;
     for (const key of ['energy', 'deviation', 'scram', 'violations_info', 'violations_warn', 'violations_trip']) {
       parts[key] = 0;
     }

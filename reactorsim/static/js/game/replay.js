@@ -61,6 +61,12 @@ export function replayRun(plant, scenarioDef, log) {
   for (const a of log || []) {
     const n = a && Number.isInteger(a.n) ? a.n : null;
     // Check the whole log, including actions after the run would have ended.
+    // `Object.hasOwn(a, 'id')` sieht neben dem Vergleich eine Zeile darueber
+    // ueberfluessig aus und ist es nicht: ein GEERBTES `id` liest sich genau
+    // wie ein eigenes, `a.id === 'helper'` ist also auch fuer
+    // `Object.create({ id: 'helper' })` wahr. Ohne die Pruefung liefe so ein
+    // Eintrag als Hilfestellung durch -- siehe tests/test-replay.mjs,
+    // "inherited event properties".
     if (a && a.id === 'helper'
         && (!Object.hasOwn(a, 'id') || !Object.hasOwn(a, 'n') || !Object.hasOwn(a, 'value')
           || !Number.isSafeInteger(n) || n < 0 || n > MAX_STEPS

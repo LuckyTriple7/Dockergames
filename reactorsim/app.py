@@ -57,6 +57,19 @@ VERIFY_SCRIPT = _BASE + '/verify_run.mjs'
 # bemessen gegen einen langsamen Container beim Start, nicht gegen die
 # eigentliche Rechenzeit.
 VERIFY_TIMEOUT_S = 20
+# Wie oft je Minute ein Konto eine Nachrechnung ausloesen darf.
+#
+# Sie ist die einzige wirklich teure Stelle des ganzen Servers: ein eigener
+# Node-Prozess, gemessen rund zweieinhalb Sekunden Rechenzeit, und solange er
+# laeuft, haengt einer der 24 waitress-Faeden daran (siehe _serve()). Die
+# Grenze, die bisher davor stand, ist die weite Flutgrenze (60/min); die enge
+# Eintragsgrenze kommt erst danach, und zwar mit gutem Grund (siehe
+# scores_add()). Dazwischen lagen also sechzig Nachrechnungen je Minute --
+# zusammen mehr Rechenzeit, als die Minute hat.
+#
+# Fuenf sind grosszuegig: ein Lauf wird einmal eingereicht. Wer oefter
+# kommt, probiert herum, und der darf warten.
+VERIFY_PER_MINUTE = 5
 
 PORT = int(os.environ.get('REACTORSIM_PORT', '17779'))
 
@@ -317,10 +330,16 @@ class OpenRuns:
         token = secrets.token_urlsafe(12)
         now, wall = time.monotonic(), time.time()
         with self._lock:
-            gone = self._sweep(now)
+            # Erst eintragen, dann aufraeumen -- dieselbe Reihenfolge und
+            # derselbe Grund wie in MonitorRelay.put(): andersherum steht der
+            # neue Eintrag NACH dem Fegen da, und das Verzeichnis haelt
+            # dauerhaft MAX_OPEN + 1 statt MAX_OPEN. Der frische Eintrag
+            # fliegt dabei nicht selbst heraus: er traegt das juengste t0,
+            # und _sweep() nimmt das aelteste.
             self._runs[(account, token)] = {
                 't0': now, 'reactor': reactor, 'scenario': scenario,
                 'start_sim': float(start_sim), 'skip_s': 0.0}
+            gone = self._sweep(now)
         for _acct, tok in gone:
             self._write('DELETE FROM open_runs WHERE token = ?', (tok,))
         self._write('INSERT OR REPLACE INTO open_runs '
@@ -482,6 +501,12 @@ _ADMIN_ENDPOINTS = frozenset({
     'admin_panel', 'admin_create_user', 'admin_lock_user',
     'admin_unlock_user', 'admin_reset_password', 'admin_user_detail',
     'admin_test_mail', 'admin_delete_user',
+    # Dateien aus static/, genau wie fuer den Mitleser oben. Das Panel bringt
+    # sein CSS bisher inline mit und braucht keine -- aber ohne diesen Eintrag
+    # geht die erste Stilvorlage, das erste Bild und jedes Favicon dort stumm
+    # nach /admin um, statt anzukommen. Eine Datei aus static/ ist keine
+    # Verwaltungshandlung, sie auszusperren trennt keine Rollen.
+    'vstatic',
 })
 
 
@@ -492,6 +517,13 @@ def _require_login():
     # die Marke erneuert -- er ist die einzige Anfrage, die selbst dann noch
     # kommt, wenn gerade niemand spielt.
     RUNS.touch()
+    # Keine Route getroffen: das ist ein 404 und keine Frage der Anmeldung.
+    # Ohne diesen Zweig wurde aus jedem Tippfehler in der Adresse eine
+    # Weiterleitung auf die Anmeldung -- und nach dem Anmelden stand der 404
+    # dann doch da, nur zwei Schritte spaeter. Verraten wird damit nichts,
+    # was nicht ohnehin offenliegt: welche Pfade es gibt, steht im Quelltext.
+    if request.endpoint is None:
+        return None
     if request.endpoint in _PUBLIC_ENDPOINTS:
         return None
     user, role = AUTH.resolve(request.cookies.get(authmod.SESSION_COOKIE))
@@ -1078,6 +1110,11 @@ def admin_reset_password(user_id: str):
     if err:
         return _render_admin(404, error=err)
     row = USERS.get_by_id(user_id)
+    # Zwei Admin-Reiter, im zweiten wurde das Konto gerade geloescht: dann
+    # ist das Passwort zwar gesetzt, aber es gibt niemanden mehr, dem es
+    # gehoert. Die Meldung ist ehrlicher als ein Absturz an row['email'].
+    if row is None:
+        return _render_admin(404, error='not_found')
     # Backlog "Passwort-Reset Phase 2": steht ein Mailserver bereit, geht das
     # neue Passwort direkt an den Spieler, statt vom Admin von Hand
     # weitergereicht zu werden. Angezeigt wird es trotzdem noch einmal --
@@ -1337,9 +1374,11 @@ def account_change_password():
     if not isinstance(current, str) or not isinstance(new_password, str):
         return jsonify({'error': 'bad_body'}), 400
 
+    # Die Ratenbegrenzung steht oben in dieser Funktion, nicht in users.py --
+    # von dort kommt nur der fachliche Grund, und der ist immer eine 400.
     why = USERS.change_password(player['id'], current, new_password)
     if why:
-        return jsonify({'error': why}), 429 if why == 'rate_limited' else 400
+        return jsonify({'error': why}), 400
 
     # Jede andere Sitzung dieses Kontos faellt damit (auth.py issue() vergibt
     # eine neue Kennung und entwertet die vorherige) -- die eigene bekommt das
@@ -1632,8 +1671,9 @@ def scores_add():
     """Der Client schickt Kennzahlen, NIE einen Punktestand.
 
     Gepruefte Reihenfolge: Ratenbegrenzung, Kennungen gegen die Whitelist,
-    Plausibilitaet der Kennzahlen, dann erst rechnen. Ein mitgeschicktes
-    Feld "score" wird nicht gelesen -- es kommt gar nicht vor.
+    Grenze fuer die Nachrechnung, Plausibilitaet der Kennzahlen, dann erst
+    rechnen. Ein mitgeschicktes Feld "score" wird nicht gelesen -- es kommt
+    gar nicht vor.
     """
     # Zwei Stufen. Oben eine weite Grenze gegen das blosse Fluten; die enge
     # Grenze steht weiter unten, kurz vor dem Schreiben. Stuende sie hier,
@@ -1677,6 +1717,11 @@ def scores_add():
     if incident and not isinstance(action_log, list):
         return jsonify({'error': 'replay_required'}), 400
     if isinstance(action_log, list):
+        # Eigene Grenze genau hier -- siehe VERIFY_PER_MINUTE. Sie trifft nur
+        # Anfragen MIT Protokoll: eine Einreichung ohne rechnet nichts nach
+        # und kostet entsprechend nichts.
+        if _limited('verify', VERIFY_PER_MINUTE, 60):
+            return jsonify({'error': 'rate_limited'}), 429
         verified = _verify_run(reactor, scn['file'], action_log)
         if verified is None:
             return jsonify({'error': 'verification_failed'}), 400
