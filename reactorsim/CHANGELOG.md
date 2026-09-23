@@ -1,5 +1,78 @@
 # Changelog
 
+## 0.6.30
+
+- ✨ **Der Graphit-Gaskreislauf -- und damit eine Meldung, die es seit je
+  gab und die nie aufleuchten konnte.** 0.6.29 hat nachgemessen, dass
+  `alarm_graphite_hot` über die Leistung unerreichbar ist: 760 °C bräuchten
+  5321 MW, also 166 % der Nennleistung, während `power_high` bei 112 % steht.
+  Der Weg dorthin ist auch in der Wirklichkeit kein anderer Leistungspunkt,
+  sondern eine andere Ursache.
+
+  Der Graphitstapel eines RBMK steht in einem umgewälzten
+  Helium-Stickstoff-Gemisch. Das Gas ist keine reine Schutzatmosphäre: es
+  trägt die Wärme über den Spalt zwischen Graphitblock und Druckröhre, und
+  dafür steckt das Helium darin -- es leitet rund sechsmal so gut wie
+  Stickstoff. Der Betrieb stellte das Mischungsverhältnis nach der Leistung
+  ein, eben um die Graphittemperatur zu führen. Neu ist das Ereignis
+  `rbmk_graphite_gas_loss`: Fällt der Kreislauf aus, bleibt Stickstoff im
+  Spalt.
+
+  `sp.graphite.UA` ist deshalb keine Konstante mehr, sondern
+  `ctx.graphiteUA` -- ein `Lag` in `ctx.saveable`, der über
+  `sp.graphite.gasTau` (900 s) von 560 auf `UA_noGas` = 300 kW/K abfällt.
+  Derselbe Wert geht in BEIDE Stellen von `directHeat()`: Endwert und
+  Zeitkonstante, weil beides derselbe Wärmedurchgang ist. Schlechterer
+  Durchgang heißt heißer UND träger -- die thermische Zeitkonstante des
+  Stapels wächst von 35 auf 66 Minuten. Die 300 sind eine SETZUNG, gewählt
+  aus der Wirkung und nicht aus einer Leitfähigkeitstabelle; die Begründung
+  steht im Kommentar bei `sp.graphite`.
+
+  Auch die Diagnose rechnete bis hierher mit dem Auslegungswert weiter:
+  `graphiteHeatMW` nimmt jetzt `ctx.graphiteUA.v`. Der Wärmestrom fällt im
+  Augenblick des Ausfalls und steigt danach wieder, während die Temperatur
+  steigt -- derselbe Strom braucht bei schlechterem Durchgang ein größeres
+  Gefälle. Genau das ist der Vorgang, und er steht jetzt richtig da.
+
+- ✨ **Neues RBMK-Szenario „Graphit-Gaskreislauf ausgefallen“**
+  (`rbmk_graphite_gas`, Schwierigkeit 2, vier Stunden). Die langsamste
+  Störung im ganzen Spiel: keine Schnellabschaltung hilft, der Reaktor
+  bleibt durchgehend beherrschbar, und trotzdem läuft etwas davon. Zu
+  entscheiden ist, wie viel Strom man aufgibt, um den Moderator unter seiner
+  Grenze zu halten. Gemessen über die volle Schicht:
+
+  | Handlung | T_gr Spitze | über 760 °C | Punkte |
+  |---|---|---|---|
+  | nichts | 809 °C | 7004 s | 2203 |
+  | ab 60 min auf 87 % | 743 °C | 0 s | 2204 |
+  | ab 120 min auf 87 % | 757 °C | 0 s | **2236** |
+  | ab 60 min auf 80 % | 708 °C | 0 s | 1864 |
+  | ab 60 min auf 60 % | 669 °C | 0 s | 631, Schicht verloren |
+
+  Das Beste ist das Späte und Knappe: Die Temperatur folgt der Leistung
+  träge, und das gilt in beide Richtungen. Wer zu früh und zu weit
+  zurücknimmt, zahlt die Netzabweichung doppelt; wer gar nichts tut, zahlt
+  die stehende Meldung. Der Unterschied ist klein -- bei einer Materialgrenze
+  soll er das sein.
+
+  Die Ursache bekommt eine eigene Kachel (`alarm_rbmk_graphite_gas`), sonst
+  stünde nur die Folge auf dem Schirm und der Spieler sähe eine langsam
+  steigende Temperatur ohne Grund -- dieselbe Lücke wie beim Netzabwurf vor
+  0.6.26. Sie ist INFO und nicht WARN: Wegbekommen kann der Spieler sie
+  nicht, und ein pauschaler Abzug über die ganze Schicht (Deckel 300 statt
+  100) wäre ein Minus für etwas, das er nicht entscheiden kann. Entscheidbar
+  ist nur die Folge.
+
+  Gegen die laufende Anlage nachgesehen: 00:10:00 „Graphit-Gaskreislauf“,
+  Anzeige von 571 °C aufwärts, 02:03:20 „Graphit heiß“ bei 761 °C -- die
+  123 Minuten aus der Messung.
+
+- ✨ **Die Störung steht auch im freien Spiel** (`freeEvents.js`, RBMK,
+  Schwere 2). In einer kurzen Schicht bleibt davon nur die Kachel -- das ist
+  kein Fehler, sondern der Unterschied zwischen einer Materialgrenze und
+  einem Transienten. Ein Auftrag für den Instandhaltungstrupp, der den
+  Kreislauf wieder in Betrieb nimmt, steht im BACKLOG.
+
 ## 0.6.29
 
 - ✨ **Neues DWR-Szenario "Ausfall von Hauptkühlmittelpumpen"**

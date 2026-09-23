@@ -83,6 +83,31 @@ export const spec = {
     powerFraction: 0.05,  // Anteil der Spaltenergie, der im Graphit landet
     UA: 560,              // kW/K zu den Druckröhren
     T0: toK(600),
+
+    // Der Graphitstapel steht nicht in Luft, sondern in einem umgewaelzten
+    // Helium-Stickstoff-Gemisch. Das Gas ist keine Schutzatmosphaere allein:
+    // es traegt die Waerme ueber den Spalt zwischen Graphitblock und
+    // Druckroehre, und genau dafuer steckt Helium darin -- seine
+    // Waermeleitfaehigkeit ist rund sechsmal so hoch wie die von Stickstoff.
+    // Der Betrieb stellte das Mischungsverhaeltnis nach der Leistung ein,
+    // eben um die Graphittemperatur zu fuehren.
+    //
+    // Faellt der Gaskreislauf aus, bleibt Stickstoff stehen: der Spaltanteil
+    // des Waermewiderstands waechst, der Rest (Graphitleitung, Roehrenwand,
+    // Uebergang zum Kuehlmittel) bleibt. UA_noGas ist deshalb KEINE
+    // Division durch sechs, sondern eine SETZUNG, gewaehlt aus der Wirkung:
+    // bei 300 kW/K laeuft die Graphittemperatur bei Nennleistung auf rund
+    // 818 C aus, also deutlich ueber die Meldeschwelle von 760 C, und sie
+    // faellt wieder darunter, sobald der Bediener auf etwa 89 % Leistung
+    // zurueckgeht. Weniger Abstand waere keine Entscheidung, mehr waere ein
+    // Zustand, aus dem nur noch Abschalten hilft.
+    //
+    // gasTau ist der Austausch des Gases im Stapel, nicht die Traegheit des
+    // Graphits -- die steckt ohnehin in C_gr/UA (bei 560 rund 35 min, bei
+    // 300 rund 66 min) und dominiert, was der Spieler auf dem Instrument
+    // sieht.
+    UA_noGas: 300,        // kW/K, nur noch Stickstoff im Spalt
+    gasTau: 900,          // s, bis das Gemisch durchgetauscht ist
   },
 
   // 'rods' fehlt bewusst hier -- die generische Stabwirksamkeitskurve setzt
@@ -338,6 +363,7 @@ export const spec = {
   alarmComponents: {
     power_high: 'core', period_short: 'core', orm_low: 'core', orm_critical: 'core',
     void_positive: 'core', graphite_hot: 'core', axial_tilt: 'core', clad_temp: 'core',
+    graphite_gas_lost: 'core',
     drum_press_high: 'drum', drum_level_low: 'drum', drum_level_high: 'drum',
     rbmk_feed_limited: 'drum', rbmk_aux_ready: 'drum',
     rbmk_aux_low: 'drum', rbmk_aux_empty: 'drum',
@@ -377,17 +403,29 @@ export const spec = {
       test: (s) => s.L_drum > 0.78, delay_s: 2.0 },
     { id: 'mcp_cavitation', key: 'alarm_mcp_cavitation', severity: SEVERITY.WARN,
       test: (s, d) => d.subcooling < 4 && s.W_core > 0.9 * 10500, delay_s: 1.0 },
-    // Die beiden naechsten Meldungen nennen echte Grenzen des Originals, aber
-    // dieses Modell erreicht sie nicht -- nachgemessen mit
-    // tests/tools/rbmk_alarm_reach.mjs, Zahlen und Begruendung in BACKLOG.md.
-    // Sie stehen hier, damit die Meldetafel vollstaendig bleibt; ein Szenario
-    // laesst sich NICHT auf sie bauen.
-    //
-    // 760 C braucht 5321 MW (166 % der Nennleistung), weil directHeat() den
-    // Graphitknoten auf Tsat + Waermeeintrag/UA haelt. power_high steht bei
-    // 112 %; bei 110 % laeuft T_gr nach zwei Stunden auf 598 C aus.
+    // Ohne Gaskreislauf steht Stickstoff im Spalt, UA faellt auf 300 kW/K,
+    // und die Graphittemperatur laeuft bei Nennleistung auf rund 818 C aus --
+    // der Weg zu dieser Meldung. UEBER DIE LEISTUNG ALLEIN ist sie nicht zu
+    // erreichen: bei intaktem UA = 560 braeuchten 760 C 5321 MW, also 166 %
+    // der Nennleistung, waehrend power_high schon bei 112 % steht (gemessen
+    // mit tests/tools/rbmk_alarm_reach.mjs). Wer ein Szenario darauf baut,
+    // braucht deshalb das Ereignis graphite_gas_loss.
     { id: 'graphite_hot', key: 'alarm_graphite_hot', severity: SEVERITY.WARN,
       test: (s) => s.T_gr > toK(760), delay_s: 5 },
+    // Die Ursache neben der Folge. Ohne diese Kachel saehe der Spieler nur
+    // eine langsam steigende Graphittemperatur und haette nichts, woran er
+    // sie festmachen koennte -- dieselbe Luecke wie beim Netzabwurf vor
+    // 0.6.26. Sie steht, solange der Kreislauf steht.
+    //
+    // INFO, nicht WARN, obwohl es ein Defekt ist: die Kachel meldet den
+    // Zustand eines Systems, keine ueberschrittene Grenze -- die hat mit
+    // graphite_hot ihre eigene. Der Unterschied ist nicht kosmetisch, er
+    // steht in der Wertung: eine Kachel, die der Spieler nicht wegbekommt,
+    // waere als WARN ein pauschaler Abzug ueber die ganze Schicht (Deckel
+    // 300 statt 100, siehe game/scoring.js) und damit ein Minus fuer etwas,
+    // das er nicht entscheiden kann. Entscheidbar ist nur die Folge.
+    { id: 'graphite_gas_lost', key: 'alarm_rbmk_graphite_gas', severity: SEVERITY.INFO,
+      test: (s, d) => !!d.graphiteGasLost, delay_s: 0, hold_s: 0 },
     // |ao| > 0.35 ist ueber _axialTarget() nicht zu erreichen: der Stabanteil
     // ist bei rodPush/stiffness = 0.214 gedeckelt (alle Staebe drin), und die
     // Xenon-Schraeglage steuert im Gipfel nur 0.107 bei. Gemessenes Maximum
@@ -535,6 +573,11 @@ export const hooks = {
     ctx.dpLag = new Lag(0.3, 0);
     ctx.pPrev = sp.drum.p0;
     ctx.aoLag = new Lag(sp.axial.tau, 0);
+    // Waermedurchgang Graphit -> Druckroehre. Eine Zustandsgroesse, weil
+    // der Gaskreislauf ausfallen kann (siehe sp.graphite.UA_noGas und
+    // das Ereignis graphite_gas_loss); solange er laeuft, steht sie still
+    // auf dem Auslegungswert.
+    ctx.graphiteUA = new Lag(sp.graphite.gasTau, sp.graphite.UA);
 
     // Der Stabregler dieses Typs geht auf die Leistung, nicht auf eine
     // Temperatur -- die liegt durch den Trommeldruck fest.
@@ -568,6 +611,7 @@ export const hooks = {
       voidLag: ctx.voidLag,
       dpLag: ctx.dpLag,
       aoLag: ctx.aoLag,
+      graphiteUA: ctx.graphiteUA,
       powerCtl: ctx.powerCtl,
       fwCtl: ctx.fwCtl,
       govCtl: ctx.govCtl,
@@ -692,7 +736,13 @@ export const hooks = {
     const C_gr = (sp.graphite.mass_t * 1000 * sp.graphite.cp) / 1000;   // kJ/K
     const before = s.T_gr;
     const graphiteDeposit = Math.min(deposited, s.P_th * 1000 * sp.graphite.powerFraction);
-    s.T_gr = relax(before, Tsat + graphiteDeposit / sp.graphite.UA, h, C_gr / sp.graphite.UA);
+    // UA ist nicht mehr fest: ohne Gaskreislauf steht Stickstoff im Spalt
+    // (siehe sp.graphite). Derselbe Wert geht in BEIDE Stellen -- Endwert und
+    // Zeitkonstante -- weil beides derselbe Waermedurchgang ist: schlechterer
+    // Durchgang heisst heisser UND traeger.
+    const UA = ctx.graphiteUA.step(
+      ctx.graphiteGasLost ? sp.graphite.UA_noGas : sp.graphite.UA, h);
+    s.T_gr = relax(before, Tsat + graphiteDeposit / UA, h, C_gr / UA);
     return deposited - C_gr * (s.T_gr - before) / h;
   },
 
@@ -886,7 +936,12 @@ export const hooks = {
       auxWaterKg: s.auxWaterKg,
       auxFeedAvailable: s.auxFeedAvailable,
       inventoryRateKgS: s.W_fwMain + s.W_fwAux - s.W_steam,
-      graphiteHeatMW: sp.graphite.UA * (s.T_gr - tsat(s.p_drum)) / 1000,
+      // ctx.graphiteUA statt sp.graphite.UA: ohne Gaskreislauf ist der
+      // Waermedurchgang kleiner, und die Diagnose soll den Waermestrom
+      // zeigen, der wirklich fliesst.
+      graphiteHeatMW: ctx.graphiteUA.v * (s.T_gr - tsat(s.p_drum)) / 1000,
+      graphiteGasLost: !!ctx.graphiteGasLost,
+      graphiteUA: ctx.graphiteUA.v,
       coolantHeatMW: s.coolantHeatMW,
       gov: s.gov,
       bypass: s.bypass,

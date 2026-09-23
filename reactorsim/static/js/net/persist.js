@@ -138,6 +138,11 @@ export function pack(engine, scenarioId, runState, session) {
       porvStuck: engine.ctx.porvStuck,
       sgLeak: engine.ctx.sgLeak,
       boronRunaway: engine.ctx.boronRunaway,
+      // Der Wert von UA selbst kommt als ctx.saveable-Lag mit (siehe
+      // rbmk.js); dieser Merker sagt, WOHIN er weiterlaeuft. Ohne ihn stuende
+      // nach dem Laden ein halb abgesunkenes UA, das von selbst wieder auf
+      // den Auslegungswert zurueckklettert -- und die Meldung dazu waere weg.
+      graphiteGasLost: engine.ctx.graphiteGasLost,
     },
   };
 }
@@ -317,6 +322,7 @@ export function apply(blob, engine, runState, session) {
     if (m.porvStuck) engine.ctx.porvStuck = true;
     if (typeof m.sgLeak === 'number' && Number.isFinite(m.sgLeak)) engine.ctx.sgLeak = m.sgLeak;
     if (m.boronRunaway) engine.ctx.boronRunaway = true;
+    if (m.graphiteGasLost) engine.ctx.graphiteGasLost = true;
   }
   // Legacy saves lack history-dependent context. Reconstruct the values that
   // can be derived, preventing a false temperature/pressure impulse on load.

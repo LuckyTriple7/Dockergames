@@ -563,7 +563,7 @@ Offen/bekannte Einschränkungen:
 
 ## Weitere Störszenarien
 
-Stand 0.6.29: 19 Szenariodateien einschließlich der drei Anfahren-Tutorials
+Stand 0.6.30: 20 Szenariodateien einschließlich der drei Anfahren-Tutorials
 und der Tschernobyl-Übung. Zwei Einzelstörungen aus der Ideensammlung sind als
 eigene DWR-Schichten umgesetzt, ergänzt um eine kombinierte Stufe. Details und Nachweise:
 [historischer Szenario-Audit 0.1.20](audit/SZENARIEN-2026-09-14.md) und
@@ -679,20 +679,58 @@ Nachgemessen statt vermutet, mit zwei neuen Werkzeugen:
   Xenon-Schräglage nach sechs Stunden Volllast: gemessen |ao| = 0,308 gegen
   die Schwelle 0,35. Im Betrieb bleibt |ao| unter 0,20, über Lastfolge
   100 → 20 → 100 % genauso wie bei 40 Stunden ruhiger Volllast.
-- **RBMK: Überhitzter Graphit -- nicht erreichbar.** Dieselbe Messung.
-  `directHeat()` hält den Graphitknoten auf `Tsat(p_drum) +
-  Wärmeeintrag/UA`; der Eintrag ist `sp.graphite.powerFraction` der
-  Spaltleistung. Der Endwert hängt damit allein an Leistung und Trommeldruck,
-  nicht am Durchsatz -- und 760 °C bräuchten bei 69 bar 5321 MW, also 166 %
-  der Nennleistung. Die Auslösung `power_high` steht bei 112 %; bei 110 %
-  gehalten läuft `T_gr` nach zwei Stunden auf 598 °C aus. Die 35-Minuten-
-  Zeitkonstante war nie das Hindernis, der Endwert ist es.
+- **RBMK: Überhitzter Graphit -- über die Leistung nicht erreichbar, in
+  0.6.30 über die Ursache.** Dieselbe Messung. `directHeat()` hält den
+  Graphitknoten auf `Tsat(p_drum) + Wärmeeintrag/UA`; der Eintrag ist
+  `sp.graphite.powerFraction` der Spaltleistung. Der Endwert hängt damit
+  allein an Leistung und Trommeldruck, nicht am Durchsatz -- und 760 °C
+  bräuchten bei 69 bar 5321 MW, also 166 % der Nennleistung. Die Auslösung
+  `power_high` steht bei 112 %; bei 110 % gehalten läuft `T_gr` nach zwei
+  Stunden auf 598 °C aus. Die 35-Minuten-Zeitkonstante war nie das
+  Hindernis, der Endwert ist es.
 
-  Beide Meldungen bleiben in `sp.trips` stehen, damit die Meldetafel
-  vollständig ist, tragen aber jetzt einen Kommentar mit diesen Zahlen. Ein
-  ehrlicher Weg zu `alarm_graphite_hot` wäre nicht mehr Leistung, sondern
-  der Verlust des Graphit-Gaskreislaufs (Helium/Stickstoff), also ein
-  degradierendes `UA` -- eine neue Mechanik, kein Regieeinfall.
+  Gebaut wurde deshalb nicht mehr Leistung, sondern die Ursache, die es in
+  der Anlage wirklich gibt: der Verlust des Graphit-Gaskreislaufs -- siehe
+  den eigenen Abschnitt unten. `alarm_axial_tilt` bleibt unerreichbar und
+  behält seinen Kommentar.
+
+**Umgesetzt in 0.6.30, der Graphit-Gaskreislauf:**
+
+`rbmk_graphite_gas`, Schwierigkeit 2, vier Stunden, Produktionswertung. Das
+Ereignis `rbmk_graphite_gas_loss` nimmt dem Graphitstapel den umgewälzten
+Helium-Stickstoff-Kreislauf; im Spalt zwischen Block und Druckröhre bleibt
+Stickstoff, und der Wärmedurchgang sinkt von 560 auf 300 kW/K
+(`sp.graphite.UA_noGas`, eine Setzung -- Begründung im Kommentar dort).
+`ctx.graphiteUA` ist dafür eine eigene Zustandsgröße geworden, ein `Lag` in
+`ctx.saveable`, und geht über denselben Wert auch in die Diagnose
+(`graphiteHeatMW` rechnete vorher mit dem Auslegungswert weiter).
+
+Gemessen über vier Stunden: ohne Eingriff läuft `T_gr` von 570 auf 809 °C,
+die Meldung `alarm_graphite_hot` steht ab 123 Minuten. Bei 87 % Nennleistung
+bleibt es bei 743 °C und die Meldung kommt gar nicht; bei 80 % bei 708 °C,
+aber die Netzabweichung kostet dann mehr, als die vermiedene Meldung
+einbringt. Die Wertung stellt damit eine Entscheidung und keine Aufgabe:
+2203 Punkte fürs Nichtstun, 2236 fürs späte und knappe Zurücknehmen, 1864
+fürs zu frühe und zu weite. Gegen die laufende Anlage nachgesehen --
+00:10:00 Gaskreislauf weg, 02:03:20 „Graphit heiß", Anzeige 761 °C.
+
+Die Ursache hat eine eigene Kachel (`alarm_rbmk_graphite_gas`), damit nicht
+nur die Folge auf dem Schirm steht. Sie ist INFO und nicht WARN: der Spieler
+bekommt sie nicht weg, und ein pauschaler Abzug über die ganze Schicht wäre
+ein Minus für etwas, das er nicht entscheiden kann.
+
+Offen bleibt daran:
+
+- **Der Kreislauf kommt nicht zurück.** Im freien Spiel (die Störung steht
+  seit 0.6.30 auch in `freeEvents.js`) wäre ein Auftrag für den
+  Instandhaltungstrupp (`game/repairs.js`) der naheliegende Weg -- die
+  Klasse hängt ihre Arbeiten ohnehin am Anlagenzustand fest, und
+  `ctx.graphiteGasLost` ist genau so ein Zustand. Im Szenario soll er
+  bewusst nicht zurückkommen.
+- **Der Stapel ist EIN Knoten.** 1700 t Graphit mit einer einzigen
+  Temperatur, kein Profil über Höhe oder Radius. Oxidation, Maßänderung und
+  Graphitbrand rechnet das Modell nicht; die 760 °C sind eine Meldegrenze,
+  kein Schadensmodell.
 
 **Kleine neue Bausteine -- bestehendes Muster leicht erweitert:**
 - **SWR: Speisewasserregler außer Kontrolle.** `feedwater_loss` setzt

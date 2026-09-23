@@ -194,6 +194,24 @@ const EVENTS = {
     },
   },
 
+  rbmk_graphite_gas_loss: {
+    key: 'ev_rbmk_graphite_gas_loss',
+    severity: 2,
+    apply(e) {
+      // Der Gaskreislauf des Graphitstapels faellt aus: im Spalt zwischen
+      // Block und Druckroehre steht danach Stickstoff statt des
+      // Helium-Gemisches, der Waermedurchgang sinkt (siehe sp.graphite in
+      // plants/rbmk.js). Hier wird nur der Merker gesetzt -- wie weit und wie
+      // schnell UA faellt, entscheidet die Anlage, nicht das Ereignis.
+      //
+      // Bleibend wie ctx.stuckRods oder ctx.msivStuck: einen Gaskreislauf
+      // startet niemand aus dem Leitstand neu. Der Hebel des Bedieners ist
+      // die Leistung, nicht das Gas.
+      if (e.state.reactor !== 'rbmk' || !e.ctx.graphiteUA) return;
+      e.ctx.graphiteGasLost = true;
+    },
+  },
+
   power_regulator_off: {
     key: 'ev_power_regulator_off',
     severity: 2,

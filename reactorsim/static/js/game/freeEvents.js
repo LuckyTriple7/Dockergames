@@ -111,6 +111,12 @@ const BY_REACTOR = {
       when: (e) => e.state.fwSupplyMax >= 1.3 * e.spec.drum.W_steam0,
       args: (e, rng) => ({ max_kgs: rng.range(0.45, 0.75) * e.spec.drum.W_steam0 }),
     },
+    // Die langsamste Stoerung im ganzen Vorrat: bis die Graphittemperatur
+    // ihre neue Endlage erreicht hat, vergehen Stunden (siehe sp.graphite in
+    // plants/rbmk.js). In einer kurzen Schicht bleibt davon nur die Kachel --
+    // das ist kein Fehler, sondern der Unterschied zwischen einer
+    // Materialgrenze und einem Transienten.
+    { id: 'rbmk_graphite_gas_loss', when: (e) => !e.ctx.graphiteGasLost },
   ],
 };
 
