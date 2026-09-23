@@ -488,14 +488,27 @@ def test_an_unknown_path_stays_a_404_for_both_rollen(tmp_path, monkeypatch):
     assert als_spieler.get('/gibtsnicht').status_code == 404
 
 
-def test_the_admin_may_fetch_files_from_static(client):
-    """Eine Datei aus static/ ist keine Verwaltungshandlung.
+def test_every_role_may_fetch_files_from_static(tmp_path, monkeypatch):
+    """Eine Datei aus static/ gehoert keiner Rolle.
 
-    Das Panel bringt sein CSS bisher inline mit -- aber ohne 'vstatic' in
-    _ADMIN_ENDPOINTS ginge die erste Stilvorlage, das erste Bild und jedes
-    Favicon dort stumm nach /admin um, statt anzukommen.
+    Der Vorlaeufer dieses Tests fragte nur den Admin -- und genau deshalb kam
+    0.6.32 heraus, in der 'vstatic' in _ADMIN_ENDPOINTS stand: der Admin bekam
+    seine Dateien, der Spieler dafuer auf jedes Stylesheet ein 403 und sah den
+    Leitstand nackt. Hier fragen jetzt alle drei Rollen.
     """
-    _login(client)
-    r = client.get('/s/0.0.0/js/main.js')
-    assert r.status_code == 200
-    assert r.headers['Cache-Control'].endswith('31536000')
+    mod = _fresh(tmp_path, monkeypatch)
+    _add_player(mod)
+
+    als_admin = mod.app.test_client()
+    _login(als_admin)
+    als_spieler = mod.app.test_client()
+    _login(als_spieler, user=PLAYER_EMAIL, password=PLAYER_PASSWORD)
+    als_mitleser = mod.app.test_client()
+    _login_monitor(als_mitleser)
+
+    for wer, c in (('Admin', als_admin), ('Spieler', als_spieler),
+                   ('Mitleser', als_mitleser)):
+        r = c.get('/s/0.0.0/js/main.js')
+        assert r.status_code == 200, f'{wer} bekommt {r.status_code}'
+        assert r.headers['Cache-Control'].endswith('31536000')
+        assert c.get('/s/0.0.0/css/base.css').status_code == 200, wer

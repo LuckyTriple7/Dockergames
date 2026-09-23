@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.33
+
+- 🐛 **0.6.32 hat dem Spieler den Leitstand nackt hingestellt.** Um dem
+  Admin Dateien aus `static/` zu erlauben, war `vstatic` in
+  `_ADMIN_ENDPOINTS` gelandet -- und diese Liste hat zwei Seiten: sie
+  öffnet dem Admin und sperrt jeden anderen aus. Für ein Spielerkonto
+  griff damit `abort(403)`, und zwar auf jedes Stylesheet, jedes Bild,
+  jedes Favicon, das Manifest und `main.js`. Übrig blieb eine
+  unformatierte Seite ohne Simulation.
+
+  `vstatic` steht jetzt zusammen mit `logout` in `_ANY_ROLE_ENDPOINTS`,
+  das vor beiden Rollenprüfungen abgefragt wird: eine Datei aus `static/`
+  gehört keiner Rolle, und der eigene Ausgang ist auch keine Rollenfrage.
+  Der Eintrag in `_MONITOR_ENDPOINTS` entfällt damit.
+
+  Der Test, den es dazu schon gab, fragte nur den Admin -- deshalb ging
+  der Fehler durch. Er fragt jetzt Admin, Spieler und Mitleser, und gegen
+  den Stand von 0.6.32 schlägt er fehl ("Spieler bekommt 403").
+
 ## 0.6.32
 
 - 🐛 **Wertung: Client und Server hätten sich bei `difficulty: 0`

@@ -487,7 +487,7 @@ _PUBLIC_ENDPOINTS = frozenset({'health', 'login', 'set_lang', 'forgot', 'reset'}
 # und nicht eine Liste dessen, was nicht geht: eine neue Route ist damit
 # von sich aus gesperrt und nicht von sich aus offen.
 _MONITOR_ENDPOINTS = frozenset({
-    'monitor_page', 'monitor_get', 'vstatic', 'logout',
+    'monitor_page', 'monitor_get',
     # Lesend, nicht schreibend: der Zweitschirm baut seine Kopfzeile aus der
     # Kachelauswahl des Kontos (siehe api.readPrefs() in monitor.js). Ohne
     # sie stuenden dort andere Kacheln als drueben, und ein Schirm, der etwas
@@ -501,13 +501,14 @@ _ADMIN_ENDPOINTS = frozenset({
     'admin_panel', 'admin_create_user', 'admin_lock_user',
     'admin_unlock_user', 'admin_reset_password', 'admin_user_detail',
     'admin_test_mail', 'admin_delete_user',
-    # Dateien aus static/, genau wie fuer den Mitleser oben. Das Panel bringt
-    # sein CSS bisher inline mit und braucht keine -- aber ohne diesen Eintrag
-    # geht die erste Stilvorlage, das erste Bild und jedes Favicon dort stumm
-    # nach /admin um, statt anzukommen. Eine Datei aus static/ ist keine
-    # Verwaltungshandlung, sie auszusperren trennt keine Rollen.
-    'vstatic',
 })
+
+# Was JEDE angemeldete Sitzung darf, egal in welcher Rolle. Steht extra, weil
+# eine Datei aus static/ keiner Rolle gehoert: sie hier einzutragen liess sich
+# schon einmal als "gehoert dem Admin" missverstehen -- und dann warf die
+# Rollentrennung dem Spieler jedes Stylesheet mit 403 zurueck. logout gehoert
+# aus demselben Grund hierher: der eigene Ausgang ist keine Rollenfrage.
+_ANY_ROLE_ENDPOINTS = frozenset({'vstatic', 'logout'})
 
 
 @app.before_request
@@ -538,11 +539,11 @@ def _require_login():
         g.user = user
         g.is_admin = AUTH.is_admin(user)
         g.monitor_only = role == authmod.ROLE_MONITOR
-        # Abmelden geht immer, unabhaengig von der Rolle -- sonst kaeme der
-        # Admin nie am eigenen logout()-View vorbei (er faellt in KEINER der
-        # beiden Rollenpruefungen unten durch, _ADMIN_ENDPOINTS ist nur fuer
-        # die Verwaltungsrouten gedacht).
-        if request.endpoint == 'logout':
+        # Vor beiden Rollenpruefungen: Abmelden und Dateien aus static/ gehen
+        # immer. Sonst kaeme der Admin nie am eigenen logout()-View vorbei,
+        # und ein Spieler bekaeme auf jedes Stylesheet eine Weiterleitung
+        # nach /admin oder gleich ein 403.
+        if request.endpoint in _ANY_ROLE_ENDPOINTS:
             return None
         # Mitlesende Sitzung: nur der Zweitschirm. Vor der Admin-Pruefung,
         # damit ein Mitleser nicht ueber den Umweg "ist kein Admin" in
