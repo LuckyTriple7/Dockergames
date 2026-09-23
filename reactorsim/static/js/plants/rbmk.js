@@ -377,8 +377,23 @@ export const spec = {
       test: (s) => s.L_drum > 0.78, delay_s: 2.0 },
     { id: 'mcp_cavitation', key: 'alarm_mcp_cavitation', severity: SEVERITY.WARN,
       test: (s, d) => d.subcooling < 4 && s.W_core > 0.9 * 10500, delay_s: 1.0 },
+    // Die beiden naechsten Meldungen nennen echte Grenzen des Originals, aber
+    // dieses Modell erreicht sie nicht -- nachgemessen mit
+    // tests/tools/rbmk_alarm_reach.mjs, Zahlen und Begruendung in BACKLOG.md.
+    // Sie stehen hier, damit die Meldetafel vollstaendig bleibt; ein Szenario
+    // laesst sich NICHT auf sie bauen.
+    //
+    // 760 C braucht 5321 MW (166 % der Nennleistung), weil directHeat() den
+    // Graphitknoten auf Tsat + Waermeeintrag/UA haelt. power_high steht bei
+    // 112 %; bei 110 % laeuft T_gr nach zwei Stunden auf 598 C aus.
     { id: 'graphite_hot', key: 'alarm_graphite_hot', severity: SEVERITY.WARN,
       test: (s) => s.T_gr > toK(760), delay_s: 5 },
+    // |ao| > 0.35 ist ueber _axialTarget() nicht zu erreichen: der Stabanteil
+    // ist bei rodPush/stiffness = 0.214 gedeckelt (alle Staebe drin), und die
+    // Xenon-Schraeglage steuert im Gipfel nur 0.107 bei. Gemessenes Maximum
+    // 0.308, und das erst mit AZ-5 auf dem Gipfel nach sechs Stunden
+    // Volllast. Eine EINSEITIG klemmende Gruppe hilft gar nicht -- in
+    // _axialTarget() geht die Stabstellung nur als MITTELWERT ein.
     { id: 'axial_tilt', key: 'alarm_axial_tilt', severity: SEVERITY.WARN,
       test: (s, d) => Math.abs(d.axialOffset) > 0.35, delay_s: 5 },
     { id: 'turbine_trip', key: 'alarm_turbine_trip', severity: SEVERITY.WARN,

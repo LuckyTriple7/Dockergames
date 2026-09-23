@@ -88,6 +88,14 @@ export const spec = {
 
   recirc: {
     W0: 13000,
+    // Der Schieber endet bei 45 %, weil darunter der Betriebspunkt dieses
+    // Modells nicht mehr am Durchsatz haengt (siehe BACKLOG.md, "SWR: der
+    // Betriebspunkt unter 48 % Umwaelzstrom"). Ein PUMPENAUSFALL geht
+    // trotzdem darunter -- uebrig bleiben 12 % Naturumlauf, und dort faellt
+    // der Blasenanteil mit dem Massenstrom statt zu steigen (Driftterm in
+    // voidFraction()). Gemessen mit tests/tools/bwr_recirc_trip.mjs: 371 %
+    // Spitze und zerstoerter Brennstoff nach 8,9 s, also genau die falsche
+    // Richtung. Deshalb gibt es zu rcp_trip kein SWR-Szenario.
     min: 0.45,
     max: 1.10,
     tau: 6,               // s, Hochlauf der Umwaelzpumpen

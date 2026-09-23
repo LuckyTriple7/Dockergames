@@ -563,9 +563,9 @@ Offen/bekannte Einschränkungen:
 
 ## Weitere Störszenarien
 
-Stand 0.1.24: 15 Szenariodateien einschließlich Anfahren-Tutorial. Zwei
-Einzelstörungen aus der Ideensammlung sind jetzt als eigene DWR-Schichten
-umgesetzt, ergänzt um eine kombinierte Stufe. Details und Nachweise:
+Stand 0.6.29: 19 Szenariodateien einschließlich der drei Anfahren-Tutorials
+und der Tschernobyl-Übung. Zwei Einzelstörungen aus der Ideensammlung sind als
+eigene DWR-Schichten umgesetzt, ergänzt um eine kombinierte Stufe. Details und Nachweise:
 [historischer Szenario-Audit 0.1.20](audit/SZENARIEN-2026-09-14.md) und
 [Ziel-Audit 0.1.21](audit/SZENARIOZIELE-2026-09-14.md). Die RBMK-Nach-AZ-5-Schicht
 ergänzt seit 0.1.24 die aktive Versorgung nach der Abschaltung:
@@ -623,28 +623,76 @@ Die kalibrierten Spielziele ersetzen keine reale Störfallprozedur.
   18 Minuten, Turbinenschnellschluss bei 180 s und Speisewasserverlust bei
   240 s, ohne Vorwarnung/automatischen Helfer. Dieselbe unveränderte Physik.
 
-**Weiter offen -- Ereignis existiert schon, nur noch nicht als eigenes
-Szenario verpackt:**
+**Umgesetzt in 0.6.29, aus der Liste "Ereignis existiert schon, nur noch
+nicht verpackt": DWR-Pumpenausfall.**
 
-- **DWR: Ausfall einer Hauptkühlmittelpumpe.** `rcp_trip` mit `loop`
-  funktioniert für PWR bereits (`ctx.pumps[i].trip()`, vier Schleifen) --
-  nur noch nie als alleiniger Szenario-Anlass benutzt.
-- **SWR: Umwälzpumpen-Trip.** Derselbe `rcp_trip` faellt bei BWR auf
-  `ctx.recircPump.trip()` zurück -- der Typ modelliert nur EINE
-  zusammengefasste Umwälzpumpe, ein Teilausfall (nur eine von mehreren)
-  ist damit nicht darstellbar, ein Komplettausfall schon.
-- **RBMK: Klemmende Stabgruppe bei Leistungsanstieg.** `rod_stuck` waehrend
-  einer Leistungsrampe (statt wie bisher im Volllastbetrieb) -- reine
-  Szenario-Regie, keine neue Mechanik.
-- **RBMK: Axiale Leistungsverzerrung.** `alarm_axial_tilt` existiert schon
-  als Meldung; ob sich >0,35 zuverlaessig ueber ein gezieltes `rod_stuck`
-  auf nur EINER Bank erreichen laesst (statt wie bisher stets beide
-  Banken gemeinsam, siehe `rodBanksMoveTogether`), ist ungeprüft -- müsste
-  am Modell ausprobiert werden, vermutlich ohne neuen Code.
-- **RBMK: Überhitzter Graphit.** `alarm_graphite_hot` existiert; braucht
-  vermutlich nur eine Szenario-Regie, die die Leistung lange genug hoch
-  haelt (35 Minuten Zeitkonstante, siehe Kommentar in `rbmk.js`), keinen
-  neuen Code.
+- **DWR: Ausfall von Hauptkühlmittelpumpen.** `pwr_rcp_trip`, Schwierigkeit 2,
+  20 Minuten, Produktionswertung. Zwei Stufen, beide nachgemessen
+  (`tests/test-pwr-rcp-trip.mjs`): die erste Pumpe nimmt den Kernstrom von
+  20.000 auf 15.200 kg/s (76 %) und den DNBR von 2,29 auf 1,81 -- voller
+  Betrieb, keine Auslösung. Die zweite bringt 10.400 kg/s (52 %) und einen
+  DNBR von 1,03; damit stehen `trip_rcp_lost` (Schwelle 60 % Kernstrom) und
+  `trip_dnbr_low` gemeinsam an, und die Meldetafel schaltet wie immer nichts
+  selbst ab. Wer die stehende Auslösung länger als 300 s aussitzt, verliert
+  über `trip_ignored` -- die Physik selbst zerstört hier nichts, der DNBR
+  bleibt bei 1,03 stehen. Zurück gibt es keinen Weg: `ctx.pumpsStuck` hält
+  beide Pumpen aus, auch gegen den Knopf.
+
+**Die übrigen vier Punkte dieser Liste waren keine Verpackungsarbeit.**
+Nachgemessen statt vermutet, mit zwei neuen Werkzeugen:
+
+- **SWR: Umwälzpumpen-Trip -- geht nicht, solange der Blasenanteil unter
+  halbem Durchsatz falsch herum läuft.** Gemessen mit
+  [`tests/tools/bwr_recirc_trip.mjs`](tests/tools/bwr_recirc_trip.mjs):
+  `rcp_trip` fällt bei diesem Typ auf `ctx.recircPump.trip()` zurück, übrig
+  bleiben 12 % Naturumlauf -- tief in der Branche, die oben unter "Bekannte
+  Modellfehler" steht. Der Dampfgehalt `s.x_e` steigt dabei von 0,159 auf
+  1,000, der Blasenanteil FÄLLT aber von 0,379 auf 0,331: bei kleinem
+  Massenstrom beherrscht der Driftterm in `voidFraction()` den Nenner. Beim
+  SWR ist der Blasenkoeffizient negativ, weniger Blasen heißen also mehr
+  Reaktivität -- die Leistung läuft auf 371 %, und der Brennstoff ist 8,9 s
+  nach dem Ausfall zerstört. Das ist die falsche Richtung: weniger Durchsatz
+  gehört bei einem SWR zu MEHR Blasen und WENIGER Leistung. Nicht zufällig
+  endet der Schieber bei `sp.recirc.min = 0.45`; ein Pumpenausfall geht
+  darunter, der Spieler nicht. Erst den Modellfehler, dann das Szenario.
+- **RBMK: Klemmende Stabgruppe bei Leistungsanstieg -- gibt es längst.**
+  `rbmk_cold_start` lässt Gruppe 1 zwischen 4200 und 5100 s klemmen, also
+  mitten in der Rampe von 0 auf 200 MW und vor der zweiten auf 900 MW. Der
+  Eintrag beschrieb einen Zustand, den es seit dieser Szenariodatei nicht
+  mehr gab.
+
+  Was dabei auffiel und den Punkt ohnehin erledigt: eine klemmende Gruppe
+  macht die Anlage in diesem Modell SICHERER statt gefährlicher. Bei einer
+  Rampe 50 → 100 % mit klemmender `sd`-Gruppe steht die Abschaltreserve am
+  Ende bei 86,7 statt bei 90,0 -- weil die stehengebliebene Gruppe drin
+  bleibt, während die anderen herausfahren. Eine örtliche Leistungsüberhöhung,
+  die der eigentliche Schaden eines klemmenden Stabes wäre, kennt ein
+  einzoniges Punktkinetikmodell nicht.
+- **RBMK: Axiale Leistungsverzerrung -- nicht erreichbar.** Gemessen mit
+  [`tests/tools/rbmk_alarm_reach.mjs`](tests/tools/rbmk_alarm_reach.mjs).
+  `_axialTarget()` bildet `(dXe · 3000 + 900 · MITTLERE Stabstellung) / 4200`.
+  Eine einzeln klemmende Gruppe geht darin nur über den MITTELWERT ein --
+  die Vermutung, ein gezieltes `rod_stuck` auf einer Bank könne das Profil
+  kippen, trägt also schon von der Formel her nicht. Der Stabanteil ist bei
+  `rodPush/stiffness = 0,214` gedeckelt, und das erst mit allen Stäben drin.
+  Der günstigste Fall überhaupt ist AZ-5 auf dem Gipfel der
+  Xenon-Schräglage nach sechs Stunden Volllast: gemessen |ao| = 0,308 gegen
+  die Schwelle 0,35. Im Betrieb bleibt |ao| unter 0,20, über Lastfolge
+  100 → 20 → 100 % genauso wie bei 40 Stunden ruhiger Volllast.
+- **RBMK: Überhitzter Graphit -- nicht erreichbar.** Dieselbe Messung.
+  `directHeat()` hält den Graphitknoten auf `Tsat(p_drum) +
+  Wärmeeintrag/UA`; der Eintrag ist `sp.graphite.powerFraction` der
+  Spaltleistung. Der Endwert hängt damit allein an Leistung und Trommeldruck,
+  nicht am Durchsatz -- und 760 °C bräuchten bei 69 bar 5321 MW, also 166 %
+  der Nennleistung. Die Auslösung `power_high` steht bei 112 %; bei 110 %
+  gehalten läuft `T_gr` nach zwei Stunden auf 598 °C aus. Die 35-Minuten-
+  Zeitkonstante war nie das Hindernis, der Endwert ist es.
+
+  Beide Meldungen bleiben in `sp.trips` stehen, damit die Meldetafel
+  vollständig ist, tragen aber jetzt einen Kommentar mit diesen Zahlen. Ein
+  ehrlicher Weg zu `alarm_graphite_hot` wäre nicht mehr Leistung, sondern
+  der Verlust des Graphit-Gaskreislaufs (Helium/Stickstoff), also ein
+  degradierendes `UA` -- eine neue Mechanik, kein Regieeinfall.
 
 **Kleine neue Bausteine -- bestehendes Muster leicht erweitert:**
 - **SWR: Speisewasserregler außer Kontrolle.** `feedwater_loss` setzt

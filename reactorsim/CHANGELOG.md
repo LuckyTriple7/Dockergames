@@ -1,5 +1,82 @@
 # Changelog
 
+## 0.6.29
+
+- ✨ **Neues DWR-Szenario "Ausfall von Hauptkühlmittelpumpen"**
+  (`pwr_rcp_trip`, Schwierigkeit 2, 20 Minuten). Das Ereignis `rcp_trip` gab
+  es seit langem, aber noch nie als eigenen Szenario-Anlass. Zwei Stufen,
+  beide nachgemessen:
+
+  | | Kernstrom | DNBR | stehende Auslösung |
+  |---|---|---|---|
+  | vier Pumpen | 20.000 kg/s | 2,29 | — |
+  | eine ausgefallen | 15.200 kg/s (76 %) | 1,81 | — |
+  | zwei ausgefallen | 10.400 kg/s (52 %) | 1,03 | `trip_rcp_lost`, `trip_dnbr_low` |
+
+  Der erste Ausfall kostet Sicherheitsabstand, ohne eine Auslösung zu setzen
+  -- die Anlage trägt die volle Leistung mit drei Pumpen weiter. Erst der
+  zweite bringt den Kernstrom unter die Schwelle von 60 %. Die Meldetafel
+  schaltet wie immer nichts selbst ab; wer die stehende Auslösung länger als
+  300 s aussitzt, verliert über `trip_ignored`. Die Physik selbst zerstört
+  hier nichts -- der DNBR bleibt bei 1,03 stehen, bis die Frist abläuft.
+  Zurück gibt es keinen Weg: `ctx.pumpsStuck` hält beide Pumpen aus, auch
+  gegen den Knopf, der sie sonst wieder anwerfen würde.
+
+  Gegen die laufende Anlage nachgesehen, nicht nur gegen die Testumgebung:
+  erster Ausfall 00:04:00, zweiter 00:10:04, „Kühlmitteldurchsatz“
+  00:10:19, „DNBR gering“ und „Unterkühlung gering“ 00:10:23. Unbedient
+  endet die Schicht mit „Auslösebedingung stand ohne Abschaltung“ und 629
+  Punkten -- dieselbe Zahl wie in der Messung. „Unterkühlung gering“ war
+  dabei nicht vorhergesehen und ist trotzdem richtig: bei halbem Durchsatz
+  nimmt dasselbe Kernwasser dieselbe Wärme mit weniger Masse auf. Der
+  Hilfetext des Szenarios nennt sie jetzt mit.
+
+- 🔍 **Vier weitere Punkte aus derselben Backlog-Liste nachgemessen --
+  keiner davon war Verpackungsarbeit.** Die Liste hieß "Ereignis existiert
+  schon, nur noch nicht als eigenes Szenario verpackt". Für vier von fünf
+  Einträgen stimmte das nicht. Zwei neue Messwerkzeuge halten die Zahlen
+  fest, damit die Annahmen nicht zurückkommen:
+
+  - **SWR-Umwälzpumpen-Trip führt in den bekannten Modellfehler**
+    (`tests/tools/bwr_recirc_trip.mjs`). Fällt die Pumpe aus, bleiben 12 %
+    Naturumlauf -- unterhalb des Schiebers, der bei `sp.recirc.min = 0.45`
+    endet, und damit in der Branche aus BACKLOG.md. Der Dampfgehalt `s.x_e`
+    steigt von 0,159 auf 1,000, der Blasenanteil FÄLLT aber von 0,379 auf
+    0,331: bei kleinem Massenstrom beherrscht der Driftterm in
+    `voidFraction()` den Nenner. Beim SWR ist der Blasenkoeffizient negativ,
+    also läuft die Leistung auf 371 %, und der Brennstoff ist 8,9 s nach dem
+    Ausfall zerstört. Weniger Durchsatz gehört bei einem SWR zu MEHR Blasen
+    und WENIGER Leistung -- das Modell dreht das Vorzeichen um. Erst der
+    Modellfehler, dann das Szenario.
+  - **`alarm_graphite_hot` ist im Betrieb nicht erreichbar**
+    (`tests/tools/rbmk_alarm_reach.mjs`). `directHeat()` hält den
+    Graphitknoten auf `Tsat(p_drum) + Wärmeeintrag/UA`, der Endwert hängt
+    also allein an Leistung und Trommeldruck. 760 °C bräuchten bei 69 bar
+    5321 MW, das sind 166 % der Nennleistung; `power_high` steht bei 112 %.
+    Bei 110 % gehalten läuft `T_gr` nach zwei Stunden auf 598 °C aus. Die
+    35-Minuten-Zeitkonstante war nie das Hindernis, der Endwert ist es.
+  - **`alarm_axial_tilt` ebenso wenig.** `_axialTarget()` bildet
+    `(dXe · 3000 + 900 · MITTLERE Stabstellung) / 4200`. Eine einzeln
+    klemmende Gruppe geht darin nur über den MITTELWERT ein -- die Vermutung,
+    ein gezieltes `rod_stuck` auf EINER Bank könne das Profil kippen, trägt
+    schon von der Formel her nicht. Der Stabanteil ist bei 0,214 gedeckelt,
+    und das erst mit allen Stäben drin. Günstigster Fall überhaupt: AZ-5 auf
+    dem Gipfel der Xenon-Schräglage nach sechs Stunden Volllast, gemessen
+    |ao| = 0,308 gegen die Schwelle 0,35. Im Betrieb bleibt |ao| unter 0,20.
+
+    Beide Meldungen bleiben stehen, damit die Meldetafel vollständig ist,
+    tragen jetzt aber einen Kommentar mit diesen Zahlen -- damit niemand ein
+    Szenario auf eine Kachel baut, die nie aufleuchtet.
+  - **"Klemmende Stabgruppe bei Leistungsanstieg" gibt es längst:**
+    `rbmk_cold_start` lässt Gruppe 1 zwischen 4200 und 5100 s klemmen, also
+    mitten in der Rampe. Der Backlog-Eintrag beschrieb einen Zustand, den es
+    seit dieser Szenariodatei nicht mehr gab. Nebenbefund: eine klemmende
+    Gruppe macht die Anlage in diesem Modell SICHERER -- bei einer Rampe
+    50 → 100 % steht die Abschaltreserve am Ende bei 86,7 statt bei 90,0,
+    weil die stehengebliebene Gruppe drin bleibt. Die örtliche
+    Leistungsüberhöhung, die den echten Schaden ausmacht, kennt ein
+    einzoniges Punktkinetikmodell nicht.
+
 ## 0.6.28
 
 - 🐛 **Der Dampfblasenanteil folgte der Spaltleistung ohne jede
