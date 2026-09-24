@@ -16,10 +16,13 @@ Grundsatz: dem Browser wird nichts geglaubt, was er nicht beweisen kann.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
 import re
 import secrets
+import shutil
 import threading
 import time
 import unicodedata
@@ -28,11 +31,18 @@ from werkzeug.utils import safe_join
 
 import atomic_io
 
+log = logging.getLogger(__name__)
+
 SLOT_RE = re.compile(r'^[a-z0-9_-]{1,32}$')
 PLAYER_RE = re.compile(r'^[0-9a-f]{32}$')
 
-MAX_SAVE_BYTES = 128 * 1024
-MAX_SLOTS = 20
+MAX_SAVE_BYTES = 4 * 1024 * 1024
+# 10 feste Hand-Speicherplaetze je Reaktortyp (DWR/SWR/RBMK, siehe
+# manualSlotName() in main.js) sind allein schon 30 Slots, dazu je ein
+# Autospeicher-Slot pro Reaktortyp UND Szenario (siehe saveSlotName('auto')) --
+# bei neun Szenarien plus freiem Spiel macht das nochmal bis zu zwoelf. 20 war
+# damit zu knapp, sobald jemand alle zehn Handplaetze eines Typs belegt.
+MAX_SLOTS = 60
 MAX_SCORES_PER_LIST = 50
 MAX_NAME_CHARS = 24
 MAX_PREFS_BYTES = 8 * 1024
@@ -57,6 +67,39 @@ class Store:
     @staticmethod
     def valid_player(pid) -> bool:
         return bool(pid) and bool(PLAYER_RE.match(str(pid)))
+
+    @staticmethod
+    def account_key(username: str) -> str:
+        """Feste, dateisystemsichere Kennung aus dem Kontonamen.
+
+        Benutzernamen duerfen beliebige Zeichen tragen (Leerzeichen, Umlaute,
+        was die Dockge-Konfiguration eben zulaesst) -- ein Dateipfad nicht.
+        Der Hash ist deterministisch (dasselbe Konto findet von jedem Geraet
+        aus denselben Ordner wieder) und hat exakt die Form eines alten
+        anonymen Geraete-Tokens (PLAYER_RE) -- Spielstaende, Slot-Grenze und
+        Ratenbegrenzung brauchen deshalb keine zweite Kennungsart."""
+        return hashlib.sha256(('account:' + username).encode('utf-8')).hexdigest()[:32]
+
+    def migrate_legacy(self, account: str, legacy_pid) -> None:
+        """Einmalige Uebernahme: Spielstaende, die vor der Kontenpflicht unter
+        einem anonymen rs_player-Cookie entstanden, in den jetzt angemeldeten
+        Account kopieren -- NUR solange der Account noch keinen eigenen
+        Ordner hat. Ohne diese Bedingung wuerde ein zweites Geraet mit noch
+        altem Cookie bei jedem Login den Account-Stand wieder ueberschreiben,
+        statt einmalig zu uebernehmen."""
+        if not self.valid_player(legacy_pid):
+            return
+        try:
+            dest = self._player_dir(account)
+            src = self._player_dir(legacy_pid)
+        except ValueError:
+            return
+        if os.path.exists(dest) or not os.path.isdir(src):
+            return
+        try:
+            shutil.copytree(src, dest)
+        except OSError as exc:
+            log.error("Alte Spielstaende nicht uebernommen (%s)", exc.__class__.__name__)
 
     def _player_dir(self, pid: str) -> str:
         if not self.valid_player(pid):
@@ -152,6 +195,31 @@ class Store:
         except (OSError, ValueError):
             return False
 
+    def delete_account(self, pid: str) -> bool:
+        """Den ganzen Ordner eines Kontos wegraeumen -- Spielstaende UND
+        Einstellungen. Gerufen, wenn das Konto selbst geloescht wird (app.py,
+        /admin/users/<id>/delete): ohne das blieben bis zu sechzig
+        Spielstanddateien unter einer Kennung liegen, zu der es kein Konto
+        mehr gibt, und niemand kaeme je wieder an sie heran.
+
+        @return True, wenn danach nichts mehr da ist -- auch dann, wenn es
+        vorher schon nichts gab (ein Konto, das nie gespielt hat, hat keinen
+        Ordner; das ist kein Fehlschlag).
+        """
+        try:
+            player_dir = self._player_dir(pid)
+        except ValueError:
+            return False
+        try:
+            shutil.rmtree(player_dir)
+        except FileNotFoundError:
+            return True
+        except OSError as exc:
+            log.error("Spielstaende des geloeschten Kontos nicht entfernt (%s)",
+                      exc.__class__.__name__)
+            return False
+        return True
+
     # ── Einstellungen ─────────────────────────────────────────────────────────
     #
     # Kleine, fuer den Server ebenso undurchsichtige Ablage wie ein Spielstand
@@ -197,23 +265,33 @@ class Store:
         except (OSError, ValueError):
             return {}
 
-    def list_scores(self, reactor=None, scenario=None, limit=20) -> list:
+    def list_scores(self, reactor=None, scenario=None, limit=20, score_mode=None,
+                    *, canonical_modes=None) -> list:
         data = self._read_scores()
         out = []
         for key, entries in data.items():
             if not isinstance(entries, list):
                 continue
-            r, _, sc = key.partition('/')
+            r, _, tail = key.partition('/')
+            sc, _, version = tail.partition('/')
+            mode = version or 'legacy'
             if reactor and r != reactor:
                 continue
             if scenario and sc != scenario:
+                continue
+            if score_mode is not None and mode != score_mode:
+                continue
+            if canonical_modes is not None and mode != canonical_modes.get(sc, 'legacy'):
                 continue
             for e in entries:
                 out.append(e)
         out.sort(key=lambda e: e.get('score', 0), reverse=True)
         return out[:max(1, min(int(limit or 20), MAX_SCORES_PER_LIST))]
 
-    def add_score(self, reactor: str, scenario: str, name: str, points: int, summary: dict) -> dict:
+    def add_score(self, reactor: str, scenario: str, name: str, points: int, summary: dict,
+                  score_mode=None) -> dict:
+        if score_mode not in (None, 'legacy', 'incident_v1'):
+            raise ValueError('score_mode')
         entry = {
             'name': name,
             'reactor': reactor,
@@ -225,9 +303,13 @@ class Store:
             # waere frei waehlbar und damit wertlos.
             'at': int(time.time()),
         }
+        if score_mode == 'incident_v1':
+            entry['score_mode'] = score_mode
         with _lock:
             data = self._read_scores()
             key = f'{reactor}/{scenario}'
+            if score_mode == 'incident_v1':
+                key += '/incident_v1'
             entries = data.get(key) if isinstance(data.get(key), list) else []
             entries.append(entry)
             entries.sort(key=lambda e: e.get('score', 0), reverse=True)

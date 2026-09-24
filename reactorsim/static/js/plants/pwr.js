@@ -14,8 +14,9 @@ import { Pump, Valve, TransportDelay, Lag, coldStopPumps } from '../sim/componen
 import {
   RodController, PressurizerController, FeedwaterController, GovernorController,
 } from '../sim/controllers.js';
-import { tsat, psat, hg, hf, rhog, dpdT } from '../sim/steam.js';
+import { tsat, psat, hg, hf, rhog } from '../sim/steam.js';
 import { clamp, toK } from '../sim/constants.js';
+import { availableSteam, saturatedPressure, coverage, transferFraction } from '../sim/thermal.js';
 import { SEVERITY } from '../sim/trips.js';
 
 export const spec = {
@@ -170,7 +171,7 @@ export const spec = {
     pzr_press_low: 'pzr', pzr_press_high: 'pzr', pzr_level_low: 'pzr', porv_open: 'pzr',
     sg_level_low: 'sg', sg_level_high: 'sg', sg_press_high: 'sg',
     rcp_lost: 'rcp',
-    turbine_trip: 'gen',
+    turbine_trip: 'gen', grid_lost: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
   },
 
   mimic: 'mimic-pwr',
@@ -184,6 +185,12 @@ export const spec = {
     { id: 'period_short', key: 'trip_period_short', severity: SEVERITY.TRIP,
       test: (s, d) => s.n > 1e-3 && d.period > 0 && d.period < 10,
       delay_s: 0.5, action: 'scram' },
+    // s.promptCritical kommt fertig aus der Kinetik (sim/kinetics.js: rho > beta),
+    // hier nur noch als eigene Kachel gemeldet statt bisher nur als Kopfzeilen-
+    // text ohne Hupe/Protokoll/Quittierung. Kein delay_s: das ist kein
+    // verrauschter Messwert, sondern ein direktes Bit aus der Physik.
+    { id: 'prompt_critical', key: 'trip_prompt_critical', severity: SEVERITY.TRIP,
+      test: (s) => s.promptCritical, delay_s: 0, action: 'scram' },
     { id: 'pzr_press_low', key: 'trip_pzr_press_low', severity: SEVERITY.TRIP,
       test: (s) => s.pzr_p < 132, delay_s: 1.0, action: 'scram' },
     { id: 'pzr_press_high', key: 'trip_pzr_press_high', severity: SEVERITY.TRIP,
@@ -213,6 +220,19 @@ export const spec = {
       test: (s, d) => !!d.porvStuck, delay_s: 0, hold_s: 0 },
     { id: 'turbine_trip', key: 'alarm_turbine_trip', severity: SEVERITY.WARN,
       test: (s) => s.turbineTripped, delay_s: 0 },
+    // Offener Generatorschalter OHNE Turbinenschnellschluss -- der
+    // Netzabwurf (loss_of_load in game/events.js setzt NUR s.breaker).
+    // Bis 0.6.26 sah der Spieler davon nichts: keine Kachel, keine Hupe,
+    // nur eine Zeile im Protokoll, die vorbeiscrollt -- waehrend die
+    // Generatorleistung auf null faellt und dort bleibt. Genau so gemeldet
+    // worden ("kam einfach so, kein Alarm nix").
+    //
+    // Die Bedingung schliesst turbineTripped aus, weil onScram() den
+    // Schalter mit oeffnet: nach einer Schnellabschaltung steht schon
+    // alarm_turbine_trip, und zwei Kacheln fuer dieselbe Ursache sind eine
+    // zu viel. Diese hier meldet den Zustand, den sonst keine meldet.
+    { id: 'grid_lost', key: 'alarm_grid_lost', severity: SEVERITY.WARN,
+      test: (s) => s.breaker === false && !s.turbineTripped, delay_s: 0 },
     { id: 'clad_temp', key: 'trip_clad_temp', severity: SEVERITY.TRIP,
       test: (s) => s.T_cl > 1477, delay_s: 0, action: 'scram' },
     // Eine klemmende Stabgruppe war vorher nur eine Zeile im Protokoll. Der
@@ -290,6 +310,13 @@ export const hooks = {
     ctx.govCtl = new GovernorController({
       mode: 'load', P0: sp.P0_e, posNominal: 0.79,
     });
+    // Leistungsbegrenzer -- wie viele MW er der Lastanforderung gerade
+    // wegnimmt (siehe _limitedDemand() unten). Gehoert zu ctx und nicht in den
+    // Zustandsvektor: das Gedaechtnis eines Reglers, wie ctx.controlAcc oder
+    // ctx.tAvgPrev, keine physikalische Groesse. net/persist.js nimmt ihn
+    // ueber CONTEXT_NUMBERS mit -- ohne das begaenne er nach jedem Laden bei
+    // null und liesse die Anlage kurz ueber die Schwelle laufen.
+    ctx.powerLimitMw = 0;
 
     // Was net/persist.js in den Spielstand mitpackt und beim Laden
     // zurueckschreibt -- ohne diese Liste "erinnerte" sich ein geladener
@@ -377,6 +404,11 @@ export const hooks = {
 
   moderatorTemp(s, sp, Tc) { return Tc; },
 
+  heatTransfer(s, sp) {
+    return transferFraction(_dnbr(s, sp, { load: s.P_th / sp.P0_th,
+      subcooling: tsat(s.p_prim) - s.T_co }));
+  },
+
   /** Primär- und Sekundärkreis. */
   stepLoop(s, sp, ctx, dt) {
     // ── Pumpen und Kerndurchsatz ─────────────────────────────────────────────
@@ -422,7 +454,8 @@ export const hooks = {
     //   q = UA2·(T_heiß − q/(2·W·c_p) − T_m)
     const Wcp = Math.max(W * sp.coolant.cp, 1);
     const qPrim = (UA2 * (T_hotSG - Tm)) / (1 + UA2 / (2 * Wcp));
-    const qSec = UA2 * (Tm - Tsat_sg);
+    const wet = coverage(s.M_sg, sp.sg.mass * 0.6);
+    const qSec = UA2 * wet * (Tm - Tsat_sg);
     s.T_sgm = Tm + ((qPrim - qSec) * dt) / (sp.sg.mass * 0.5 * sp.sg.cp);
 
     // Kalter Strang: was der Dampferzeuger entzieht, fehlt dem Rücklauf.
@@ -431,7 +464,6 @@ export const hooks = {
 
     // ── Frischdampf ──────────────────────────────────────────────────────────
     const hfw = _hfw(sp);
-    const W_gen = Math.max(qSec / Math.max(hg(s.p_sg) - hfw, 1), 0);
 
     ctx.govValve.demand = s.turbineTripped ? 0 : s.gov;
     ctx.govValve.step(dt);
@@ -440,32 +472,29 @@ export const hooks = {
 
     const dpTurb = Math.max(s.p_sg - s.p_cond, 0);
     const rhoS = rhog(s.p_sg);
-    const W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dpTurb);
-    const W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dpTurb);
-    s.W_steam = W_t + W_bp;
+    let W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dpTurb);
+    let W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dpTurb);
+    let relief = Math.max(s.p_sg - 88, 0) * 400;
+    const requested = W_t + W_bp + relief;
+    const actual = availableSteam({ mass: s.M_sg, feed: s.W_fw, requested, dt,
+      pressure: s.p_sg, cp: sp.sg.cp, metalCapacity: sp.sg.mass * sp.sg.cp * 0.05,
+      heat: qSec, feedEnthalpy: hfw });
+    const scale = requested > 0 ? actual / requested : 0;
+    W_t *= scale; W_bp *= scale; relief *= scale;
+    s.W_steam = actual;
 
-    // Druck aus der Energiebilanz des Sekundärinventars. Die Kapazität ist
-    // M·c_p·dT_sat/dp -- dieselbe Wärme hebt den Druck bei 64 bar anders als
-    // bei 88 bar, weil die Sättigungskurve dort flacher liegt.
-    const C_p = sp.sg.mass * sp.sg.cp / Math.max(dpdT(s.p_sg), 1e-6);
-    const qOut = s.W_steam * Math.max(hg(s.p_sg) - hfw, 1);
-    s.p_sg = clamp(s.p_sg + ((qSec - qOut) * dt) / C_p, 1, 110);
-
-    // Sicherheitsventile der Sekundärseite.
-    if (s.p_sg > 88) {
-      const relief = (s.p_sg - 88) * 400;
-      s.p_sg -= (relief * Math.max(hg(s.p_sg) - hfw, 1) * dt) / C_p;
-      s.M_sg -= relief * dt;
-    }
-
-    // ── Füllstand ────────────────────────────────────────────────────────────
-    s.M_sg = Math.max(s.M_sg + (s.W_fw - s.W_steam) * dt, 1000);
+    const balance = saturatedPressure({ pressure: s.p_sg, mass: s.M_sg,
+      cp: sp.sg.cp, metalCapacity: sp.sg.mass * sp.sg.cp * 0.05, heat: qSec, feed: s.W_fw,
+      feedEnthalpy: hfw, steam: s.W_steam, dt });
+    s.p_sg = balance.pressure;
+    s.pressureClipKJ = balance.rejectedKJ;
+    s.M_sg = Math.max(0, s.M_sg + (s.W_fw - s.W_steam) * dt);
     const Ltrue = clamp(0.5 + (s.M_sg - sp.sg.mass) / sp.sg.massSpan, 0, 1);
     // Schrumpfen und Quellen: fällt der Druck, bilden sich mehr Blasen und der
     // Füllstand steigt SCHEINBAR -- obwohl Wasser fehlt. Ohne diesen Term
     // fühlt sich die Speisewasserregelung falsch an, und der klassische
     // Bedienfehler nach einem Lastabwurf wäre gar nicht möglich.
-    s.L_sg = clamp(Ltrue + sp.sg.shrinkSwell * (sp.sg.p0 - s.p_sg) / sp.sg.p0, 0, 1);
+    s.L_sg = clamp(Ltrue + coverage(s.M_sg, sp.sg.mass) * sp.sg.shrinkSwell * (sp.sg.p0 - s.p_sg) / sp.sg.p0, 0, 1);
 
     // ── Druckhalter ──────────────────────────────────────────────────────────
     const dTavg = (Tavg - ctx.tAvgPrev) / dt;
@@ -503,7 +532,7 @@ export const hooks = {
     s.C_B = ctx.boronMix.step(s.C_B_cmd, dt);
 
     // ── Turbine, Kondensator, Netz ───────────────────────────────────────────
-    s.p_cond = _condenserPressure(sp, s.W_steam);
+    s.p_cond = _condenserPressure(s, sp, s.W_steam);
     const wSpec = (hg(s.p_sg) - hf(s.p_cond)) * sp.turbine.workFactor;
     s.P_e = s.breaker && !s.turbineTripped ? (W_t * wSpec) / 1000 : 0;
   },
@@ -523,7 +552,7 @@ export const hooks = {
 
     s.W_fw = ctx.fwCtl.step(s.L_sg, s.W_steam, dt);
 
-    s.gov = ctx.govCtl.step(s.P_e, s.P_demand, s.p_sg, dt);
+    s.gov = ctx.govCtl.step(s.P_e, _limitedDemand(s, sp, ctx, dt), s.p_sg, dt);
 
     // Umleitstation: nimmt den Dampf auf, den die Turbine nicht mehr nimmt.
     // Ohne sie endet jeder Turbinenschnellschluss am Sicherheitsventil.
@@ -577,7 +606,6 @@ export const hooks = {
     // Hand beide Schieber nebeneinander.
     const heater = kit.station({
       labelKey: 'ctl_pzr_heater', min: 0, max: 100, step: 1, unitKey: 'unit_percent',
-      hint: 'hint_pzr',
       read: () => (s.pzr_htr / sp.pressurizer.heaterMaxKW) * 100,
       write: (v) => { ctx.pzrCtl.heaterManual = v / 100; },
       isAuto: () => ctx.pzrCtl.auto,
@@ -624,6 +652,10 @@ export const hooks = {
       C_B_cmd: s.C_B_cmd,
       T_sgm: s.T_sgm,
       pumpStates: ctx.pumps.map((p) => p.state),
+      // Welche davon durch ein Ereignis (rcp_trip) ausgefallen und nicht nur
+      // vom Spieler abgeschaltet sind -- der Knopf soll sich fuer ausgefallene
+      // Pumpen sperren, fuer selbst abgeschaltete aber weiter bedienen lassen.
+      pumpStuckList: ctx.pumps.map((_, i) => !!(ctx.pumpsStuck && ctx.pumpsStuck.has(i))),
       shutdownMargin: _shutdownMargin(s, sp, ctx),
     };
   },
@@ -631,16 +663,96 @@ export const hooks = {
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
 
+// ── Leistungsbegrenzer ───────────────────────────────────────────────────────
+//
+// Dieser Reaktortyp faehrt turbinengefuehrt: das Regelventil holt sich den
+// Dampf, den die Lastanforderung verlangt, und der Kern zieht nach. Das ist
+// richtig so und macht ihn zum besten Lastfolger der drei -- es hatte aber
+// eine Luecke, die erst mit der Jahreszeit (0.6.7) sichtbar wurde.
+//
+// Warmes Kuehlwasser verschlechtert das Vakuum im Kondensator, das nutzbare
+// Enthalpiegefaelle sinkt, und fuer dieselben Megawatt an der Klemme braucht
+// die Turbine mehr Dampf. Ohne Begrenzer holte der Regler ihn sich einfach:
+// im Sommer stand die Anlage bei 101,9 % der thermischen Nennleistung und
+// lieferte unveraendert 1401 MW. Der Sommer kostete also nicht Leistung,
+// sondern Kernreserve -- und zwar lautlos, denn die Leistungsausloesung
+// greift erst bei 112 % (siehe trips: power_high). Ein wirkliches Kraftwerk
+// hat dafuer einen Begrenzer, dieses Modell hatte keinen.
+//
+// Er nimmt der ANFORDERUNG etwas weg, nicht der Ventilstellung. Am Ventil zu
+// klemmen hiesse gegen den PI des Turbinenreglers zu arbeiten, der dann
+// weiter aufintegriert -- der Begrenzer muss dem Regler ein kleineres Ziel
+// geben, kein grosses Ziel verweigern.
+//
+// Die Schwelle ist mit Bedacht 101 % und nicht 100 %: bei der
+// Auslegungstemperatur des Kuehlwassers (15 °C) steht die Anlage bei voller
+// Klemmenleistung auf 100,02 % der thermischen Nennleistung -- die beiden
+// Nennwerte sind genau aufeinander abgestimmt. Eine Schwelle bei 100 % griffe
+// damit im Auslegungspunkt selbst, also in JEDEM Szenario, deren Zeitplan und
+// Wertung auf eben diesem Punkt beruhen. 101 % laesst den Auslegungspunkt und
+// den Herbst (100,5 %) in Ruhe und greift im Sommer.
+const POWER_LIMIT_FRAC = 1.01;
+// Ein Integrator auf den thermischen Fehler, mit knapper Vollmacht.
+//
+// Zwei Entwuerfe davor sind gescheitert, und beide Fehlschlaege stehen hier,
+// weil sie die Bauart erklaeren:
+//
+// REIN PROPORTIONAL (Beiwert 3) pendelte. Die Strecke vom Regelventil ueber
+// den Dampferzeuger in die thermische Leistung hat mehrere hundert Sekunden
+// Totzeit; ein kraeftiger P-Anteil darueber ergab einen Grenzzyklus von 22 MW
+// mit etwa 2000 s Periode -- dieselbe Falle, in die der erste Entwurf des
+// Turbinenreglers schon einmal gelaufen ist (siehe GovernorController in
+// sim/controllers.js). Ein schwacher P-Anteil haette dagegen gar nicht mehr
+// begrenzt: um die 11 MW zu stellen, die der Sommer braucht, muesste er die
+// Anlage bei 101,8 % stehen lassen, also genau dort, wo sie ohne Begrenzer
+// schon stand.
+//
+// EIN INTEGRATOR OHNE OBERGRENZE regelte sauber (kein Pendeln, genau 101,0 %),
+// zog sich aber bei einem gewoehnlichen Lastwechsel im Auslegungspunkt (60 auf
+// 100 %) auf 99 MW hoch: die thermische Leistung ueberschwingt dabei kurz ueber
+// die Schwelle, und der Integrator merkte sich das minutenlang, obwohl die
+// Anlage laengst wieder im Auslegungspunkt stand.
+//
+// Der Integrator bleibt also, bekommt aber eine Obergrenze, die sich an dem
+// bemisst, was er UEBERHAUPT stellen muss. Damit ist das Aufziehen nach oben
+// beschraenkt, statt es mit einem asymmetrischen Beiwert wegzuregeln -- der
+// waere der naechste Grenzzyklus.
+const POWER_LIMIT_GAIN = 0.05;
+// Der stationaere Bedarf ist klein: die waermste angebotene Jahreszeit
+// (Sommer, 26 °C Kuehlwasser) braucht 11,4 MW, um die Anlage von 101,9 % auf
+// die Schwelle zu holen. Zwei Prozent der Nennleistung lassen dafuer reichlich
+// Luft und begrenzen zugleich, wie weit ein Ueberschwinger den Begrenzer
+// hochziehen kann: 28 MW auf 1400, also weniger als das Toleranzband der
+// Lastfolgebewertung (50 MW, siehe game/scenario.js FREE_TOLERANCE_MW).
+const POWER_LIMIT_MAX_FRAC = 0.02;
+
+/**
+ * Lastanforderung, wie der Turbinenregler sie sehen darf.
+ * @returns {number} MW -- die Anforderung, vermindert um den Begrenzeranteil
+ */
+function _limitedDemand(s, sp, ctx, dt) {
+  const over = s.P_th / sp.P0_th - POWER_LIMIT_FRAC;
+  ctx.powerLimitMw = clamp((ctx.powerLimitMw || 0) + POWER_LIMIT_GAIN * over * sp.P0_e * dt,
+    0, POWER_LIMIT_MAX_FRAC * sp.P0_e);
+  return Math.max(0, s.P_demand - ctx.powerLimitMw);
+}
+
 /** Enthalpie des Speisewassers. */
 function _hfw(sp) {
   // Näherung über die Flüssigkeitsenthalpie bei Speisewassertemperatur.
   return 4.2 * (sp.sg.T_fw - 273.15);
 }
 
-/** Kondensatordruck aus Kühlwassertemperatur, Last und Grädigkeit. */
-function _condenserPressure(sp, W_steam) {
+/** Kondensatordruck aus Kühlwassertemperatur, Last und Grädigkeit.
+ *
+ * Die Kühlwassertemperatur kommt aus dem Zustand (s.T_cw), nicht mehr aus der
+ * Anlagendatei: sie ist die einzige Randbedingung dieses Kraftwerks, die sich
+ * mit der Jahreszeit ändert, und damit eine Größe des Laufs, keine der
+ * Bauart. sp.condenser.T_cw bleibt ihr Auslegungswert und ihr Anfangswert
+ * (siehe sim/state.js und game/season.js). */
+function _condenserPressure(s, sp, W_steam) {
   const load = clamp(W_steam / sp.sg.W_steam0, 0, 1.2);
-  const T = sp.condenser.T_cw + sp.condenser.pinch + (sp.condenser.rise || 12) * load;
+  const T = s.T_cw + sp.condenser.pinch + (sp.condenser.rise || 12) * load;
   return clamp(psat(T), 0.02, 1.5);
 }
 

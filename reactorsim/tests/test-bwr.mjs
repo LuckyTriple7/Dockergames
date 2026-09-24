@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { createEngine } from '../static/js/sim/engine.js';
 import * as bwr from '../static/js/plants/bwr.js';
 import * as pwr from '../static/js/plants/pwr.js';
+import { getEvent, stepEvents } from '../static/js/game/events.js';
 
 const DT = 0.05;
 const boot = (opts = {}) => {
@@ -78,6 +79,37 @@ test('Umwaelzstrom ist das Leistungsstellglied', () => {
   assert.ok(Math.abs(s.n / n0 - 1) < 0.03, `nicht umkehrbar: ${(s.n * 100).toFixed(1)} %`);
 });
 
+test('recirc_runback: mit over_s schleichend, ohne over_s sofort', () => {
+  // bwr_instability.json (over_s gesetzt) vs. bwr_flow_control.json (kein
+  // over_s) teilen sich dasselbe Ereignis -- beide Verhalten muessen
+  // nebeneinander funktionieren, siehe Kommentar in events.js.
+  const e1 = boot();
+  const s1 = e1.state;
+  const dmd0 = s1.recircDmd;
+  getEvent('recirc_runback').apply(e1, { to: 0.4, over_s: 300 });
+  assert.equal(s1.recircDmd, dmd0, 'Sollwert sprang sofort, obwohl over_s gesetzt ist');
+
+  for (let i = 0, n = Math.round(150 / DT); i < n; i++) { e1.step(DT); stepEvents(e1, DT); }
+  const mid = s1.recircDmd;
+  assert.ok(mid < dmd0 - 0.2 && mid > 0.4 + 0.05,
+    `nach der Haelfte der Rampe sollte recircDmd etwa mittig liegen, ist ${mid.toFixed(3)}`);
+
+  for (let i = 0, n = Math.round(200 / DT); i < n; i++) { e1.step(DT); stepEvents(e1, DT); }
+  assert.ok(Math.abs(s1.recircDmd - 0.4) < 1e-9, `Rampe erreichte nicht 0.4: ${s1.recircDmd}`);
+
+  // Nach Rampenende hat der Spieler die Handregelung zurueck -- stepEvents()
+  // darf recircDmd nicht laenger ueberschreiben.
+  s1.recircDmd = 0.9;
+  stepEvents(e1, DT);
+  assert.equal(s1.recircDmd, 0.9, 'Rampe schrieb recircDmd nach ihrem Ende weiter fest');
+
+  // Ohne over_s (wie bwr_flow_control.json) bleibt es beim sofortigen
+  // Sollwert -- keine Regression durch die neue Rampe.
+  const e2 = boot();
+  getEvent('recirc_runback').apply(e2, { to: 0.5 });
+  assert.equal(e2.state.recircDmd, 0.5, 'sofortiger Sollwert ohne over_s ist kaputt');
+});
+
 test('Frischdampf-Absperrung gibt POSITIVE Reaktivitaet', () => {
   const e = boot();
   const s = e.state;
@@ -99,7 +131,7 @@ test('Frischdampf-Absperrung gibt POSITIVE Reaktivitaet', () => {
   assert.ok(nMax > 1.03, `Leistungsspitze nur ${(nMax * 100).toFixed(1)} %`);
   assert.ok(s.alphaBar < a0, `Blasen fielen nicht zusammen: ${s.alphaBar.toFixed(3)} vs ${a0.toFixed(3)}`);
 
-  run(e, 300);
+  // Respond after observing the first pressure/power transient.
   // Die Schnellabschaltung loest nichts mehr von selbst aus -- die Meldung
   // muss stehen, die tatsaechliche Abschaltung kommt erst vom Bediener.
   assert.ok(e.trips.states.get('dome_press_high').latched
@@ -138,7 +170,7 @@ test('Instabilitaetszone: Schwingung waechst, Ueberwachung loest aus', () => {
 
   e.scram('oprm');
   run(e, 60);
-  assert.ok(!s.destroyed, 'Brennstoffschaden durch Schwingung');
+  assert.ok(s.destroyed, 'minutes of ignored severe oscillation must damage fuel');
 });
 
 test('Schnellabschaltung: Pumpen laufen mit ab, Naturumlauf bleibt', () => {
@@ -183,4 +215,122 @@ test('beide Typen laufen gleichzeitig, ohne sich zu stoeren', () => {
   assert.ok(Math.abs(cb0 - c.state.C_B) < 5, 'Borkonzentration driftet ohne Dosierung');
   assert.equal(a.state.fault, null);
   assert.equal(b.state.fault, null);
+});
+
+// ── Notstromdiesel ───────────────────────────────────────────────────────────
+//
+// Bis 0.6.22 hatte der Station-Blackout keinen Weg zurueck: s.acPower wurde
+// nur beim Anlagenaufbau wieder true, und die Schicht konnte der Anlage
+// danach beim Auskochen zusehen. Der Diesel ist dieser Weg -- aber ein
+// schmaler. Geprueft wird deshalb beides: dass er traegt, UND dass er nicht
+// mehr traegt, als er darf.
+
+/** Blackout mit Schnellabschaltung. Ohne den SCRAM ist die Anlage hin,
+ *  bevor irgendein Diesel angelaufen waere -- 45 s Vollast ohne Speisung. */
+function blackout(e) {
+  getEvent('station_blackout').apply(e, {});
+  e.scram('test');
+  return e;
+}
+
+test('Der Diesel laeuft erst nach seiner Anlaufzeit an und braucht die Batterie', () => {
+  const e = blackout(boot());
+  e.state.dieselCmd = true;
+  // Ohne Gleichstrom dreht der Anlasser nicht: der Blackout hat die Batterie
+  // mitgenommen, und der Zaehler darf nicht heimlich laufen.
+  run(e, 60);
+  assert.equal(e.state.dieselRun, false, 'ohne Gleichstrom angelaufen');
+  assert.equal(e.state.dieselT, 0);
+  assert.equal(e.state.acPower, false);
+
+  e.state.dcPower = true;
+  run(e, bwr.spec.diesel.startS - 5);
+  assert.equal(e.state.dieselRun, false, 'zu frueh angelaufen');
+  assert.ok(e.state.dieselT > 0, 'Anlauf zaehlt nicht');
+  run(e, 10);
+  assert.equal(e.state.dieselRun, true, 'nicht angelaufen');
+  assert.equal(e.state.acPower, true, 'traegt keinen Strom');
+  // Und das Netz bleibt weg. Genau daran haengt alles Weitere.
+  assert.equal(e.state.gridPower, false);
+});
+
+test('Ein Anlauf, dem die Batterie wegbricht, faengt von vorne an', () => {
+  const e = blackout(boot());
+  e.state.dcPower = true;
+  e.state.dieselCmd = true;
+  run(e, bwr.spec.diesel.startS - 10);
+  assert.ok(e.state.dieselT > 0);
+  e.state.dcPower = false;
+  run(e, 1);
+  assert.equal(e.state.dieselT, 0, 'halb angelassener Diesel aufgehoben');
+  assert.equal(e.state.dieselRun, false);
+});
+
+test('Ein laufender Diesel braucht die Batterie nicht mehr', () => {
+  const e = blackout(boot());
+  e.state.dcPower = true;
+  e.state.dieselCmd = true;
+  run(e, bwr.spec.diesel.startS + 5);
+  assert.equal(e.state.dieselRun, true);
+  e.state.dcPower = false;
+  run(e, 60);
+  assert.equal(e.state.dieselRun, true, 'Diesel mit der Batterie ausgegangen');
+  assert.equal(e.state.acPower, true);
+});
+
+test('Am Diesel haengt die Notspeisung, nicht die Hauptspeisepumpe', () => {
+  const e = blackout(boot());
+  e.state.dcPower = true;
+  e.state.dieselCmd = true;
+  run(e, bwr.spec.diesel.startS + 120);
+  // Der Regler will nach einem Blackout weit mehr, als der Diesel hergibt --
+  // genau deshalb ist der Deckel die Aussage und nicht der Reglerausgang.
+  assert.ok(e.state.W_fw <= bwr.spec.diesel.feedMax + 1e-6,
+    `Speisung ${e.state.W_fw} ueber dem Deckel ${bwr.spec.diesel.feedMax}`);
+  assert.ok(e.state.W_fw > bwr.spec.fireInj.W0,
+    'Diesel speist nicht mehr als die Loeschwasserpumpe');
+  assert.ok(e.state.W_fw < bwr.spec.vessel.W_steam0 / 4,
+    'Diesel traegt fast den Vollastspeisestrom');
+});
+
+test('Mit Diesel kommt der Fuellstand zurueck, ohne ihn laeuft der Kern frei', () => {
+  // Die eigentliche Aussage der ganzen Mechanik, an der Physik gemessen und
+  // nicht an einem Merker.
+  const ohne = blackout(boot());
+  run(ohne, 2000);
+  const mit = blackout(boot());
+  mit.state.dcPower = true;
+  mit.state.dieselCmd = true;
+  run(mit, 2000);
+  assert.ok(ohne.state.L_rpv <= 0.01, `ohne Diesel noch ${ohne.state.L_rpv}`);
+  assert.ok(mit.state.L_rpv > 0.3,
+    `mit Diesel nur ${mit.state.L_rpv}`);
+});
+
+test('Der Diesel laesst sich wieder abstellen, und dann ist der Strom weg', () => {
+  const e = blackout(boot());
+  e.state.dcPower = true;
+  e.state.dieselCmd = true;
+  run(e, bwr.spec.diesel.startS + 5);
+  assert.equal(e.state.acPower, true);
+  e.state.dieselCmd = false;
+  run(e, 1);
+  assert.equal(e.state.dieselRun, false);
+  // Und nicht etwa true, weil irgendwer acPower einmal gesetzt haette: der
+  // Strom wird jeden Schritt neu aus Netz und Diesel gebildet.
+  assert.equal(e.state.acPower, false);
+});
+
+test('Ohne Blackout aendert der Diesel gar nichts', () => {
+  const e = boot();
+  e.state.dcPower = true;
+  e.state.dieselCmd = true;
+  run(e, bwr.spec.diesel.startS + 60);
+  assert.equal(e.state.dieselRun, true);
+  assert.equal(e.state.gridPower, true);
+  assert.equal(e.state.acPower, true);
+  // Der Deckel greift nur im reinen Dieselbetrieb -- am Netz regelt die
+  // Speisung weiter, wie sie soll.
+  assert.ok(e.state.W_fw > bwr.spec.diesel.feedMax,
+    `Speisung am Netz auf ${e.state.W_fw} gedeckelt`);
 });

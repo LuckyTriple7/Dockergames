@@ -1,0 +1,11 @@
+.claude/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+node_modules/
+
+# ReactorSim
+reactorsim/dev_data/
+reactorsim/data/
+reactorsim/.venv/

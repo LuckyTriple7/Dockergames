@@ -44,7 +44,38 @@ export const api = {
     q.set('limit', String(limit));
     return request('GET', `/api/highscores?${q}`);
   },
-  submitScore: (name, summary) => request('POST', '/api/highscores', { name, summary }),
+  // `log` ist optional (null bei einem geladenen Spielstand, siehe main.js
+  // boot()) -- das aufgezeichnete Protokoll erlaubt dem Server, den Lauf
+  // selbst nachzurechnen statt der Zusammenfassung nur auf Plausibilität zu
+  // vertrauen (siehe scoring.py, verify_run.mjs).
+  submitScore: (name, summary, log) => request('POST', '/api/highscores', { name, summary, log }),
+  // Ein beendeter Lauf fuer die Spielhistorie im Admin-Panel -- unabhaengig
+  // davon, ob jemals eine Wertung eingereicht wird (siehe main.js
+  // reportRun(), app.py /api/runs). Scheitert der Aufruf, geht der Lauf
+  // verloren und sonst nichts: das Spiel selbst haengt nicht daran.
+  recordRun: (run) => request('POST', '/api/runs', run),
+  // Den BEGINN eines Laufs melden, damit der Server seine Dauer selbst misst
+  // statt der gemeldeten zu glauben (siehe app.py /api/runs/start, OpenRuns).
+  // Die Antwort traegt eine Kennung, die recordRun() als `run` zurueckgibt.
+  // Scheitert der Aufruf, laeuft alles wie vorher -- ohne Messung, mit dem
+  // alten Deckel; das Spiel haengt daran nicht.
+  startRun: (run) => request('POST', '/api/runs/start', run),
+  // Einen Xenon-Zeitsprung anmelden (main.js fastForwardXenon(), app.py
+  // /api/runs/skip). Der Knopf rechnet schneller als der Bildtakt; ohne
+  // diese Meldung kuerzt der Server die gemeldete simulierte Dauer am Ende
+  // auf das, was bei 60x moeglich gewesen waere. Scheitert der Aufruf,
+  // bleibt der Sprung selbst davon unberuehrt.
+  noteSkip: (run, seconds) => request('POST', '/api/runs/skip', { run, seconds }),
+  readAccount: () => request('GET', '/api/account'),
+  changePassword: (current, next) =>
+    request('POST', '/api/account/password', { current, new: next }),
+  // Ein Bild des laufenden Leitstands fuer ein zweites Geraet ablegen bzw.
+  // abholen (siehe net/monitorLink.js, app.py MonitorRelay). Der Server haelt
+  // genau EIN Bild je Konto, nur im Arbeitsspeicher. `seq` sagt beim Abholen,
+  // welches der Monitor schon hat -- steht das Bild still, kommt nur das
+  // Alter zurueck und keine Nutzlast.
+  sendMonitor: (frame) => request('POST', '/api/monitor', frame),
+  readMonitor: (seq) => request('GET', `/api/monitor?seq=${encodeURIComponent(seq || 0)}`),
   readPrefs: () => request('GET', '/api/prefs'),
   writePrefs: (blob) => request('PUT', '/api/prefs', blob),
 };

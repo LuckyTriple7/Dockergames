@@ -1,0 +1,23 @@
+{
+  "id": "pwr_sg_tube_leak",
+  "reactor": "pwr",
+  "difficulty": 2,
+  "title_key": "scn_pwr_sg_tube_leak_title",
+  "brief_key": "scn_pwr_sg_tube_leak_brief",
+  "guidance": {
+    "hint_key": "scn_pwr_sg_tube_leak_hint",
+    "event_alerts": false,
+    "auto_helper": false
+  },
+  "duration_s": 900,
+  "score_mode": "incident_v1",
+  "objectives": [
+    { "id": "power", "type": "pwr_power_limited", "after_events": ["sg_tube_leak"], "hold_s": 15, "max_power_fraction": 0.1 },
+    { "id": "stable", "type": "pwr_heat_removal", "after_events": ["sg_tube_leak"], "hold_s": 120, "max_power_fraction": 0.1 }
+  ],
+  "seed": 20260915,
+  "demand": [{ "t": 0, "mw": 1400 }, { "t": 900, "mw": 1400 }],
+  "grid": { "tolerance_mw": 60 },
+  "events": [{ "t": 180, "id": "sg_tube_leak", "args": { "kgs": 8 } }],
+  "fail": [{ "type": "fuel_damage" }, { "type": "trip_ignored", "for_s": 180 }]
+}

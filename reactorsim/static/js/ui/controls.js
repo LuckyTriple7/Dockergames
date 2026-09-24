@@ -6,6 +6,42 @@
 
 import { el, setText, setAttr } from './dom.js';
 import { t, num } from './i18n.js';
+import { playClip } from './music.js';
+
+// Klick-Geraeusch fuer echte Schalter (Automatik/Hand, Tastengruppen,
+// Pumpen) -- hier zentral statt an jeder Aufrufstelle in panels.js/plants/*,
+// sonst brauchte jeder neue Reaktortyp seinen eigenen Aufruf und einer
+// vergaesse ihn zuverlaessig. Schieber/Stellrad bekommen bewusst keinen: die
+// laufen stufenlos, ein Klackern je Pixel waere Laerm, kein Feedback.
+const click = () => playClip('game_switch.mp3', 0.5);
+
+// Pause-Sperre: bei angehaltener Simulation (Leertaste, loop.speed === 0)
+// darf keine Bedienhandlung mehr durchgreifen -- vorher liessen sich Staebe,
+// Pumpen, Regler und Schalter auch im Stillstand bewegen, obwohl kein
+// engine.step() mehr lief, um die Wirkung zu berechnen. Ein Modul-weiter
+// Schalter statt einer Pruefung je Aufrufstelle, weil main.js/panels.js
+// gar nicht wissen muessen, welche Widgets hier alles existieren.
+let paused = false;
+export function setControlsPaused(v) { paused = v; }
+export function isControlsPaused() { return paused; }
+
+// Vorfuehrmodus: eine gefuehrte Uebung, die die Anlage SELBST bedient (siehe
+// game/chernobylTutorial.js -- dort faehrt ein Drehbuch Pumpen, Staebe und
+// AZ-5), darf dem Spieler nicht gleichzeitig dieselben Stellteile in die Hand
+// geben. Ein einziger Stabgriff verschiebt dort den Zustand so weit, dass der
+// nachgestellte Ablauf nicht mehr aufgeht.
+//
+// Als Praedikat, nicht als Merker: der Sperrgrund haengt am Sitzungszustand
+// (laeuft die Uebung noch? ist sie fertig?), und ein Merker muesste an jeder
+// Stelle nachgezogen werden, an der sich der aendert -- Rundenende, Abbruch,
+// Absturz, Neustart. Ausgewertet wird er im Augenblick des Klicks, also
+// selten genug, dass die Kosten keine Rolle spielen.
+let lockedFn = null;
+export function setControlsLocked(fn) { lockedFn = fn || null; }
+export function isControlsLocked() { return !!(lockedFn && lockedFn()); }
+
+/** Greift ein Bediengriff gerade durch? Angehalten ODER Vorfuehrmodus. */
+export function controlsBlocked() { return paused || isControlsLocked(); }
 
 /**
  * Umschalter Automatik / Hand.
@@ -22,7 +58,8 @@ export function autoSwitch(labelKey, initial, onChange) {
   const mk = (key, target) => {
     const b = el('button.rs-seg', { type: 'button' }, [t(key)]);
     b.addEventListener('click', () => {
-      if (value === target) return;
+      if (controlsBlocked() || value === target) return;
+      click();
       value = target;
       paint();
       onChange(value);
@@ -69,7 +106,7 @@ export function autoSwitch(labelKey, initial, onChange) {
  * @param {(v:boolean)=>void} o.setAuto  umschalten; bekommt den Ist-Wert schon übernommen
  */
 export function station({ labelKey, min = 0, max = 100, step = 1, digits = 0,
-                          unitKey, read, write, isAuto, setAuto, hint }) {
+                          unitKey, read, write, isAuto, setAuto }) {
   let auto = isAuto();
   const input = el('input.rs-slider', { type: 'range', min, max, step, value: read() });
   const readout = el('span.rs-ctl-v');
@@ -81,7 +118,8 @@ export function station({ labelKey, min = 0, max = 100, step = 1, digits = 0,
   const mk = (key, target) => {
     const b = el('button.rs-seg', { type: 'button' }, [t(key)]);
     b.addEventListener('click', () => {
-      if (auto === target) return;
+      if (controlsBlocked() || auto === target) return;
+      click();
       // Stoßfreie Übernahme: erst den Ist-Wert als Sollwert setzen, dann
       // umschalten. Andersherum regelt die Station eine Sekunde lang gegen
       // den alten Handwert, und genau das ist der Stoß.
@@ -105,6 +143,7 @@ export function station({ labelKey, min = 0, max = 100, step = 1, digits = 0,
   };
 
   input.addEventListener('input', () => {
+    if (controlsBlocked()) { input.value = String(Math.round(read() / step) * step); return; }
     paint(input.value);
     if (!auto) write(Number(input.value));
   });
@@ -118,7 +157,6 @@ export function station({ labelKey, min = 0, max = 100, step = 1, digits = 0,
       el('div.rs-segs', null, [autoBtn, manBtn]),
     ]),
     el('div.rs-ctl-row', null, [input, readout]),
-    hint ? el('p.rs-ctl-hint', { text: t(hint) }) : null,
   ]);
 
   return {
@@ -144,7 +182,13 @@ export function slider({ labelKey, min, max, step, value, digits = 0, unitKey, o
   });
   const read = el('span.rs-ctl-v');
   const paint = (v) => setText(read, num(Number(v), digits) + (unitKey ? ' ' + t(unitKey) : ''));
-  input.addEventListener('input', () => { paint(input.value); onInput(Number(input.value)); });
+  let last = value;
+  input.addEventListener('input', () => {
+    if (controlsBlocked()) { input.value = String(last); return; }
+    last = input.value;
+    paint(input.value);
+    onInput(Number(input.value));
+  });
   paint(value);
   return {
     node: el('div.rs-ctl-block', null, [
@@ -161,6 +205,14 @@ export function slider({ labelKey, min, max, step, value, digits = 0, unitKey, o
 }
 
 /** Tastengruppe -- genau eine Taste ist aktiv. */
+export function indicator({ labelKey, read, unitKey, digits = 0 }) {
+  const value = el('span.rs-ctl-v');
+  const set = () => setText(value, num(read(), digits) + '\u2009' + t(unitKey));
+  set();
+  return { node: el('div.rs-ctl-row', null,
+    [el('span.rs-ctl-k', { text: t(labelKey) }), value]), set };
+}
+
 export function buttonGroup(labelKey, options, initial, onChange) {
   const btns = options.map((o) => el('button.rs-gbtn', { type: 'button', 'data-v': o.value },
     [t(o.key)]));
@@ -169,7 +221,11 @@ export function buttonGroup(labelKey, options, initial, onChange) {
     for (const b of btns) b.classList.toggle('rs-on', b.dataset.v === String(value));
   };
   for (const b of btns) {
-    b.addEventListener('click', () => { value = b.dataset.v; paint(); onChange(value); });
+    b.addEventListener('click', () => {
+      if (controlsBlocked()) return;
+      click();
+      value = b.dataset.v; paint(); onChange(value);
+    });
   }
   paint();
   return {
@@ -188,13 +244,16 @@ export function jogButtons(labelKey, onJog) {
     let timer = 0;
     const start = (ev) => {
       ev.preventDefault();
+      if (controlsBlocked()) return;
       // Capture: sonst bekommt der Knopf kein pointerup, wenn der Zeiger beim
       // Loslassen schon daneben steht -- der Timer liefe sonst unbemerkt
       // weiter und führe, egal was der nächste Klick will.
       if (b.setPointerCapture) { try { b.setPointerCapture(ev.pointerId); } catch { /* egal */ } }
       onJog(dir);
       // Wiederholung: der Stabantrieb faehrt, solange die Taste gehalten wird.
-      timer = window.setInterval(() => onJog(dir), 100);
+      // Pausiert waehrend des Haltens jemand die Simulation (Leertaste), soll
+      // die Fahrt sofort stehen bleiben statt bis zum Loslassen weiterzulaufen.
+      timer = window.setInterval(() => { if (controlsBlocked()) return; onJog(dir); }, 100);
       b.classList.add('rs-on');
     };
     const stop = () => {
@@ -213,6 +272,7 @@ export function jogButtons(labelKey, onJog) {
     b.addEventListener('keydown', (ev) => {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
       ev.preventDefault();
+      if (controlsBlocked()) return;
       onJog(dir);
       b.classList.add('rs-on');
     });
@@ -230,19 +290,28 @@ export function jogButtons(labelKey, onJog) {
   };
 }
 
-/** Pumpenreihe: Zustand anzeigen, per Klick ein- und ausschalten. */
+/** Pumpenreihe: Zustand anzeigen, per Klick ein- und ausschalten.
+ *  `stuck[i]` (siehe pumpStuckList je Typdatei) sperrt Pumpe i: ein
+ *  Ereignis (rcp_trip/mcp_trip/station_blackout) hat sie ausfallen lassen,
+ *  nicht der Spieler -- der Knopf soll dann nicht mehr so aussehen, als
+ *  liesse sie sich einfach wieder anwerfen. Eine vom Spieler selbst
+ *  abgeschaltete Pumpe (dieselbe rote "tripped"-Farbe, siehe togglePump())
+ *  bleibt dagegen bedienbar. */
 export function pumpRow(count, onToggle) {
   const btns = [];
   for (let i = 0; i < count; i++) {
     const b = el('button.rs-pump', { type: 'button', 'data-state': 'run' },
       [t('ctl_pump', { n: i + 1 })]);
-    b.addEventListener('click', () => onToggle(i));
+    b.addEventListener('click', () => { if (controlsBlocked()) return; click(); onToggle(i); });
     btns.push(b);
   }
   return {
     node: el('div.rs-pumps', null, btns),
-    set(states) {
-      for (let i = 0; i < btns.length; i++) setAttr(btns[i], 'data-state', states[i] || 'stopped');
+    set(states, stuck) {
+      for (let i = 0; i < btns.length; i++) {
+        setAttr(btns[i], 'data-state', states[i] || 'stopped');
+        btns[i].disabled = !!(stuck && stuck[i]);
+      }
     },
   };
 }

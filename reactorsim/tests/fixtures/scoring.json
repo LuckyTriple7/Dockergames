@@ -14,9 +14,10 @@
       "scram_count": 0,
       "fuel_damage": false,
       "completed": true,
-      "difficulty": 1
+      "difficulty": 1,
+      "duration_s": 14400
     },
-    "score": 1250
+    "score": 2250
   },
   {
     "name": "durchwachsen",
@@ -33,9 +34,10 @@
       "scram_count": 0,
       "fuel_damage": false,
       "completed": true,
-      "difficulty": 2
+      "difficulty": 2,
+      "duration_s": 14400
     },
-    "score": 1188
+    "score": 2255
   },
   {
     "name": "Schnellabschaltung",
@@ -52,9 +54,10 @@
       "scram_count": 1,
       "fuel_damage": false,
       "completed": false,
-      "difficulty": 2
+      "difficulty": 2,
+      "duration_s": 1800
     },
-    "score": -3076
+    "score": -826
   },
   {
     "name": "Kernzerstoerung",
@@ -71,8 +74,114 @@
       "scram_count": 1,
       "fuel_damage": true,
       "completed": false,
-      "difficulty": 3
+      "difficulty": 3,
+      "duration_s": 900
     },
-    "score": -6985
+    "score": -6056
+  },
+  {
+    "name": "SWR H2-Explosion trotz erfuellter Schicht",
+    "summary": {
+      "energy_mwh_delivered": 5600,
+      "energy_mwh_demanded": 5600,
+      "deviation_mwh": 0,
+      "alarm_seconds_unacked": 0,
+      "violation_seconds": {
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "scram_count": 0,
+      "fuel_damage": false,
+      "cont_failed": false,
+      "h2_exploded": true,
+      "completed": true,
+      "difficulty": 1,
+      "duration_s": 14400
+    },
+    "score": -750
+  },
+  {
+    "name": "incident completed difficulty 3 ignores operating metrics",
+    "summary": {
+      "score_mode": "incident_v1", "objectives": [{"id": "supply", "met": true}, {"id": "stable", "met": true}],
+      "completed": true, "difficulty": 3, "duration_s": 900,
+      "energy_mwh_delivered": 350, "energy_mwh_demanded": 350,
+      "deviation_mwh": 999, "scram_count": 4,
+      "violation_seconds": {"1": 900, "2": 900, "3": 900}, "alarm_seconds_unacked": 10000
+    },
+    "score": 3650,
+    "parts": {"objectives": 2000, "mission": 1000, "bonus": 750, "alarms": -100}
+  },
+  {
+    "name": "incident one current objective",
+    "summary": {"score_mode": "incident_v1", "completed": false, "objectives": [{"id": "supply", "met": true}, {"id": "stable", "met": false}]},
+    "score": 1000,
+    "parts": {"objectives": 1000, "mission": 0, "bonus": 0}
+  },
+  {
+    "name": "incident no objectives no floor",
+    "summary": {"score_mode": "incident_v1", "completed": true, "alarm_seconds_unacked": 10000, "objectives": [{"id": "power", "met": false}, {"id": "stable", "met": false}]},
+    "score": -100,
+    "parts": {"objectives": 0, "mission": 0, "bonus": 0, "floor_adjustment": 0}
+  },
+  {
+    "name": "incident both objectives but failed",
+    "summary": {"score_mode": "incident_v1", "completed": false, "objectives": [{"id": "power", "met": true}, {"id": "stable", "met": true}]},
+    "score": 2000,
+    "parts": {"objectives": 2000, "mission": 0, "bonus": 0}
+  },
+  {
+    "name": "incident invented completion without both objectives",
+    "summary": {"score_mode": "incident_v1", "completed": true, "difficulty": 3, "objectives": [{"id": "power", "met": true}, {"id": "stable", "met": false}]},
+    "score": 1000,
+    "parts": {"mission": 0, "bonus": 0}
+  },
+  {
+    "name": "incident additive catastrophes suppress completion bonuses",
+    "summary": {"score_mode": "incident_v1", "completed": true, "fuel_damage": true, "cont_failed": true, "h2_exploded": true, "objectives": [{"id": "power", "met": true}, {"id": "stable", "met": true}]},
+    "score": -8500,
+    "parts": {"objectives": 2000, "mission": 0, "bonus": 0, "fuel": -5000, "cont_failed": -2500, "h2_exploded": -3000}
+  },
+  {
+    "name": "incident objective cap and exact two completion gate",
+    "summary": {"score_mode": "incident_v1", "completed": true, "objectives": [{"id": "a", "met": true}, {"id": "b", "met": true}, {"id": "c", "met": true}]},
+    "score": 2000,
+    "parts": {"objectives": 2000, "mission": 0, "bonus": 0}
+  },
+  {
+    "name": "incident met must be boolean true",
+    "summary": {"score_mode": "incident_v1", "completed": true, "objectives": [{"id": "power", "met": true}, {"id": "stable", "met": "true"}]},
+    "score": 1000
+  },
+  {
+    "name": "incident negative half rounds away from zero",
+    "summary": {"score_mode": "incident_v1", "completed": false, "alarm_seconds_unacked": 30, "objectives": []},
+    "score": -2,
+    "parts": {"alarms": -1.5, "rounding_adjustment": -0.5, "floor_adjustment": 0}
+  },
+  {
+    "name": "incident zero difficulty has zero bonus",
+    "summary": {"score_mode": "incident_v1", "completed": true, "difficulty": 0, "objectives": [{"id": "power", "met": true}, {"id": "stable", "met": true}]},
+    "score": 3000,
+    "parts": {"mission": 1000, "bonus": 0}
+  },
+  {
+    "name": "legacy zero difficulty has zero bonus",
+    "summary": {"completed": true, "difficulty": 0},
+    "score": 1000,
+    "parts": {"mission": 1000, "bonus": 0}
+  },
+  {
+    "name": "legacy missing difficulty counts as one",
+    "summary": {"completed": true},
+    "score": 1250,
+    "parts": {"mission": 1000, "bonus": 250}
+  },
+  {
+    "name": "legacy unreadable difficulty counts as one",
+    "summary": {"completed": true, "difficulty": ""},
+    "score": 1250,
+    "parts": {"mission": 1000, "bonus": 250}
   }
 ]

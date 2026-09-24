@@ -1,0 +1,14 @@
+{
+  "id": "pwr_startup_tutorial",
+  "reactor": "pwr",
+  "tutorial": "pwr_startup",
+  "difficulty": 1,
+  "title_key": "scn_pwr_tutorial_title",
+  "brief_key": "scn_pwr_tutorial_brief",
+  "duration_s": 3600,
+  "seed": 918,
+  "cold": true,
+  "demand": [{ "t": 0, "mw": 0 }, { "t": 3600, "mw": 0 }],
+  "events": [],
+  "fail": [{ "type": "fuel_damage" }, { "type": "scram" }]
+}

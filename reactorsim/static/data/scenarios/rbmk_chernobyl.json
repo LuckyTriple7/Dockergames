@@ -1,0 +1,13 @@
+{
+  "id": "rbmk_chernobyl",
+  "reactor": "rbmk",
+  "tutorial": "rbmk_chernobyl",
+  "difficulty": 3,
+  "title_key": "scn_rbmk_chernobyl_title",
+  "brief_key": "scn_rbmk_chernobyl_brief",
+  "duration_s": 7200,
+  "seed": 26041986,
+  "demand": [{ "t": 0, "mw": 0 }, { "t": 7200, "mw": 0 }],
+  "events": [],
+  "fail": [{ "type": "fuel_damage" }]
+}

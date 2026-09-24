@@ -80,7 +80,7 @@ test('Ausfall aller Hauptkuehlmittelpumpen meldet -- und wer scrammt, uebersteht
   const e = boot();
   const s = e.state;
   for (const p of e.ctx.pumps) p.trip();
-  run(e, 60);
+  for (let i = 0; i < 30 / DT && !e.trips.states.get('rcp_lost').latched; i++) e.step(DT);
   assert.ok(e.trips.states.get('rcp_lost').latched, 'keine Meldung nach Pumpenausfall');
   assert.ok(!s.scram.active, 'SCRAM loeste von selbst aus');
 

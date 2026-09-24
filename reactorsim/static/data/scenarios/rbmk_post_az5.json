@@ -1,0 +1,27 @@
+{
+  "id": "rbmk_post_az5",
+  "reactor": "rbmk",
+  "difficulty": 3,
+  "title_key": "scn_rbmk_post_az5_title",
+  "brief_key": "scn_rbmk_post_az5_brief",
+  "preparation": "rbmk_post_az5_v1",
+  "guidance": {
+    "hint_key": "scn_rbmk_post_az5_hint",
+    "auto_helper": false,
+    "event_alerts": false
+  },
+  "duration_s": 1800,
+  "score_mode": "incident_v1",
+  "objectives": [
+    { "id": "supply", "type": "rbmk_inventory", "after_events": ["mcp_trip", "rbmk_feed_supply_limit", "rbmk_aux_feed_ready"], "hold_s": 30, "max_power_fraction": 0.1 },
+    { "id": "stable", "type": "rbmk_heat_removal", "after_events": ["mcp_trip", "rbmk_feed_supply_limit", "rbmk_aux_feed_ready"], "hold_s": 120, "max_power_fraction": 0.1 }
+  ],
+  "seed": 20260914,
+  "demand": [{ "t": 0, "mw": 0 }, { "t": 1800, "mw": 0 }],
+  "events": [
+    { "t": 90, "id": "mcp_trip", "args": { "count": 4 } },
+    { "t": 180, "id": "rbmk_feed_supply_limit", "args": { "max_kgs": 15 } },
+    { "t": 240, "id": "rbmk_aux_feed_ready" }
+  ],
+  "fail": [{ "type": "fuel_damage" }]
+}

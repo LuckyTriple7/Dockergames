@@ -1,0 +1,146 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createEngine } from '../static/js/sim/engine.js';
+import { getPlant } from '../static/js/plants/index.js';
+import { pack, apply } from '../static/js/net/persist.js';
+import { Session } from '../static/js/game/session.js';
+import { Scenario, RunState } from '../static/js/game/scenario.js';
+
+const json = (value) => JSON.parse(JSON.stringify(value));
+for (const id of ['pwr', 'bwr', 'rbmk']) {
+  test(`${id}: saved transient continues identically, including controller phase and RNG`, () => {
+    const live = createEngine(getPlant(id));
+    live.scram('test');
+    for (let i = 0; i < 1203; i++) live.step(0.05);
+    const restored = createEngine(getPlant(id));
+    assert.equal(apply(json(pack(live)), restored), null);
+    for (let i = 0; i < 400; i++) {
+      live.step(0.05);
+      restored.step(0.05);
+      assert.deepEqual(restored.state, live.state, `step ${i}`);
+    }
+  });
+}
+
+test('RBMK zonal poisons and AZ-5 history survive JSON save/load', () => {
+  const a = createEngine(getPlant('rbmk'));
+  a.state.zTop.X = 1.4;
+  a.state.zBot.I = 0.7;
+  a.state.rod.fill(0.05);
+  a.scram('test');
+  const b = createEngine(getPlant('rbmk'));
+  apply(json(pack(a)), b);
+  assert.deepEqual(b.state, a.state);
+  a.step(0.05); b.step(0.05);
+  assert.deepEqual(b.state, a.state);
+});
+
+test('legacy DWR snapshot reconstructs pressure surge and decay history', () => {
+  const a = createEngine(getPlant('pwr'));
+  a.scram('test');
+  for (let i = 0; i < 1200; i++) a.step(0.05);
+  const blob = json(pack(a));
+  delete blob.context; delete blob.rng;
+  const b = createEngine(getPlant('pwr'));
+  apply(blob, b);
+  a.step(0.05); b.step(0.05);
+  // Old saves cannot recover the exact historical sample; <0.01 percentage
+  // points is acceptable, a collapse to zero is not.
+  assert.ok(Math.abs(a.state.pzr_L - b.state.pzr_L) < 0.0001);
+  assert.equal(a.state.P_th, b.state.P_th);
+});
+
+test('free demand retains target, change time and random sequence', () => {
+  const a = createEngine(getPlant('bwr'));
+  const sa = new Session(a, null); sa.start();
+  sa.demandNextChangeT = 0;
+  sa.step(0.05, [], 0);
+  const b = createEngine(getPlant('bwr'));
+  const sb = new Session(b, null); sb.start();
+  apply(json(pack(a, null, null, sa)), b, null, sb);
+  assert.deepEqual(sb.snapshot(), sa.snapshot());
+  sa.demandNextChangeT = sb.demandNextChangeT = 0;
+  sa.step(0.05, [], 0); sb.step(0.05, [], 0);
+  assert.equal(a.state.P_demand, b.state.P_demand);
+  assert.deepEqual(sb.snapshot(), sa.snapshot());
+});
+
+test('debrief retains ranked causes as well as violation totals', () => {
+  const scenario = new Scenario({ id: 'test', reactor: 'pwr' });
+  const a = new RunState(scenario, getPlant('pwr').spec);
+  a.causeSeconds.set('pressure', 600);
+  a.causeSeconds.set('flow', 40);
+  a.violationSeconds[3] = 600;
+  const b = new RunState(scenario, getPlant('pwr').spec);
+  b.restore(json(a.snapshot()));
+  assert.deepEqual(b.topCauses(), a.topCauses());
+  assert.deepEqual(b.violationSeconds, a.violationSeconds);
+});
+
+
+test('a two-bank RBMK save from before 0.6.11 loads into the three-bank model unchanged', () => {
+  // Die dritte Gruppe (die 24 verkuerzten, von unten einfahrenden Staebe)
+  // wurde aus der Abschaltgruppe herausgeloest. Ein alter Stand kennt nur
+  // zwei Zahlen; die dritte uebernimmt die der Abschaltgruppe. Gepruefte
+  // Aussage: der geladene Zustand ist derselbe wie der gespeicherte, nicht
+  // nur formal ladbar.
+  const live = createEngine(getPlant('rbmk'), { n: 1.0 });
+  for (let i = 0; i < 200; i++) live.step(0.05);
+  const blob = json(pack(live));
+  assert.equal(blob.state.rod.length, 3);
+
+  const before = { orm: live.derive().orm, rho: live.derive().rho_pcm, rod: [...live.state.rod] };
+  // Auf das alte Format zurueckbauen: zwei Gruppen, die dritte weg. Der alte
+  // Stand hatte an Index 1 die Abschaltgruppe, aus der die dritte kommt.
+  blob.state.rod = [blob.state.rod[0], blob.state.rod[1]];
+  blob.state.rodDmd = [blob.state.rodDmd[0], blob.state.rodDmd[1]];
+  blob.state.tipArmed = [0, 0];
+
+  const restored = createEngine(getPlant('rbmk'), { n: 1.0 });
+  assert.equal(apply(blob, restored), null);
+  assert.deepEqual([...restored.state.rod], before.rod);
+  assert.equal(restored.state.tipArmed.length, 3);
+  assert.ok(Math.abs(restored.derive().orm - before.orm) < 1e-9,
+    `ORM ${restored.derive().orm} != ${before.orm}`);
+  // Toleranz 1e-3 pcm, nicht null: ein geladener Stand traegt die Filter
+  // ausserhalb von engine.state nicht bitgenau mit (siehe ctx.saveable), das
+  // gilt fuer jeden Stand und hat mit der Stabgruppe nichts zu tun. Gemessen
+  // liegt der Unterschied bei rund 3e-5 pcm.
+  assert.ok(Math.abs(restored.derive().rho_pcm - before.rho) < 1e-3,
+    `rho ${restored.derive().rho_pcm} != ${before.rho}`);
+});
+
+test('a BWR blackout saved before 0.6.23 stays a blackout after loading', () => {
+  // Staende von damals kennen gridPower nicht. Der frisch gebaute Zustand
+  // steht auf true, und stepDiesel() bildet acPower jeden Schritt neu aus
+  // Netz und Diesel -- ohne den Altstand-Zweig in apply() haette sich ein
+  // Stand mitten im Station-Blackout beim ersten Rechenschritt selbst
+  // geheilt, und zwar lautlos.
+  const a = createEngine(getPlant('bwr'), { n: 1.0 });
+  a.state.gridPower = false;
+  a.state.acPower = false;
+  a.state.dcPower = false;
+  const blob = JSON.parse(JSON.stringify(pack(a, null, new RunState(null, a.spec), null)));
+  assert.equal(blob.state.gridPower, false);
+  delete blob.state.gridPower;          // so sah ein Stand vor 0.6.23 aus
+
+  const b = createEngine(getPlant('bwr'), { n: 1.0 });
+  assert.equal(apply(blob, b, new RunState(null, b.spec), null), null);
+  assert.equal(b.state.gridPower, false, 'Netz aus dem Nichts zurueck');
+  b.step(0.05);
+  assert.equal(b.state.acPower, false, 'Blackout hat sich selbst geheilt');
+});
+
+test('a BWR save with the grid up keeps it up', () => {
+  // Gegenprobe: derselbe Zweig darf einem normalen Altstand nicht das Netz
+  // wegnehmen.
+  const a = createEngine(getPlant('bwr'), { n: 1.0 });
+  const blob = JSON.parse(JSON.stringify(pack(a, null, new RunState(null, a.spec), null)));
+  delete blob.state.gridPower;
+
+  const b = createEngine(getPlant('bwr'), { n: 1.0 });
+  assert.equal(apply(blob, b, new RunState(null, b.spec), null), null);
+  assert.equal(b.state.gridPower, true);
+  b.step(0.05);
+  assert.equal(b.state.acPower, true);
+});

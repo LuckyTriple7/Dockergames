@@ -1,0 +1,14 @@
+{
+  "id": "bwr_startup_tutorial",
+  "reactor": "bwr",
+  "tutorial": "bwr_startup",
+  "difficulty": 1,
+  "title_key": "scn_bwr_tutorial_title",
+  "brief_key": "scn_bwr_tutorial_brief",
+  "duration_s": 3600,
+  "seed": 920,
+  "cold": true,
+  "demand": [{ "t": 0, "mw": 0 }, { "t": 3600, "mw": 0 }],
+  "events": [],
+  "fail": [{ "type": "fuel_damage" }, { "type": "scram" }]
+}

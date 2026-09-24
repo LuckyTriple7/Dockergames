@@ -3,18 +3,20 @@
 # Kein Home-Assistant-Add-on, sondern ein eigenständiger Container für Dockge.
 #
 # Schnellstart:
-#   1. Benutzer und Passwort unten eintragen
+#   1. Admin-Benutzer und Passwort unten eintragen
 #   2. docker compose up -d
-#   3. http://<server>:17779 öffnen und anmelden
+#   3. http://<server>:17779 öffnen, als Admin anmelden
+#   4. Im Admin-Panel (/admin) Spielerkonten anlegen — der Admin selbst
+#      spielt nicht, er verwaltet nur.
 #
 # Ohne gesetztes Passwort erzeugt ReactorSim beim ersten Start eines und
 # schreibt es ins Protokoll (docker compose logs reactorsim). Offen steht die
 # Seite nie.
 #
 # Die Simulation läuft vollständig im Browser. Der Container liefert nur die
-# Seite und legt Spielstände und Bestenliste unter ./data ab. Willst du den
-# Port ändern, ändere nur die linke Seite der Portzuordnung — der Dienst im
-# Container hört fest auf 17779.
+# Seite und legt Spielstände, Bestenliste und Spielerkonten unter ./data ab.
+# Willst du den Port ändern, ändere nur die linke Seite der Portzuordnung —
+# der Dienst im Container hört fest auf 17779.
 
 services:
   reactorsim:
@@ -23,11 +25,28 @@ services:
     ports:
       - "17779:17779"
     volumes:
-      - ./data:/data              # Spielstände, Bestenliste, Zugangsdaten
+      - ./data:/data              # Spielstände, Bestenliste, Konten, Zugangsdaten
     environment:
+      # Admin-Konto -- spielt nicht, legt im Panel (/admin) Spielerkonten an.
       - REACTORSIM_USER=admin
       - REACTORSIM_PASSWORD=bitte-aendern
       - TZ=Europe/Berlin
+      # ── Mailversand (optional) ────────────────────────────────────────────
+      # Ohne diese Werte laeuft alles wie bisher: das Panel zeigt neue
+      # Passwoerter einmalig an, und der Admin gibt sie selbst weiter. Mit
+      # ihnen gibt es zusaetzlich eine Willkommens-Mail an neue Spieler und
+      # "Passwort vergessen" auf der Anmeldeseite.
+      #
+      # Die Zeile darunter gehoert dazu: ein Link in einer Mail muss die
+      # Adresse tragen, unter der die Anlage von aussen erreichbar ist --
+      # die kennt nur, wer den Reverse Proxy eingerichtet hat.
+      #- REACTORSIM_SMTP_HOST=mail.example.net
+      #- REACTORSIM_SMTP_PORT=587          # Vorgabe: 587 starttls, 465 ssl, 25 none
+      #- REACTORSIM_SMTP_SECURITY=starttls # starttls | ssl | none
+      #- REACTORSIM_SMTP_USER=reactorsim@example.net
+      #- REACTORSIM_SMTP_PASSWORD=postfach-passwort
+      #- REACTORSIM_SMTP_FROM=reactorsim@example.net   # Vorgabe: der Wert von _USER
+      #- REACTORSIM_PUBLIC_URL=https://reactorsim.example.net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:17779/health"]

@@ -41,6 +41,15 @@ export function val(node, value, digits, unitKey) {
   return text + ' ' + t(unitKey);
 }
 
+/** Sekunden als Tageszeit hh:mm:ss -- fuer Anzeigen, die nicht die
+ *  Betriebszeit ab null meinen, sondern eine Uhr (siehe status_wallclock und
+ *  chernobylTutorial.js: die Nacht zum 26.04.). Rechnet in den Tag zurueck,
+ *  damit ein Versatz ueber Mitternacht hinaus nicht "25:03:11" anzeigt. */
+export function clockOfDay(seconds) {
+  const s = Number.isFinite(seconds) ? seconds : 0;
+  return clock(((s % 86400) + 86400) % 86400);
+}
+
 /** Sekunden als hh:mm:ss -- die Betriebszeit läuft über viele Stunden. */
 export function clock(seconds) {
   const s = Math.max(0, Math.floor(seconds));

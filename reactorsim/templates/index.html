@@ -67,31 +67,12 @@
       </button>
     </div>
 
-    <h2 class="rs-start-headline" id="rs-scn-headline" hidden>{{ t.start_scenarios }}</h2>
-    <div class="rs-scn-list" id="rs-scn-list"></div>
-
-    <!-- Gilt nur fuer das freie Spiel -- ein Szenario bringt seine eigenen
-         Startwerte per start_overrides mit, siehe scenario.js. -->
-    <label class="rs-cold-start">
-      <input type="checkbox" id="rs-cold-start">
-      {{ t.opt_cold_start }}
-    </label>
-
-    <div class="rs-start-actions">
-      <button class="rs-btn rs-btn-primary" id="rs-start-go" type="button" disabled>{{ t.start_free_play }}</button>
-    </div>
-
-    <!-- Ein Eintrag je Reaktortyp (Slot "auto-<typ>"), von main.js gefuellt --
-         wer bei DWR und SWR jeweils gespeichert hat, sieht und trifft die
-         Wahl hier, nicht erst nach dem Draufklicken. -->
-    <div class="rs-resume-list" id="rs-resume-list" hidden></div>
-
     <div class="rs-start-foot">
       <!-- Hauptschalter für den Ton, schon auf dem Startbildschirm. Vorher
-           lagen die drei Tonschalter ausschließlich im Zahnrad-Dialog INNEN
-           im Leitstand -- wer es still haben wollte, musste erst eine Schicht
-           beginnen. Zustand steckt in prefs.audio.muted und gilt für Musik,
-           Hupe und Geigerzähler zugleich. -->
+           lagen die Tonschalter ausschließlich im Zahnrad-Dialog INNEN im
+           Leitstand -- wer es still haben wollte, musste erst eine Schicht
+           beginnen. Zustand steckt in prefs.audio.muted und gilt für Musik
+           und Hupe zugleich. -->
       <button type="button" class="rs-btn rs-btn-ghost rs-btn-icon rs-mute"
               aria-pressed="false" title="{{ t.btn_mute }}"
               aria-label="{{ t.btn_mute }}">🔊</button>
@@ -100,29 +81,172 @@
         <a href="/set-lang/en"{% if lang == 'en' %} class="rs-lang-on"{% endif %}>EN</a>
       </span>
       <span class="rs-start-note">{{ t.footer_note }}</span>
+      <!-- Eigenes Konto: bis 0.6.0 gab es im Spiel gar keinen Weg, das
+           Passwort zu wechseln -- entweder der Admin setzte es zurueck, oder
+           man ging ueber "Passwort vergessen" und wartete auf eine Mail. Der
+           Knopf steht neben "Abmelden", weil beides dasselbe betrifft. -->
+      <button type="button" class="rs-btn rs-btn-ghost rs-start-account"
+              id="rs-account-btn">{{ t.btn_account }}</button>
+      <!-- Zweitbildschirm: dieselbe Anmeldung, nur lesend. Der Link steht
+           hier, weil er sonst nirgends auffindbar waere -- wer ihn auf einem
+           anderen Geraet braucht, tippt die Adresse ab. -->
+      <a class="rs-start-monitor" href="/monitor" target="_blank" rel="noopener">{{ t.btn_monitor }}</a>
       <a class="rs-start-logout" href="/logout">{{ t.btn_logout }}</a>
       <span class="rs-start-ver">v{{ app_version }}</span>
     </div>
   </div>
 </div>
 
+<!-- ── Reaktor-Detailseite ──────────────────────────────────────────────── -->
+<!-- Zwischenstation zwischen Uebersicht (#rs-start) und Leitstand (#rs-app):
+     Klick auf eine Karte oben blendet #rs-start aus und diese Seite ein
+     (crossfade, siehe fadeScreens() in main.js), URL wechselt per
+     history.pushState auf /reaktor/<typ> (Browser-Zurueck fuehrt zurueck zur
+     Uebersicht, siehe popstate-Listener). Hintergrundbild kommt ueber die
+     Klasse rs-reactor-bg-<typ> (fillReactorScreen() setzt sie), nicht per
+     Inline-Style -- CSP verbietet style="..." ohne Nonce, siehe .rs-splash
+     in base.css. -->
+<div class="rs-reactor" id="rs-reactor" hidden>
+  <div class="rs-reactor-inner">
+    <button type="button" class="rs-btn rs-btn-ghost rs-reactor-back" id="rs-reactor-back">← {{ t.btn_back }}</button>
+
+    <div class="rs-reactor-head">
+      <span class="rs-card-badge" id="rs-reactor-badge"></span>
+      <h1 class="rs-reactor-title" id="rs-reactor-title"></h1>
+      <p class="rs-reactor-tag" id="rs-reactor-tag"></p>
+    </div>
+    <p class="rs-reactor-desc" id="rs-reactor-desc"></p>
+
+    <!-- Fortsetzen-Liste nur fuer diesen Reaktortyp -- refreshResumeList()
+         in main.js filtert die Staende nach app.reactor. Die Uebersicht
+         zeigt keine Staende mehr, das ist die einzige Stelle dafuer. -->
+    <details class="rs-card-resume" id="rs-reactor-resume" hidden>
+      <summary class="rs-card-resume-summary" id="rs-reactor-resume-summary"></summary>
+      <div class="rs-card-resume-body" id="rs-reactor-resume-body"></div>
+    </details>
+
+    <h2 class="rs-start-headline" id="rs-scn-headline" hidden>{{ t.start_scenarios }}</h2>
+    <div class="rs-scn-list" id="rs-scn-list"></div>
+
+    <!-- Gilt nur fuer das freie Spiel -- ein Szenario bringt seine eigenen
+         Startwerte per start_overrides mit, siehe scenario.js. Deshalb blendet
+         syncFreeSetupVisibility() in main.js die Zeile bei einem gewaehlten
+         Szenario aus, genau wie den Block darunter. -->
+    <label class="rs-cold-start" id="rs-cold-start-row">
+      <input type="checkbox" id="rs-cold-start">
+      {{ t.opt_cold_start }}
+    </label>
+
+    <!-- Standard AN (siehe main.js, prefs.helper !== false) -- die Hilfe soll
+         beim ersten Spiel schon greifen, nicht erst nach bewusstem Einschalten. -->
+    <label class="rs-cold-start">
+      <input type="checkbox" id="rs-helper-toggle">
+      {{ t.opt_helper }}
+    </label>
+
+    <!-- Debug-Modus: zeichnet die ganze Schicht mit und laedt das Protokoll
+         am Ende herunter (siehe game/debugTape.js). Standard AUS -- die
+         Aufzeichnung kostet Speicher und die Datei will niemand ungefragt. -->
+    <label class="rs-cold-start">
+      <input type="checkbox" id="rs-debug-toggle">
+      {{ t.opt_debug }}
+    </label>
+
+    <!-- Alle fuenf gelten wie das Kaltstart-Haekchen nur fuer das freie Spiel:
+         ein Szenario bringt seinen Zeitplan selbst mit (events in der JSON)
+         und startet stets mit frischem Kern. Siehe game/freeEvents.js und
+         game/coreAge.js. Bei gewaehltem Szenario blendet
+         syncFreeSetupVisibility() in main.js den Block aus -- deshalb muss der
+         Hinweistext darunter nicht mehr sagen, wofuer er gilt. -->
+    <div class="rs-free-setup" id="rs-free-setup">
+      <label class="rs-choice">
+        <span>{{ t.opt_faults }}</span>
+        <select id="rs-faults">
+          <option value="off">{{ t.opt_faults_off }}</option>
+          <option value="rare">{{ t.opt_faults_rare }}</option>
+          <option value="normal">{{ t.opt_faults_normal }}</option>
+          <option value="hard">{{ t.opt_faults_hard }}</option>
+        </select>
+      </label>
+      <label class="rs-choice">
+        <span>{{ t.opt_core_age }}</span>
+        <select id="rs-core-age">
+          <option value="fresh">{{ t.opt_core_age_fresh }}</option>
+          <option value="mid">{{ t.opt_core_age_mid }}</option>
+          <option value="late">{{ t.opt_core_age_late }}</option>
+        </select>
+      </label>
+      <label class="rs-choice">
+        <span>{{ t.opt_dispatch }}</span>
+        <select id="rs-dispatch-level">
+          <option value="off">{{ t.opt_dispatch_off }}</option>
+          <option value="rare">{{ t.opt_dispatch_rare }}</option>
+          <option value="normal">{{ t.opt_dispatch_normal }}</option>
+        </select>
+      </label>
+      <label class="rs-choice">
+        <span>{{ t.opt_repairs }}</span>
+        <select id="rs-repairs-level">
+          <option value="off">{{ t.opt_repairs_off }}</option>
+          <option value="normal">{{ t.opt_repairs_normal }}</option>
+          <option value="slow">{{ t.opt_repairs_slow }}</option>
+        </select>
+      </label>
+      <label class="rs-choice">
+        <span>{{ t.opt_season }}</span>
+        <select id="rs-season">
+          <option value="spring">{{ t.opt_season_spring }}</option>
+          <option value="summer">{{ t.opt_season_summer }}</option>
+          <option value="autumn">{{ t.opt_season_autumn }}</option>
+          <option value="winter">{{ t.opt_season_winter }}</option>
+        </select>
+      </label>
+    </div>
+    <p class="rs-free-setup-hint" id="rs-free-setup-hint">{{ t.opt_free_setup_hint }}</p>
+
+    <div class="rs-start-actions">
+      <button class="rs-btn rs-btn-primary" id="rs-start-go" type="button" disabled>{{ t.start_free_play }}</button>
+      <button class="rs-btn" id="rs-start-retry" type="button" hidden>{{ t.btn_retry }}</button>
+    </div>
+    <p id="rs-start-message" role="status"></p>
+  </div>
+</div>
+
 <!-- ── Leitstand ────────────────────────────────────────────────────────── -->
 <div class="rs-app" id="rs-app" hidden>
 
-  <header class="rs-status" id="rs-status">
-    <!-- Von main.js gefuellt (buildStatusBar): welche Werte hier stehen, waehlt
-         der Spieler je Reaktortyp selbst, siehe #rs-stats-modal. -->
-    <div class="rs-status-scroll" id="rs-status-scroll"></div>
+  <!-- Nur auf dem Zweitbildschirm sichtbar (monitor.js). Er sagt IMMER, wie
+       alt das gezeigte Bild ist: ein stehendes Instrument sieht sonst aus wie
+       eine ruhige Anlage, und genau das ist der gefaehrlichste Irrtum, den
+       eine Fernanzeige haben kann. -->
+  <div class="rs-monitor-bar" id="rs-monitor-bar" hidden role="status">
+    <span class="rs-monitor-dot" id="rs-monitor-dot" aria-hidden="true"></span>
+    <span class="rs-monitor-msg" id="rs-monitor-msg"></span>
+    <span class="rs-monitor-age" id="rs-monitor-age"></span>
+  </div>
 
-    <div class="rs-status-bar" id="rs-status-alarm" data-sev="0">
-      <span class="rs-status-alarm-text" data-v="worst_alarm">{{ t.status_alarm_none }}</span>
-      <span class="rs-status-slip" id="rs-slip" hidden>{{ t.status_slip }}</span>
-      <span class="rs-prompt-crit" id="rs-prompt" hidden>{{ t.prompt_critical }}</span>
+  <header class="rs-status" id="rs-status">
+    <div class="rs-status-top">
+      <!-- Rechenrueckstand: fest links, ausserhalb der frei waehlbaren Werte
+           unten -- kein Vorzug, den man abwaehlen koennte, nur sichtbar,
+           wenn main.js (app.loop.onSlip) das Attribut setzt. -->
+      <span class="rs-slip-warn" id="rs-slip" hidden title="{{ t.status_slip }}"
+            aria-label="{{ t.status_slip }}" role="img">❗</span>
+      <!-- Von main.js gefuellt (buildStatusBar): welche Werte hier stehen, waehlt
+           der Spieler je Reaktortyp selbst, siehe #rs-stats-modal. -->
+      <div class="rs-status-scroll" id="rs-status-scroll"></div>
     </div>
 
     <div class="rs-status-controls">
       <div class="rs-speed" role="group" aria-label="{{ t.status_speed }}">
         <button type="button" class="rs-speed-b" data-speed="0">II</button>
+        <!-- Zeitlupe: dieselbe feste Schrittweite wie sonst (DT in loop.js),
+             nur weniger Schritte je Realsekunde -- 0,25x rechnet also genauso
+             genau wie 60x. Gebraucht wird sie dort, wo Sekunden zaehlen: der
+             promptkritische Ausschlag im Chernobyl-Vorfuehrmodus ist bei 1x
+             in drei Sekunden vorbei. -->
+        <button type="button" class="rs-speed-b rs-speed-slow" data-speed="0.25">¼×</button>
+        <button type="button" class="rs-speed-b rs-speed-slow" data-speed="0.5">½×</button>
         <button type="button" class="rs-speed-b rs-on" data-speed="1">1×</button>
         <button type="button" class="rs-speed-b" data-speed="4">4×</button>
         <button type="button" class="rs-speed-b" data-speed="16">16×</button>
@@ -130,15 +254,10 @@
       </div>
       <!-- Nur im freien Spiel sichtbar, nur bei abgeschalteter Anlage mit noch
            spuerbarem Xenon -- main.js schaltet hidden je Bild um. Niemand
-           braucht 24 echte Zeitraffer-Minuten fuer die Jodgrube.
-           Icon statt Textknopf: die Zeile hat keinen Zeilenumbruch und
-           keinen eigenen Scroll -- ein breiter Textknopf zusaetzlich zu
-           Zeitraffer+?+⚙+Speichern+Menue+SCRAM sprengte sie auf schmalen
-           Schirmen. Waehrend des Vorspulens ersetzt main.js den Inhalt
-           ohnehin durch den Fortschrittstext (setText), das ist bewusst
-           die einzige Stelle, an der die Zeile kurzzeitig breiter wird. -->
+           braucht 24 echte Zeitraffer-Minuten fuer die Jodgrube. -->
       <button type="button" class="rs-btn rs-btn-ghost rs-btn-icon" id="rs-xenon-skip" hidden
               aria-label="{{ t.btn_xenon_skip }}" title="{{ t.btn_xenon_skip }}">⏩</button>
+      <button type="button" class="rs-btn rs-btn-ghost" id="rs-xenon-skip-cancel" hidden>{{ t.btn_xenon_skip_cancel }}</button>
       <!-- Derselbe Hauptschalter wie auf dem Startbildschirm (Klasse
            rs-mute, ein gemeinsamer Handler). Ohne ihn hier waere der Ton
            waehrend einer laufenden Schicht nur ueber den Zahnrad-Dialog
@@ -156,9 +275,19 @@
            boot() in main.js) -- im freien Spiel gibt es keine Einweisung. -->
       <button type="button" class="rs-btn rs-btn-ghost rs-btn-icon" id="rs-briefing-btn" hidden
               aria-label="{{ t.btn_briefing }}" title="{{ t.btn_briefing }}">📋</button>
-      <button type="button" class="rs-btn rs-btn-ghost" id="rs-save">{{ t.btn_save }}</button>
+      <!-- Anfahren-Tutorial: Schritt+Werte als schmaler, klickbarer Text statt
+           eigenem Balken über dem Arbeitsbereich -- Klick öffnet
+           #rs-tutorial-modal mit Volltext, Warum-Erklärung, Lernzielen und
+           dem Panel-Sprung. Nur sichtbar, wenn session.tutorial existiert
+           (siehe buildTutorial() in tutorial.js), wie #rs-briefing-btn oben. -->
+      <button type="button" class="rs-btn rs-btn-ghost rs-tutorial-status" id="rs-tutorial-status" hidden></button>
+      <button type="button" class="rs-btn rs-btn-ghost" id="rs-save" title="{{ t.save_none }}">{{ t.btn_save }}</button>
       <button type="button" class="rs-btn rs-btn-ghost" id="rs-menu">{{ t.btn_menu }}</button>
       <button type="button" class="rs-scram" id="rs-scram">{{ t.btn_scram }}</button>
+    </div>
+    <div class="rs-status-feedback">
+      <p id="rs-save-status" role="status"><span id="rs-save-last" class="rs-sr-only">{{ t.save_none }}</span> <span id="rs-save-state" class="rs-sr-only"></span></p>
+      <p id="rs-xenon-skip-message" role="status"></p>
     </div>
   </header>
 
@@ -283,6 +412,16 @@
             <div class="rs-row"><span>{{ t.val_frequency }}</span><b data-v="freq">—</b></div>
             <div class="rs-row"><span>{{ t.val_breaker }}</span><b data-v="breaker">—</b></div>
           </div>
+          <!-- Netzleitstelle: nur im freien Spiel mit Auftragsstufe sichtbar
+               (ui/dispatch.js blendet ein). Ein Szenario bringt seine
+               Bedarfskurve selbst mit, da gibt es keine Auftraege. -->
+          <div class="rs-group" id="rs-dispatch" hidden>
+            <button type="button" class="rs-btn rs-btn-ghost rs-btn-sm" id="rs-order-help">{{ t.order_title }}</button>
+            <div class="rs-row"><span>{{ t.order_target }}</span><b id="rs-order-target">—</b></div>
+            <div class="rs-row"><span>{{ t.order_deadline }}</span><b id="rs-order-deadline">—</b></div>
+            <div class="rs-row"><span>{{ t.order_hold }}</span><b id="rs-order-hold">—</b></div>
+            <p class="rs-tutorial-hint" id="rs-order-state" role="status"></p>
+          </div>
           <div class="rs-group">
             <div id="rs-grid-ctl"></div>
           </div>
@@ -314,6 +453,17 @@
         <div class="rs-panel-body">
           <p class="rs-ctl-hint">{{ t.hint_annun }}</p>
           <div class="rs-annun" id="rs-annun"></div>
+          <!-- Instandhaltungstrupp: nur im freien Spiel mit Reparaturstufe
+               sichtbar (ui/repairs.js blendet ein). Ein Szenario bringt
+               seinen Zeitplan selbst mit, dort ist eine Stoerung Teil der
+               Aufgabe und nicht etwas, das man wegarbeitet. -->
+          <div class="rs-group" id="rs-repairs" hidden>
+            <button type="button" class="rs-btn rs-btn-ghost rs-btn-sm" id="rs-repair-help">{{ t.repair_title }}</button>
+            <p class="rs-tutorial-hint" id="rs-repair-current" role="status"></p>
+            <div id="rs-repair-list"></div>
+            <p class="rs-ctl-hint" id="rs-repair-hint"></p>
+            <button type="button" class="rs-btn rs-btn-sm" id="rs-repair-cancel" hidden>{{ t.btn_repair_cancel }}</button>
+          </div>
           <div class="rs-group rs-group-grow">
             <h3>{{ t.panel_alarms_log }}</h3>
             <ol class="rs-log" id="rs-log"></ol>
@@ -354,10 +504,15 @@
 
 <!-- ── Einweisung ───────────────────────────────────────────────────────── -->
 <div class="rs-modal" id="rs-brief" hidden>
-  <div class="rs-modal-box">
+  <!-- rs-modal-wide: deckelt die Hoehe und scrollt den Text -- ohne das lief
+       eine lange Einweisung (z.B. RBMK-Kaltstart) ueber den sichtbaren
+       Bildschirm hinaus, ohne Scrollbalken, und die Knoepfe unten waren
+       nicht mehr erreichbar. -->
+  <div class="rs-modal-box rs-modal-wide">
     <h2 id="rs-brief-title">{{ t.brief_title }}</h2>
     <p id="rs-brief-text"></p>
     <div class="rs-brief-meta" id="rs-brief-meta"></div>
+    <section id="rs-brief-guidance" class="rs-tutorial rs-guidance" aria-label="{{ t.scn_guidance_title }}" hidden></section>
     <!-- Zwei Knoepfe, nicht einer. Vorher gab es aus der Einweisung keinen
          Weg zurueck: wer ein Szenario aufschlug, um zu lesen, worum es geht,
          musste es anschliessend spielen. Waehrend einer laufenden Runde ist
@@ -372,7 +527,7 @@
 
 <!-- ── Auswertung ───────────────────────────────────────────────────────── -->
 <div class="rs-modal" id="rs-debrief" hidden>
-  <div class="rs-modal-box">
+  <div class="rs-modal-box rs-modal-wide">
     <h2>{{ t.debrief_title }}</h2>
     <p class="rs-debrief-verdict" id="rs-debrief-verdict"></p>
     <div class="rs-debrief-score" id="rs-debrief-score"></div>
@@ -385,7 +540,9 @@
     <p class="rs-ctl-hint" id="rs-debrief-msg"></p>
     <ol class="rs-scores" id="rs-debrief-scores"></ol>
     <div class="rs-modal-actions">
+      <button type="button" class="rs-btn" id="rs-debrief-debug" hidden>{{ t.btn_debug_log }}</button>
       <button type="button" class="rs-btn rs-btn-primary" id="rs-debrief-restart">{{ t.btn_restart }}</button>
+      <button type="button" class="rs-btn" id="rs-debrief-review">{{ t.btn_close }}</button>
       <button type="button" class="rs-btn" id="rs-debrief-close">{{ t.btn_menu }}</button>
     </div>
   </div>
@@ -397,10 +554,17 @@
     <h2 id="rs-destroyed-title">{{ t.end_lost_title }}</h2>
     <!-- Text kommt aus main.js showDestroyed(): einer je Verlustweg. -->
     <p id="rs-destroyed-body"></p>
+    <!-- Der Nachlauf, wenn der Reaktortyp einen kennt (engine.js:
+         startAftermath) -- gerechnete Zahlen, dann die Linie, hinter der
+         dieses Modell nichts mehr rechnet. Siehe showDestroyed(). -->
+    <p id="rs-destroyed-aftermath" hidden></p>
+    <p class="rs-modal-note" id="rs-destroyed-beyond" hidden></p>
     <p class="rs-modal-detail" id="rs-destroyed-detail"></p>
     <ol class="rs-log" id="rs-destroyed-log"></ol>
     <div class="rs-modal-actions">
+      <button type="button" class="rs-btn" id="rs-destroyed-debug" hidden>{{ t.btn_debug_log }}</button>
       <button type="button" class="rs-btn rs-btn-primary" id="rs-destroyed-restart">{{ t.btn_restart }}</button>
+      <button type="button" class="rs-btn" id="rs-destroyed-review">{{ t.btn_close }}</button>
       <button type="button" class="rs-btn" id="rs-destroyed-close">{{ t.btn_menu }}</button>
     </div>
   </div>
@@ -416,7 +580,60 @@
   </div>
 </div>
 
+<!-- ── Tutorial-Anleitung ───────────────────────────────────────────────── -->
+<!-- Voller Aufgabentext, Warum-Erklaerung und Lernziel-Checkliste des
+     Anfahren-Tutorials -- Klick auf #rs-tutorial-status in der Kopfzeile
+     oeffnet dieses Fenster statt eines eigenen Balkens ueber dem
+     Arbeitsbereich. buildTutorial() fuellt den Inhalt und oeffnet Schritt 1
+     beim Start automatisch; initControls() verdrahtet das Schliessen. -->
+<div class="rs-modal" id="rs-tutorial-modal" role="dialog" aria-modal="true" aria-labelledby="rs-tutorial-modal-title" hidden>
+  <div class="rs-modal-box rs-modal-wide">
+    <h2 id="rs-tutorial-modal-title" tabindex="-1"></h2>
+    <p id="rs-tutorial-modal-instruction"></p>
+    <ul id="rs-tutorial-modal-inspection" hidden></ul>
+    <p id="rs-tutorial-modal-inspect-status" role="status" hidden></p>
+    <p id="rs-tutorial-modal-hold"></p>
+    <p class="rs-tutorial-hint" id="rs-tutorial-modal-hint"></p>
+    <details><summary>{{ t.tut_why }}</summary><p id="rs-tutorial-modal-why"></p></details>
+    <details open><summary>{{ t.tut_steps }}</summary><ol id="rs-tutorial-modal-steps"></ol></details>
+    <div class="rs-modal-actions">
+      <button type="button" class="rs-btn rs-btn-primary" id="rs-tutorial-modal-confirm" aria-describedby="rs-tutorial-modal-inspect-status" disabled hidden>{{ t.tut_inspect_confirm }}</button>
+      <button type="button" class="rs-btn" id="rs-tutorial-modal-panel">{{ t.tut_show_panel }}</button>
+      <button type="button" class="rs-btn" id="rs-tutorial-modal-close">{{ t.btn_close }}</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Tastenkuerzel ────────────────────────────────────────────────────── -->
+<!-- ── Eigenes Konto ────────────────────────────────────────────────────── -->
+<!-- Nur der Passwortwechsel: die Adresse ist zugleich der Benutzername und
+     gehoert damit dem Admin, nicht dem Spieler (siehe users.py). Das ALTE
+     Passwort muss mit -- die Sitzung laeuft 30 Tage, ohne diese Abfrage
+     genuegte ein kurz unbeaufsichtigter Browser. -->
+<div class="rs-modal" id="rs-account-modal" role="dialog" aria-modal="true"
+     aria-labelledby="rs-account-title" hidden>
+  <div class="rs-modal-box">
+    <h2 id="rs-account-title">{{ t.account_title }}</h2>
+    <p class="rs-ctl-hint" id="rs-account-who"></p>
+    <form class="rs-account-form" id="rs-account-form" autocomplete="off">
+      <label class="rs-account-field">{{ t.account_current }}
+        <input type="password" id="rs-account-current" autocomplete="current-password" required>
+      </label>
+      <label class="rs-account-field">{{ t.account_new }}
+        <input type="password" id="rs-account-new" autocomplete="new-password" required>
+      </label>
+      <label class="rs-account-field">{{ t.account_repeat }}
+        <input type="password" id="rs-account-repeat" autocomplete="new-password" required>
+      </label>
+      <p class="rs-account-msg" id="rs-account-msg" hidden></p>
+      <div class="rs-modal-actions">
+        <button type="submit" class="rs-btn rs-btn-primary" id="rs-account-save">{{ t.account_submit }}</button>
+        <button type="button" class="rs-btn" id="rs-account-close">{{ t.btn_close }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="rs-modal" id="rs-shortcuts-modal" hidden>
   <div class="rs-modal-box rs-modal-wide">
     <h2>{{ t.shortcuts_title }}</h2>
@@ -440,6 +657,25 @@
   </div>
 </div>
 
+<!-- ── Instrumentenübersicht ────────────────────────────────────────────── -->
+<!-- Buendelt die Rundinstrumente (Kern/Primaer/Sekundaer) und alle Stellteile
+     (Staebe, Pumpen, Speisewasser, Sicherheitssysteme, Bor, Netz) auf einer
+     Flaeche -- Taste O, siehe openInstrumentsWindow() in main.js. Dieselbe
+     Verschieben-statt-Kopieren-Regel wie bei "Kachel als Fenster" oben: jede
+     Karte hier ist der echte #rs-core-gauges/#rs-rod-ctl/...-Knoten aus
+     seinem Reiter, keine zweite Instanz mit eigenem (dann toten) Zustand. -->
+<div class="rs-modal rs-panel-modal" id="rs-instruments-modal" hidden>
+  <div class="rs-modal-box rs-modal-panel">
+    <div class="rs-modal-panel-head">
+      <h2>{{ t.instruments_title }}</h2>
+      <button type="button" class="rs-btn rs-btn-ghost rs-btn-sm" id="rs-instruments-close">{{ t.btn_close }}</button>
+    </div>
+    <div class="rs-panel-window-slot">
+      <div class="rs-instruments-grid" id="rs-instruments-grid"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Kopfzeile anpassen ───────────────────────────────────────────────── -->
 <!-- Auswahl gilt je Reaktortyp und bleibt beim Spieler gespeichert (/api/prefs)
      -- wirkt ab dem naechsten Rundenstart, kein Umbau der laufenden Anzeige. -->
@@ -453,10 +689,6 @@
     <label class="rs-audio-opt">
       <input type="checkbox" id="rs-audio-horn">
       {{ t.opt_audio_horn }}
-    </label>
-    <label class="rs-audio-opt">
-      <input type="checkbox" id="rs-audio-geiger">
-      {{ t.opt_audio_geiger }}
     </label>
     <label class="rs-audio-opt">
       <input type="checkbox" id="rs-audio-music">
@@ -474,8 +706,53 @@
 <div class="rs-modal" id="rs-alarm-help" hidden>
   <div class="rs-modal-box rs-modal-wide">
     <h2 id="rs-alarm-help-title"></h2>
-    <p id="rs-alarm-help-text"></p>
-    <button type="button" class="rs-btn rs-btn-primary" id="rs-alarm-help-close">{{ t.btn_close }}</button>
+    <!-- Div statt p: renderHelpText() (panels.js) fuellt hier eigene
+         <p>-Absaetze und Zwischenueberschriften ein, das waere in einem <p>
+         ungueltig verschachtelt. -->
+    <div id="rs-alarm-help-text"></div>
+    <!-- Ergebnis des automatischen Helfers (game/helper.js) -- verdeckt, bis
+         der Fix-Knopf unten einmal gedrueckt wurde, siehe panels.js. -->
+    <div class="rs-alarm-fix" id="rs-alarm-fix-result" hidden>
+      <p class="rs-ctl-hint" id="rs-alarm-fix-msg"></p>
+      <ul class="rs-log" id="rs-alarm-fix-list"></ul>
+    </div>
+    <div class="rs-modal-actions">
+      <!-- Nur sichtbar, wenn die Meldung eine id hat UND der Spieler die
+           Hilfe im Startbildschirm eingeschaltet hat -- siehe panels.js. -->
+      <button type="button" class="rs-btn rs-btn-primary" id="rs-alarm-help-fix" hidden>{{ t.btn_alarm_fix }}</button>
+      <button type="button" class="rs-btn" id="rs-alarm-help-close">{{ t.btn_close }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Abfrage vor Strg+X ───────────────────────────────────────────────── -->
+<!-- Nur das Tastenkuerzel fragt nach, nicht der Menü-Knopf selbst -- siehe
+     initStart() in main.js. -->
+<div class="rs-modal" id="rs-confirm-menu" hidden>
+  <div class="rs-modal-box">
+    <h2>{{ t.confirm_menu_title }}</h2>
+    <p>{{ t.confirm_menu_text }}</p>
+    <div class="rs-modal-actions">
+      <button type="button" class="rs-btn rs-btn-primary" id="rs-confirm-menu-yes">{{ t.btn_menu }}</button>
+      <button type="button" class="rs-btn" id="rs-confirm-menu-no">{{ t.btn_cancel }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Speichern-Dialog ─────────────────────────────────────────────────── -->
+<!-- Zehn feste Handplaetze je Reaktortyp (siehe manualSlotName()/
+     openSaveSlots() in main.js) -- der Speichern-Knopf oeffnet diesen statt
+     direkt zu speichern, damit der Spieler waehlt, welchen er ueberschreibt. -->
+<div class="rs-modal" id="rs-save-slots" hidden>
+  <div class="rs-modal-box rs-modal-wide">
+    <h2>{{ t.save_slots_title }}</h2>
+    <p class="rs-ctl-hint">{{ t.save_slots_intro }}</p>
+    <div class="rs-card-resume-body" id="rs-slot-list"></div>
+    <p id="rs-save-slots-message" role="status"></p>
+    <div class="rs-modal-actions">
+      <button type="button" class="rs-btn" id="rs-save-slots-retry" hidden>{{ t.btn_retry }}</button>
+      <button type="button" class="rs-btn" id="rs-save-slots-close">{{ t.btn_cancel }}</button>
+    </div>
   </div>
 </div>
 
@@ -496,8 +773,12 @@
   // die Simulation in einen Web Worker wandert, ist der lexikalische
   // Modul-Zugriff weg, die Eigenschaft am globalen Objekt bleibt.
   window.RS_I18N = {{ t|tojson }};
-  window.RS_CFG  = { lang: {{ lang|tojson }}, version: {{ app_version|tojson }} };
+  window.RS_CFG  = { lang: {{ lang|tojson }}, version: {{ app_version|tojson }}, initialReactor: {{ initial_reactor|tojson }}, monitor: {{ monitor|tojson }} };
 </script>
-<script type="module" src="/s/{{ app_version }}/js/main.js"></script>
+<!-- Zweitbildschirm (/monitor) laedt ein anderes Einstiegsmodul in dieselbe
+     Seite: monitor.js baut denselben Leitstand aus ankommenden Bildern auf,
+     statt selbst zu rechnen. Kein zweiter Satz Kacheln, kein zweiter Satz
+     Rundinstrumente -- siehe app.py: monitor_page(). -->
+<script type="module" src="/s/{{ app_version }}/js/{% if monitor %}monitor{% else %}main{% endif %}.js"></script>
 </body>
 </html>

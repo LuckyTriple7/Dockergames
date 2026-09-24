@@ -5,6 +5,11 @@
 // und keine spätere serverseitige Nachrechnung eines Spielstands.
 
 export class Rng {
+  snapshot() { return [this.s0, this.s1, this.s2, this.s3]; }
+  restore(values) {
+    if (!Array.isArray(values) || values.length !== 4 || !values.every(Number.isInteger)) return;
+    [this.s0, this.s1, this.s2, this.s3] = values;
+  }
   constructor(seed = 1) {
     // Zwei 32-Bit-Hälften aus einem einzigen Startwert auffächern (splitmix32),
     // sonst korrelieren benachbarte Startwerte sichtbar.

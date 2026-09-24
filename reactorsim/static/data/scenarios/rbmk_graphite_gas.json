@@ -1,0 +1,47 @@
+{
+  "id": "rbmk_graphite_gas",
+  "reactor": "rbmk",
+  "difficulty": 2,
+  "title_key": "scn_rbmk_graphite_gas_title",
+  "brief_key": "scn_rbmk_graphite_gas_brief",
+  "guidance": {
+    "hint_key": "scn_rbmk_graphite_gas_hint",
+    "event_alerts": false,
+    "auto_helper": false
+  },
+  "duration_s": 14400,
+  "seed": 20260924,
+  "demand": [
+    {
+      "t": 0,
+      "mw": 1000
+    },
+    {
+      "t": 14400,
+      "mw": 1000
+    }
+  ],
+  "grid": {
+    "tolerance_mw": 150
+  },
+  "events": [
+    {
+      "t": 600,
+      "id": "rbmk_graphite_gas_loss"
+    }
+  ],
+  "fail": [
+    {
+      "type": "fuel_damage"
+    },
+    {
+      "type": "trip_ignored",
+      "for_s": 300
+    },
+    {
+      "type": "grid_deviation",
+      "mw": 300,
+      "for_s": 600
+    }
+  ]
+}

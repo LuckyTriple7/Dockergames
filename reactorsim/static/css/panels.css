@@ -15,6 +15,17 @@
 }
 .rs-panel-h-actions { margin-left: auto; display: flex; gap: 6px; }
 
+/* "Passendes Panel anzeigen" (Tutorial): on a wide desktop grid the target
+   panel is usually already visible, so scrollIntoView + focus alone can
+   look like nothing happened -- this flashes the header briefly. Respects
+   prefers-reduced-motion via the global animation-duration override in
+   base.css. */
+@keyframes rs-panel-jump {
+  0%, 100% { background: var(--rs-panel-2); }
+  30% { background: var(--rs-accent, #59b7ef); }
+}
+.rs-panel-jump { animation: rs-panel-jump 1s ease-out; }
+
 .rs-panel-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -35,6 +46,8 @@
   padding: 8px 10px 10px;
 }
 .rs-group-grow { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* Alarm tiles may exceed the viewport; keep a scrollable log below them. */
+#rs-p-alarm .rs-group-grow { flex: 1 0 180px; min-height: 180px; }
 
 .rs-group > h3 {
   font-size: 10px;
@@ -133,6 +146,23 @@
 }
 .rs-ctl-hint { font-size: 11px; color: var(--rs-fg-mute); }
 
+/* Instandhaltungstrupp (ui/repairs.js). Eine Zeile je offene Arbeit: links
+   ihr Name, rechts Dauer und Knopf. Rechts steht deshalb kein <b> wie in
+   jeder anderen .rs-row -- dort ist ein Messwert, hier etwas zum Anfassen. */
+.rs-repair-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.rs-repair-actions > small {
+  font-size: 11px;
+  color: var(--rs-fg-mute);
+  white-space: nowrap;
+}
+#rs-repair-list .rs-row { gap: 12px; align-items: center; }
+#rs-repairs > .rs-btn { margin-top: 6px; }
+
 .rs-switch {
   border: 1px solid var(--rs-line);
   background: var(--rs-panel-2);
@@ -179,14 +209,30 @@
 .rs-pump[data-state="run"]     { background: #14402c; border-color: var(--rs-ok); color: #bff3d6; }
 .rs-pump[data-state="stopped"] { background: #22262b; border-color: #4a5560; color: #8b98a4; }
 .rs-pump[data-state="tripped"] { background: #401419; border-color: var(--rs-alarm); color: #ffc7cd; }
+/* Ausgefallen (Ereignis, siehe pumpRow() in controls.js), nicht nur vom
+   Spieler abgeschaltet: ausgegraut statt rot -- die Meldetafel (mcp_stuck/
+   rcp_lost) traegt schon die Alarmfarbe, der Knopf selbst soll stattdessen
+   zeigen, dass er nichts mehr bewirkt. Nach der data-state-Regel, damit sie
+   deren Rot sicher ueberschreibt, ganz gleich welche Reihenfolge das CSS
+   sonst haette. */
+.rs-pump:disabled {
+  background: #1a1e22;
+  border-color: #3a4149;
+  color: #5c6670;
+  opacity: .7;
+  cursor: not-allowed;
+}
 
 /* ── Trendschreiber ───────────────────────────────────────────────────────── */
 
-.rs-trends { display: grid; gap: 6px; width: 100%; height: 100%; grid-auto-rows: minmax(96px, 1fr); }
+.rs-trends { display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; flex: 0 0 auto; }
+#rs-p-trend .rs-panel-body { min-width: 0; overflow-x: hidden; }
 .rs-trend {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  flex: 0 0 auto;
   background: var(--rs-bg-2);
   border: 1px solid var(--rs-line-soft);
   border-radius: 4px;
@@ -201,6 +247,7 @@
   flex-wrap: wrap;
 }
 .rs-trend-title {
+  margin: 0;
   font-size: 10px;
   letter-spacing: .1em;
   text-transform: uppercase;
@@ -213,11 +260,25 @@
   background: var(--rs-c, var(--rs-value));
   border-radius: 1px;
 }
-.rs-trend-canvas { flex: 1 1 auto; width: 100%; min-height: 70px; display: block; }
+.rs-trend-canvas { flex: 0 0 auto; width: 100%; height: 112px; min-width: 0; display: block; }
+.rs-trend-note { margin: 2px 8px; color: var(--rs-fg-dim); font-size: 11px; overflow-wrap: anywhere; }
+.rs-trend-details { min-width: 0; background: var(--rs-bg-2); }
+.rs-trend-details > summary { padding: 8px; cursor: pointer; color: var(--rs-fg-dim); font-size: 12px; }
+.rs-trend-details > .rs-trend { margin-top: 6px; }
+.rs-trend-events { list-style: none; padding: 0; margin: 0; max-height: 300px; overflow-y: auto; }
+.rs-trend-event {
+  display: block; width: 100%; min-height: 44px; text-align: left;
+  padding: 6px 8px; border: 0; border-bottom: 1px solid var(--rs-line-soft);
+  background: var(--rs-panel); color: var(--rs-fg-dim);
+  font: 11px/1.5 var(--rs-font-num); overflow-wrap: anywhere; cursor: pointer;
+}
+.rs-trend-event[aria-pressed="true"] { background: #1d4b66; color: #dff1ff; }
+.rs-trend-event:focus-visible, .rs-trend-range button:focus-visible,
+.rs-trend-details > summary:focus-visible { outline: 2px solid var(--rs-value); outline-offset: -2px; }
 
 /* Die Zeitbereichstasten sind Beiwerk und duerfen nicht die halbe Flaeche
    fressen -- ohne diese Begrenzung zieht .rs-gbtn sie auf volle Breite. */
-.rs-trend-range { display: flex; gap: 4px; padding: 0 0 6px; }
+.rs-trend-range { display: flex; flex-wrap: wrap; flex: 0 0 auto; gap: 4px; padding: 0 0 6px; }
 .rs-trend-range .rs-gbtn {
   flex: 0 0 auto;
   min-height: 30px;
@@ -225,15 +286,6 @@
   font-size: 11px;
 }
 
-/* ── Fußzeile eines Panels ────────────────────────────────────────────────── */
-
-.rs-prompt-crit {
-  margin-left: auto;
-  color: var(--rs-alarm);
-  font: 700 11px/1 var(--rs-font-num);
-  letter-spacing: .1em;
-  animation: rs-blink-fast .5s steps(2, jump-none) infinite;
-}
 
 /* Zweifeld-Umschalter: das geltende Feld ist hervorgehoben, das andere ist
    das Angebot. Ein einzelner Knopf mit der Aufschrift des Ist-Zustands liest
@@ -263,5 +315,54 @@
 
 /* In Automatik läuft der Schieber nur mit -- er ist Anzeige, nicht Bedienung. */
 .rs-slider-auto { opacity: .45; cursor: default; }
+
+/* Angehalten (Leertaste, siehe main.js setSpeed()): kein engine.step() läuft
+   mehr, also greift auch kein Griff mehr durch (siehe controls.js) -- die
+   Bedienfelder sehen das, statt tot und unerklärt auf Klicks zu schweigen.
+   Nur die Stellteile selbst, nicht die Anzeigefelder drumherum. */
+/* Dieselbe Abblendung im Vorführmodus (siehe main.js/ui/controls.js:
+   setControlsLocked): dort führt eine geführte Übung die Anlage selbst, und
+   ein Stabgriff des Spielers würde den nachgestellten Ablauf verschieben. */
+body.rs-ctl-paused #rs-rod-ctl,
+body.rs-ctl-paused #rs-pumps,
+body.rs-ctl-paused #rs-sec-ctl,
+body.rs-ctl-paused #rs-grid-ctl,
+body.rs-ctl-paused #rs-chem-ctl,
+body.rs-ctl-paused #rs-safety-ctl,
+body.rs-ctl-locked #rs-rod-ctl,
+body.rs-ctl-locked #rs-pumps,
+body.rs-ctl-locked #rs-sec-ctl,
+body.rs-ctl-locked #rs-grid-ctl,
+body.rs-ctl-locked #rs-chem-ctl,
+body.rs-ctl-locked #rs-safety-ctl {
+  opacity: .45;
+  cursor: not-allowed;
+}
 .rs-ctl-block .rs-ctl-row .rs-slider { flex: 1 1 auto; }
 .rs-ctl-block .rs-ctl-row .rs-ctl-v { flex: 0 0 auto; min-width: 5.5em; text-align: right; }
+
+/* The shift history stays scrollable even after a long run. */
+.rs-learning-log { max-height: 320px; }
+.rs-diagnostics { margin-top: 12px; overflow-wrap: anywhere; }
+.rs-diagnostics summary { cursor: pointer; font-weight: 600; }
+
+/* ── Instrumentenübersicht (Taste O) ──────────────────────────────────────── */
+/* Buendelt die Rundinstrumente und alle Stellteile aus Kern/Primaer/Sekundaer/
+   Netz/Chemie auf einer Flaeche, statt ueber acht Reiter verstreut -- siehe
+   openInstrumentsWindow() in main.js. Die Karten selbst sind dieselben
+   #rs-core-gauges/#rs-rod-ctl/... Knoten wie im Reiter, nur hierher verschoben
+   (nicht kopiert), deshalb .rs-group als Basis: dieselbe Kopfzeilen-Optik wie
+   jede andere Gruppe, kein eigenes zweites Regelwerk. */
+.rs-instruments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  align-content: start;
+  gap: 10px;
+  padding: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.rs-instruments-section {
+  border: 1px solid var(--rs-line);
+  border-radius: var(--rs-radius);
+}

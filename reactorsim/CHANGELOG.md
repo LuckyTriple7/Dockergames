@@ -1,5 +1,3226 @@
 # Changelog
 
+## 0.6.33
+
+- 🐛 **0.6.32 hat dem Spieler den Leitstand nackt hingestellt.** Um dem
+  Admin Dateien aus `static/` zu erlauben, war `vstatic` in
+  `_ADMIN_ENDPOINTS` gelandet -- und diese Liste hat zwei Seiten: sie
+  öffnet dem Admin und sperrt jeden anderen aus. Für ein Spielerkonto
+  griff damit `abort(403)`, und zwar auf jedes Stylesheet, jedes Bild,
+  jedes Favicon, das Manifest und `main.js`. Übrig blieb eine
+  unformatierte Seite ohne Simulation.
+
+  `vstatic` steht jetzt zusammen mit `logout` in `_ANY_ROLE_ENDPOINTS`,
+  das vor beiden Rollenprüfungen abgefragt wird: eine Datei aus `static/`
+  gehört keiner Rolle, und der eigene Ausgang ist auch keine Rollenfrage.
+  Der Eintrag in `_MONITOR_ENDPOINTS` entfällt damit.
+
+  Der Test, den es dazu schon gab, fragte nur den Admin -- deshalb ging
+  der Fehler durch. Er fragt jetzt Admin, Spieler und Mitleser, und gegen
+  den Stand von 0.6.32 schlägt er fehl ("Spieler bekommt 403").
+
+## 0.6.32
+
+- 🐛 **Wertung: Client und Server hätten sich bei `difficulty: 0`
+  widersprochen.** `scoring.js` rechnete `Number(sum.difficulty) || 1`, und
+  weil `0` falsch ist, wurde daraus eine 1 -- also 250 Bonuspunkte.
+  `scoring.py` rechnet `_num(difficulty, 1.0)`, und das ist bei einer
+  lesbaren Null eine Null -- also keine. Der Browser hätte im Debrief 250
+  Punkte mehr gezeigt, als der Server dann vergeben hätte.
+
+  Kein Szenario trägt heute den Wert 0; der Fehler schlief. Gefunden mit
+  20 000 gewürfelten Zusammenfassungen gegen beide Seiten: 1214
+  Abweichungen, alle mit `difficulty: 0`, alle genau ±250, sonst bitgleich.
+  Der Incident-Zweig machte es schon richtig -- jetzt rechnen beide Zweige
+  über dasselbe `numOr()`, das `_num()` aus `scoring.py` nachbildet.
+  `tests/fixtures/scoring.json` hält den Fall von beiden Seiten fest; ohne
+  einen Legacy-Datensatz mit difficulty 0 hatte der Paritätstest dort nie
+  hingesehen.
+
+- 🔒 **Die Nachrechnung eines Laufs hat eine eigene Grenze bekommen.** Sie
+  ist die einzige wirklich teure Stelle des Servers: ein eigener
+  Node-Prozess, gemessen rund zweieinhalb Sekunden, und solange er läuft,
+  hängt einer der 24 waitress-Fäden daran. Davor stand bisher nur die weite
+  Flutgrenze (60/min), die enge Eintragsgrenze (1/min) kommt erst danach --
+  und zwar mit gutem Grund, sonst sperrte eine einzige fehlerhafte Anfrage
+  den nächsten gültigen Eintrag aus. Dazwischen lagen damit sechzig
+  Nachrechnungen je Minute, zusammen mehr Rechenzeit, als die Minute hat.
+  `VERIFY_PER_MINUTE` = 5 steht jetzt direkt vor dem Aufruf. Sie trifft nur
+  Anfragen MIT Protokoll: eine Einreichung ohne rechnet nichts nach und
+  verbraucht deshalb auch nichts davon.
+
+- 🧹 **`save()`/`load()` aus `net/persist.js` entfernt.** Zwei Hüllen, die
+  nie jemand gerufen hat -- `main.js` nimmt `pack()`/`apply()` direkt. Sie
+  waren eine Falle für den ersten Aufrufer, der käme: `apply()` nimmt vier
+  Argumente, `load()` reichte drei weiter, und der Sitzungsstand
+  (Störungen, Netzaufträge, Trupp) wäre stillschweigend unter den Tisch
+  gefallen.
+
+- 🐛 **Ein unbekannter Pfad ist jetzt ein 404 und keine Einladung zur
+  Anmeldung.** Vorher schickte jeder Tippfehler in der Adresse den Besucher
+  auf die Anmeldeseite -- und nach dem Anmelden stand der 404 dann doch da,
+  nur zwei Schritte später. Für den Admin endete derselbe Weg in einer
+  Weiterleitung nach `/admin`. Verraten wird durch den 404 nichts, was nicht
+  ohnehin offenliegt.
+
+- 🐛 **Der Admin darf Dateien aus `static/` holen.** `vstatic` stand in
+  `_MONITOR_ENDPOINTS`, aber nicht in `_ADMIN_ENDPOINTS` -- jede Anfrage auf
+  `/s/<ver>/...` aus einer Admin-Sitzung ging nach `/admin` um. Folgenlos,
+  solange das Panel sein CSS inline mitbringt, aber die erste Stilvorlage
+  und jedes Favicon dort wären stumm danebengegangen.
+
+- 🐛 **`OpenRuns` hielt dauerhaft einen Lauf mehr, als der Deckel erlaubt.**
+  `open()` fegte VOR dem Eintragen, der neue Lauf kam danach obendrauf:
+  `MAX_OPEN + 1` statt `MAX_OPEN`. `MonitorRelay.put()` macht es seit jeher
+  andersherum und erklärt im Kommentar auch warum -- jetzt beide gleich.
+
+- 🐛 **Passwort-Reset im Panel stürzte ab, wenn das Konto zwischendurch
+  verschwand.** Zwei Admin-Reiter, im zweiten wird gelöscht: zwischen
+  `reset_password()` und dem `get_by_id()` für die Anzeige passt genau
+  dieses Rennen, und danach stand `row['email']` ohne Prüfung da. Jetzt
+  eine 404-Meldung statt einer leeren Fehlerseite.
+
+- 🧹 **Ein toter Zweig weg.** `/api/account/password` bildete einen Grund
+  `rate_limited` auf 429 ab, den `users.change_password()` nie zurückgibt --
+  die Ratenbegrenzung steht in der Route selbst.
+
+- 📝 **`!Object.hasOwn(a, 'id')` in `replay.js` hat einen Kommentar
+  bekommen.** Die Bedingung steht in einer Kette, die `a.id === 'helper'`
+  schon voraussetzt, und sieht deshalb ueberfluessig aus. Sie ist es nicht:
+  ein GEERBTES `id` liest sich genau wie ein eigenes, `a.id === 'helper'`
+  ist also auch fuer `Object.create({ id: 'helper' })` wahr -- ohne die
+  Pruefung liefe so ein Eintrag als Hilfestellung durch. Genau daran ist der
+  Versuch gescheitert, sie zu entfernen; `tests/test-replay.mjs`
+  ("inherited event properties") hat es gefangen. Jetzt steht der Grund
+  daneben.
+
+## 0.6.31
+
+- ✨ **Der Instandhaltungstrupp nimmt den Graphit-Gaskreislauf wieder in
+  Betrieb.** Fünfte Arbeit in `game/repairs.js`, 25 Minuten, ohne
+  Voraussetzung -- die umwälzende Technik (Gebläse, Trockner, Filter) steht
+  in Anlagenräumen und nicht im Reaktorschacht, damit gehört sie in dieselbe
+  Klasse wie die anderen vier: erreichbar im laufenden Betrieb, anders als
+  ein klemmender Steuerstab. Die 25 Minuten sind eine Setzung wie alle
+  Dauern dort -- länger als ein Motorschutz im Schaltraum (12), kürzer als
+  ein Armaturenantrieb draußen (40).
+
+  Sie ist die erste Arbeit, die KEIN Stellteil freigibt, weil es keines
+  gibt. Der Weg zurück läuft stattdessen von selbst: `ctx.graphiteUA` läuft
+  ohnehin gegen den Merker, also erst der Gasaustausch und dann der Stapel
+  mit seiner eigenen Trägheit. Der Trupp gibt den Weg frei, nicht das
+  Ergebnis.
+
+  Nur im freien Spiel, wie der ganze Trupp. Im Szenario
+  `rbmk_graphite_gas` bleibt der Kreislauf weg -- dort ist der Defekt die
+  Aufgabe und nicht etwas, das man wegarbeitet.
+
+  Gegen die laufende Anlage nachgesehen, freies Spiel am RBMK mit
+  Störungen „selten“: 01:04:15 Gaskreislauf weg, 01:05:11 Trupp angefordert,
+  Graphittemperatur währenddessen 578 → 597 → 619 °C, 01:30:11 fertig und
+  die Meldung gegangen.
+
+- 🐛 **„Störung behoben, Stellteil wieder frei“ stimmte nicht für jede
+  Arbeit.** Die abgesperrte Zuspeisung gibt schon seit 0.6.18 keines frei,
+  der Gaskreislauf jetzt auch nicht. Die Meldung heißt deshalb nur noch
+  „Störung behoben“; wo ein Stellteil dazugehört und wo nicht, sagt der
+  Hilfetext der Kachel, und der nennt jetzt auch die zweite Uhr: Was die
+  Anlage nach der Reparatur noch braucht, ist ihre eigene Trägheit und
+  nicht die des Trupps.
+
+## 0.6.30
+
+- ✨ **Der Graphit-Gaskreislauf -- und damit eine Meldung, die es seit je
+  gab und die nie aufleuchten konnte.** 0.6.29 hat nachgemessen, dass
+  `alarm_graphite_hot` über die Leistung unerreichbar ist: 760 °C bräuchten
+  5321 MW, also 166 % der Nennleistung, während `power_high` bei 112 % steht.
+  Der Weg dorthin ist auch in der Wirklichkeit kein anderer Leistungspunkt,
+  sondern eine andere Ursache.
+
+  Der Graphitstapel eines RBMK steht in einem umgewälzten
+  Helium-Stickstoff-Gemisch. Das Gas ist keine reine Schutzatmosphäre: es
+  trägt die Wärme über den Spalt zwischen Graphitblock und Druckröhre, und
+  dafür steckt das Helium darin -- es leitet rund sechsmal so gut wie
+  Stickstoff. Der Betrieb stellte das Mischungsverhältnis nach der Leistung
+  ein, eben um die Graphittemperatur zu führen. Neu ist das Ereignis
+  `rbmk_graphite_gas_loss`: Fällt der Kreislauf aus, bleibt Stickstoff im
+  Spalt.
+
+  `sp.graphite.UA` ist deshalb keine Konstante mehr, sondern
+  `ctx.graphiteUA` -- ein `Lag` in `ctx.saveable`, der über
+  `sp.graphite.gasTau` (900 s) von 560 auf `UA_noGas` = 300 kW/K abfällt.
+  Derselbe Wert geht in BEIDE Stellen von `directHeat()`: Endwert und
+  Zeitkonstante, weil beides derselbe Wärmedurchgang ist. Schlechterer
+  Durchgang heißt heißer UND träger -- die thermische Zeitkonstante des
+  Stapels wächst von 35 auf 66 Minuten. Die 300 sind eine SETZUNG, gewählt
+  aus der Wirkung und nicht aus einer Leitfähigkeitstabelle; die Begründung
+  steht im Kommentar bei `sp.graphite`.
+
+  Auch die Diagnose rechnete bis hierher mit dem Auslegungswert weiter:
+  `graphiteHeatMW` nimmt jetzt `ctx.graphiteUA.v`. Der Wärmestrom fällt im
+  Augenblick des Ausfalls und steigt danach wieder, während die Temperatur
+  steigt -- derselbe Strom braucht bei schlechterem Durchgang ein größeres
+  Gefälle. Genau das ist der Vorgang, und er steht jetzt richtig da.
+
+- ✨ **Neues RBMK-Szenario „Graphit-Gaskreislauf ausgefallen“**
+  (`rbmk_graphite_gas`, Schwierigkeit 2, vier Stunden). Die langsamste
+  Störung im ganzen Spiel: keine Schnellabschaltung hilft, der Reaktor
+  bleibt durchgehend beherrschbar, und trotzdem läuft etwas davon. Zu
+  entscheiden ist, wie viel Strom man aufgibt, um den Moderator unter seiner
+  Grenze zu halten. Gemessen über die volle Schicht:
+
+  | Handlung | T_gr Spitze | über 760 °C | Punkte |
+  |---|---|---|---|
+  | nichts | 809 °C | 7004 s | 2203 |
+  | ab 60 min auf 87 % | 743 °C | 0 s | 2204 |
+  | ab 120 min auf 87 % | 757 °C | 0 s | **2236** |
+  | ab 60 min auf 80 % | 708 °C | 0 s | 1864 |
+  | ab 60 min auf 60 % | 669 °C | 0 s | 631, Schicht verloren |
+
+  Das Beste ist das Späte und Knappe: Die Temperatur folgt der Leistung
+  träge, und das gilt in beide Richtungen. Wer zu früh und zu weit
+  zurücknimmt, zahlt die Netzabweichung doppelt; wer gar nichts tut, zahlt
+  die stehende Meldung. Der Unterschied ist klein -- bei einer Materialgrenze
+  soll er das sein.
+
+  Die Ursache bekommt eine eigene Kachel (`alarm_rbmk_graphite_gas`), sonst
+  stünde nur die Folge auf dem Schirm und der Spieler sähe eine langsam
+  steigende Temperatur ohne Grund -- dieselbe Lücke wie beim Netzabwurf vor
+  0.6.26. Sie ist INFO und nicht WARN: Wegbekommen kann der Spieler sie
+  nicht, und ein pauschaler Abzug über die ganze Schicht (Deckel 300 statt
+  100) wäre ein Minus für etwas, das er nicht entscheiden kann. Entscheidbar
+  ist nur die Folge.
+
+  Gegen die laufende Anlage nachgesehen: 00:10:00 „Graphit-Gaskreislauf“,
+  Anzeige von 571 °C aufwärts, 02:03:20 „Graphit heiß“ bei 761 °C -- die
+  123 Minuten aus der Messung.
+
+- ✨ **Die Störung steht auch im freien Spiel** (`freeEvents.js`, RBMK,
+  Schwere 2). In einer kurzen Schicht bleibt davon nur die Kachel -- das ist
+  kein Fehler, sondern der Unterschied zwischen einer Materialgrenze und
+  einem Transienten. Ein Auftrag für den Instandhaltungstrupp, der den
+  Kreislauf wieder in Betrieb nimmt, steht im BACKLOG.
+
+## 0.6.29
+
+- ✨ **Neues DWR-Szenario "Ausfall von Hauptkühlmittelpumpen"**
+  (`pwr_rcp_trip`, Schwierigkeit 2, 20 Minuten). Das Ereignis `rcp_trip` gab
+  es seit langem, aber noch nie als eigenen Szenario-Anlass. Zwei Stufen,
+  beide nachgemessen:
+
+  | | Kernstrom | DNBR | stehende Auslösung |
+  |---|---|---|---|
+  | vier Pumpen | 20.000 kg/s | 2,29 | — |
+  | eine ausgefallen | 15.200 kg/s (76 %) | 1,81 | — |
+  | zwei ausgefallen | 10.400 kg/s (52 %) | 1,03 | `trip_rcp_lost`, `trip_dnbr_low` |
+
+  Der erste Ausfall kostet Sicherheitsabstand, ohne eine Auslösung zu setzen
+  -- die Anlage trägt die volle Leistung mit drei Pumpen weiter. Erst der
+  zweite bringt den Kernstrom unter die Schwelle von 60 %. Die Meldetafel
+  schaltet wie immer nichts selbst ab; wer die stehende Auslösung länger als
+  300 s aussitzt, verliert über `trip_ignored`. Die Physik selbst zerstört
+  hier nichts -- der DNBR bleibt bei 1,03 stehen, bis die Frist abläuft.
+  Zurück gibt es keinen Weg: `ctx.pumpsStuck` hält beide Pumpen aus, auch
+  gegen den Knopf, der sie sonst wieder anwerfen würde.
+
+  Gegen die laufende Anlage nachgesehen, nicht nur gegen die Testumgebung:
+  erster Ausfall 00:04:00, zweiter 00:10:04, „Kühlmitteldurchsatz“
+  00:10:19, „DNBR gering“ und „Unterkühlung gering“ 00:10:23. Unbedient
+  endet die Schicht mit „Auslösebedingung stand ohne Abschaltung“ und 629
+  Punkten -- dieselbe Zahl wie in der Messung. „Unterkühlung gering“ war
+  dabei nicht vorhergesehen und ist trotzdem richtig: bei halbem Durchsatz
+  nimmt dasselbe Kernwasser dieselbe Wärme mit weniger Masse auf. Der
+  Hilfetext des Szenarios nennt sie jetzt mit.
+
+- 🔍 **Vier weitere Punkte aus derselben Backlog-Liste nachgemessen --
+  keiner davon war Verpackungsarbeit.** Die Liste hieß "Ereignis existiert
+  schon, nur noch nicht als eigenes Szenario verpackt". Für vier von fünf
+  Einträgen stimmte das nicht. Zwei neue Messwerkzeuge halten die Zahlen
+  fest, damit die Annahmen nicht zurückkommen:
+
+  - **SWR-Umwälzpumpen-Trip führt in den bekannten Modellfehler**
+    (`tests/tools/bwr_recirc_trip.mjs`). Fällt die Pumpe aus, bleiben 12 %
+    Naturumlauf -- unterhalb des Schiebers, der bei `sp.recirc.min = 0.45`
+    endet, und damit in der Branche aus BACKLOG.md. Der Dampfgehalt `s.x_e`
+    steigt von 0,159 auf 1,000, der Blasenanteil FÄLLT aber von 0,379 auf
+    0,331: bei kleinem Massenstrom beherrscht der Driftterm in
+    `voidFraction()` den Nenner. Beim SWR ist der Blasenkoeffizient negativ,
+    also läuft die Leistung auf 371 %, und der Brennstoff ist 8,9 s nach dem
+    Ausfall zerstört. Weniger Durchsatz gehört bei einem SWR zu MEHR Blasen
+    und WENIGER Leistung -- das Modell dreht das Vorzeichen um. Erst der
+    Modellfehler, dann das Szenario.
+  - **`alarm_graphite_hot` ist im Betrieb nicht erreichbar**
+    (`tests/tools/rbmk_alarm_reach.mjs`). `directHeat()` hält den
+    Graphitknoten auf `Tsat(p_drum) + Wärmeeintrag/UA`, der Endwert hängt
+    also allein an Leistung und Trommeldruck. 760 °C bräuchten bei 69 bar
+    5321 MW, das sind 166 % der Nennleistung; `power_high` steht bei 112 %.
+    Bei 110 % gehalten läuft `T_gr` nach zwei Stunden auf 598 °C aus. Die
+    35-Minuten-Zeitkonstante war nie das Hindernis, der Endwert ist es.
+  - **`alarm_axial_tilt` ebenso wenig.** `_axialTarget()` bildet
+    `(dXe · 3000 + 900 · MITTLERE Stabstellung) / 4200`. Eine einzeln
+    klemmende Gruppe geht darin nur über den MITTELWERT ein -- die Vermutung,
+    ein gezieltes `rod_stuck` auf EINER Bank könne das Profil kippen, trägt
+    schon von der Formel her nicht. Der Stabanteil ist bei 0,214 gedeckelt,
+    und das erst mit allen Stäben drin. Günstigster Fall überhaupt: AZ-5 auf
+    dem Gipfel der Xenon-Schräglage nach sechs Stunden Volllast, gemessen
+    |ao| = 0,308 gegen die Schwelle 0,35. Im Betrieb bleibt |ao| unter 0,20.
+
+    Beide Meldungen bleiben stehen, damit die Meldetafel vollständig ist,
+    tragen jetzt aber einen Kommentar mit diesen Zahlen -- damit niemand ein
+    Szenario auf eine Kachel baut, die nie aufleuchtet.
+  - **"Klemmende Stabgruppe bei Leistungsanstieg" gibt es längst:**
+    `rbmk_cold_start` lässt Gruppe 1 zwischen 4200 und 5100 s klemmen, also
+    mitten in der Rampe. Der Backlog-Eintrag beschrieb einen Zustand, den es
+    seit dieser Szenariodatei nicht mehr gab. Nebenbefund: eine klemmende
+    Gruppe macht die Anlage in diesem Modell SICHERER -- bei einer Rampe
+    50 → 100 % steht die Abschaltreserve am Ende bei 86,7 statt bei 90,0,
+    weil die stehengebliebene Gruppe drin bleibt. Die örtliche
+    Leistungsüberhöhung, die den echten Schaden ausmacht, kennt ein
+    einzoniges Punktkinetikmodell nicht.
+
+## 0.6.28
+
+- 🐛 **Der Dampfblasenanteil folgte der Spaltleistung ohne jede
+  Waermetraegheit -- der schaerfste Modellfehler des RBMK.** Aus dem freien
+  Spiel gemeldet: nach einem Netzabwurf und dem Wiederzuschalten stieg die
+  Leistung sprunghaft an. Nachgerechnet aus dem mitgeschickten Protokoll
+  (Kernalter "mittel"): die Anlage schwang mit rund 20 s Periode auf, von
+  830 auf 22534 MW Spitze (746 % der Nennleistung), und der Brennstoff kam
+  bis auf 231 von 250 J/g an das Versagenskriterium heran. AZ-5 kam 0,55 s
+  vor der Spitze.
+
+  Die Ursache sass in `_void()` in `plants/rbmk.js`. `averageVoid()` setzt
+  sich aus zwei Faktoren zusammen: dem Dampfgehalt in der Siedezone und
+  `fBoil`, dem Anteil des Kanals, der ueberhaupt siedet. Der Dampfgehalt
+  `s.x_e` kam richtig aus der Waerme, die `coreCoolant()` tatsaechlich ins
+  Kuehlmittel uebergibt -- also traege ueber Brennstoff (tau = 7 s),
+  Huellrohr und Waermeuebergang. `fBoil` dagegen wurde aus `s.P_th`
+  gebildet, der MOMENTANEN Spaltleistung, und sprang damit ohne jede
+  Verzoegerung. Zwei Groessen derselben Physik, eine traege, eine nicht.
+
+  Beim RBMK ist der Blasenkoeffizient positiv. Die Rueckkopplung war also
+  siebenmal schneller als der Doppler, der einzige kraeftige negative
+  Beitrag -- und das Ergebnis ein ungedaempfter Grenzzyklus INNERHALB des
+  erlaubten Betriebsbands dieses Modells (`sp.orm.min = 30`). Gemessen bei
+  festgehaltenen Staeben, nur die Anlage, ohne Regler:
+
+  | Abschaltreserve | vorher | nachher |
+  |---|---|---|
+  | ORM 45,8 | 2370 ... 3809 MW | 2716 ... 3387 MW |
+  | ORM 38,3 | 1420 ... 5425 MW | 2501 ... 3523 MW |
+  | ORM 33,3 |  830 ... 6272 MW | 2364 ... 3641 MW |
+
+  `_void()` nimmt jetzt dieselbe Waerme wie `s.x_e`. Die verbleibende
+  Verzoegerung (`ctx.voidLag`, 1,0 s) steht weiter fuers Wandern der
+  Siedegrenze im Kanal und bleibt unveraendert -- sie kommt jetzt NACH der
+  Traegheit des Brennstoffs statt an ihrer Stelle.
+
+  Was sich NICHT aendert: der stationaere Zustand. Stabstellungen,
+  Abschaltreserve und Blasenkoeffizient bei Nennleistung sind bei allen drei
+  Kernaltern dieselben wie vorher, und die SHA-256-Grundlinie in
+  `tests/test-rbmk-feed.mjs` stimmt bei Schritt 0 unveraendert weiter.
+
+  Was sich auch nicht aendert: die Tschernobyl-Exkursion. Sie wird vom
+  positiven Schnellabschalteffekt der Graphitspitzen getrieben, nicht vom
+  prompten Blasenpfad -- gemessen 1060 % Spitze bei 846 pcm gegen
+  beta = 480, vorher 1090 % bei 850 pcm. Alle 34 Tests der Uebung laufen
+  unveraendert durch.
+
+  Sichtbar wird die Korrektur dagegen nach einer Schnellabschaltung: 600
+  Schritte nach AZ-5 steht der Blasenanteil bei 7,2 % statt bei 2,3 %. Der
+  Brennstoff ist dann noch heiss und siedet weiter -- im alten Modell
+  verschwanden die Blasen in dem Augenblick, in dem die Spaltung aufhoerte.
+
+- 🐛 **Kernalter "alt" stellte den RBMK unter seine eigene
+  Alarmschwelle.** `game/coreAge.js` mass die drei Stufen laut eigenem
+  Kommentar "an der jeweiligen Reserve (Stabstellung bzw. Borgehalt bei
+  Nennleistung)". Beim RBMK setzt dieselbe Stabstellung ueber `_voidCoeff`
+  aber auch den Dampfblasenkoeffizienten, und an der Stabstellung gemessen
+  fiel nicht auf, wohin 0.35 den Kern stellte: ORM 5,9 -- unter
+  `sp.orm.alarm = 15`, Blasenkoeffizient auf dem schlechtesten Wert von
+  62 pcm/%, Leistungskoeffizient positiv. Das freie Spiel bot als
+  Schwierigkeitsgrad einen Zustand an, den das Reglement des Originals zur
+  sofortigen Abschaltung verpflichtet haette.
+
+  Die Stufen spannen jetzt das erlaubte Band auf: `mid` 0.10 trifft die
+  nominale Reserve (ORM 45,8 bei `sp.orm.nominal = 46`), `late` 0.18 liegt
+  knapp ueber dem Betriebsminimum (ORM 33,3 bei `sp.orm.min = 30`). "Alt"
+  bleibt deutlich unangenehmer als "frisch" -- der Blasenkoeffizient steht
+  dort bei 37 statt 20 pcm/% --, aber die Anlage ist fahrbar. Wer ORM 6
+  sehen will, findet ihn in der Tschernobyl-Uebung; dort gehoert er hin.
+
+  Derselbe gemeldete Lauf, mit beiden Korrekturen und dem Leistungsregler in
+  Automatik: frisch 3099 ... 3233 MW, mittel 3098 ... 3239 MW, alt
+  2680 ... 3611 MW (113 % Spitze, 9 von 250 J/g). Vorher 830 ... 22534 MW.
+
+## 0.6.27
+
+- 🐛 **Der Netzabwurf war unsichtbar -- und eine Sackgasse.** Zwei
+  Fehler in einem Zustand, beide aus dem freien Spiel gemeldet.
+
+  `loss_of_load` (`game/events.js`) oeffnet NUR den Generatorschalter
+  (`s.breaker`), nicht `s.turbineTripped`. Daran hing beides:
+
+  **Unsichtbar:** keine einzige Meldung der drei Typdateien testete
+  `s.breaker`. `alarm_turbine_trip` haengt an `turbineTripped`, also meldete
+  gar nichts -- keine Kachel, keine Hupe, nur eine Zeile im
+  Ereignisprotokoll, die vorbeiscrollt, waehrend die Generatorleistung auf
+  null faellt. Neu ist deshalb die Meldung `alarm_grid_lost` in allen drei
+  Typen, mit Hilfetext und mit Zuordnung zum Generator im Anlagenbild. Sie
+  schliesst `turbineTripped` aus: nach einer Schnellabschaltung steht schon
+  `alarm_turbine_trip`, und zwei Kacheln fuer dieselbe Ursache sind eine zu
+  viel.
+
+  **Sackgasse:** `engine.resumeTurbine()` pruefte nur `turbineTripped` und
+  fiel bei offenem Schalter sofort heraus -- obwohl der Kommentar darueber
+  `loss_of_load` ausdruecklich als abgedeckten Fall nennt. Damit gab es
+  keine Bedienhandlung, die den Schalter je wieder eingelegt haette:
+  nachgemessen blieb die Anlage heil und lieferte fuer den Rest des Laufs
+  null MW, bei allen drei Reaktortypen. Der Instandhaltungstrupp sagte dazu
+  zu Recht, es gebe nichts zu reparieren -- eine offene Schaltanlage ist
+  kein Defekt.
+
+  Jetzt greift derselbe Knopf "Turbine zuschalten" auch hier, und der
+  automatische Helfer kennt den Fall ebenfalls. Gemessen nach dem
+  Zuschalten: DWR 1401 MW, SWR 1344 MW, RBMK 997 MW -- jeweils wieder der
+  Stand von vor dem Abwurf.
+
+## 0.6.26
+
+- 🐛 **Die Chernobyl-Uebung widersprach sich selbst darueber, ob die
+  Leistung vor AZ-5 anstieg.** Der Hilfetext des Schritts "Auf den richtigen
+  Moment warten" begann mit "Real stieg die Leistung kurz vor dem Druecken
+  von AZ-5 an" -- waehrend der Anleitungstext desselben Schritts sagt, die
+  Anzeige stehe still und bleibe nur deshalb flach, weil die Regelung
+  gegenhaelt, und waehrend das Modell genau das rechnet. Wer den einen Satz
+  las und dann dem Leitstand zusah, musste das Modell fuer falsch halten.
+
+  Der Satz ist raus. An seiner Stelle steht, was sich belegen laesst: dass
+  die axiale Flussverteilung mitentschied, wie viel die Graphitverdraenger
+  einbrachten; dass die Aufzeichnungen der Nacht die Leistung ueber die 36
+  Sekunden des Auslaufs nahezu konstant bei rund 200 MWth zeigen und dieses
+  Modell sich daran haelt; und dass "flach" nicht "ruhig" heisst --
+  Dampfblasenanteil und Reaktivitaet wachsen die ganze Zeit.
+
+  Ob die Leistung in den letzten Sekunden vor AZ-5 schon anstieg, steht
+  jetzt als offene Frage da statt als Behauptung. Am Modell aendert sich
+  nichts: das Gleichgewicht vor AZ-5 ist gemessen
+  (`tests/tools/chernobyl_pre_az5.mjs`, bis -111 pcm Regelautoritaet) und
+  durch einen Test festgehalten.
+
+## 0.6.25
+
+- ✨ **Die Kopfzeile blinkt, solange die Schnellabschaltung steht** (RESA
+  bei DWR und SWR, AZ-5 beim RBMK -- derselbe Merker, nur ein anderer Name
+  auf dem Schild). Die Meldetafel sagt es zwar auch, aber sie steckt im
+  Handy-Raster hinter einem Reiter, und wer eine Transiente faehrt, schaut
+  auf die Zahlen oben. Ein Rahmen und ein Schimmer statt eines Farbwechsels
+  der ganzen Leiste: darin stehen die Werte, die in genau diesem Augenblick
+  gelesen werden, und die muessen lesbar bleiben.
+
+  Anders als die Kacheln haengt das NICHT an "quittiert": eine
+  abgeschaltete Anlage bleibt abgeschaltet, auch wenn die Hupe laengst aus
+  ist. Deshalb auch 1,2 s Takt statt der 0,5 s einer frischen Meldung --
+  ein Zustand, der Minuten dauert, bittet nicht um Aufmerksamkeit, er
+  bleibt nur sichtbar. Wer `prefers-reduced-motion` gesetzt hat, bekommt
+  den Rahmen ohne die Bewegung. Der Zweitschirm zeigt es mit.
+
+- 🔇 **Der Zweitbildschirm bleibt stumm.** Bis 0.6.24 spielte er den
+  Ton des Leitstands mit, nach derselben Kontoeinstellung -- gedacht als
+  Hupe im Nebenzimmer. In der Benutzung ist das falsch herum: ein
+  Zweitschirm steht oft im selben Raum wie der Leitstand, dann hupt es
+  zweimal und um Sekundenbruchteile versetzt, und die zweite Hupe gehoert
+  zu einem Bild, das eine halbe Sekunde alt ist. Keine Einstellung dafuer:
+  eine, die praktisch immer auf "aus" stuende, waere nur eine Zeile mehr im
+  Dialog. Der Ton-Hauptschalter faellt auf diesem Schirm gleich mit weg --
+  `main.js` verdrahtet ihn, und `main.js` laeuft dort nicht, er stand also
+  ohnehin als toter Knopf da.
+
+- 🐛 **Lange Kachelnamen liefen aus der Meldetafel heraus.**
+  "Reaktorschutz Turbinenschnellschluss abgeschaltet" ragte links und
+  rechts aus seiner Box. `overflow-wrap: break-word` reichte dafuer nicht:
+  es zaehlt beim Berechnen der kleinstmoeglichen Breite nicht mit, das Wort
+  blaeht die Spalte weiterhin auf und bricht erst danach. Jetzt
+  `overflow-wrap: anywhere` mit `hyphens: auto` davor, damit ein Trennstrich
+  an einer erlaubten Stelle steht statt eines harten Schnitts mitten im Wort.
+
+- 🐛 **Der Zweitschirm durfte seine eigene Kachelauswahl nicht mehr
+  lesen.** Folgefehler aus 0.6.24: die mitlesende Sitzung war auch fuer
+  `GET /api/prefs` gesperrt, und damit stand in der Kopfzeile eine andere
+  Auswahl als drueben. Lesen ist jetzt erlaubt, Schreiben weiterhin nicht.
+
+## 0.6.24
+
+- 🐛 **Der Zweitbildschirm hat den Leitstand abgemeldet -- und
+  umgekehrt.** `/monitor` braucht dieselbe Sitzung wie der Leitstand, und
+  bis hierher entwertete jede Anmeldung die vorherige: genau eine Sitzung je
+  Spielerkonto. Wer sich also am Tablet anmeldete, warf damit den PC hinaus;
+  meldete er sich dort wieder an, flog das Tablet. Das Zweitschirm-Feature
+  aus 0.6.14 setzte zwei Geraete voraus, die Sitzungsregel erlaubte eines --
+  in der ausgelieferten Form war es unbenutzbar.
+
+- ✨ **Neu: die mitlesende Anmeldung.** Im Anmeldeformular steht ein
+  Kaestchen "Nur mitlesen (Zweitbildschirm)". Eine solche Sitzung verdraengt
+  nichts, wird von nichts verdraengt und landet direkt auf `/monitor`. Bis
+  zu fuenf Schirme gleichzeitig; der sechste verdraengt den aeltesten.
+
+  Zwei ARTEN von Sitzung und nicht einfach mehr davon: die spielende bleibt
+  einmalig je Konto. Sie muss es bleiben, denn der Server haelt einen
+  Spielstandsatz je Konto (`persist.Store.account_key`) -- zwei spielende
+  Geraete wuerden sich gegenseitig ueberschreiben.
+
+- 🔒 **Mitlesen heisst mitlesen.** `_MONITOR_ENDPOINTS` in `app.py`
+  sagt, was so eine Sitzung darf: die Seite, das Bild lesen, Statics,
+  abmelden. Alles andere gibt 403 -- auch das Senden eines eigenen Bildes.
+  Eine Liste dessen, was geht, statt dessen, was nicht geht: eine neue Route
+  ist damit von sich aus gesperrt. Die Rolle steht im Token UND in
+  `sessions.json`; wer sein `m` herausschneidet, findet seine Kennung unter
+  den spielenden nicht wieder und ist schlicht abgemeldet.
+
+- ♻️ **Abmelden beendet nur noch die eigene Sitzung**
+  (`Auth.revoke_session()`). Vorher war das dasselbe wie "alle", weil es nur
+  eine gab -- sonst waere der Fehler nur umgezogen: erst wirft die Anmeldung
+  am Tablet den Leitstand raus, dann eben das Abmelden dort. Sperre,
+  Passwortwechsel und Kontoloeschung beenden weiterhin ALLE Geraete.
+
+  Bestehende Anmeldungen ueberleben das Update: eine `sessions.json` von
+  vorher haelt je Konto eine Zeichenkette, und die gilt als die spielende.
+
+## 0.6.23
+
+- ✨ **Der Siedewasserreaktor hat einen Notstromdiesel.** Bis 0.6.22 war
+  der Station-Blackout endgueltig: `s.acPower` wurde nur beim Anlagenaufbau
+  wieder true, und die Schicht konnte der Anlage beim Auskochen zusehen.
+  `ctl_diesel` fordert ihn an, nach dreissig Simulationssekunden traegt er
+  (`stepDiesel()` in `plants/bwr.js`). Der Anlasser haengt an der Batterie,
+  also erst `ctl_emergency_dc`, dann der Diesel -- zwei Handgriffe in genau
+  dieser Reihenfolge, beide standen schon auf dem Schirm. Faellt die
+  Batterie waehrend des Anlaufs weg, faengt er von vorne an; ein laufender
+  Diesel braucht sie nicht mehr. Kein Wuerfel, ob er anspringt: ein Diesel,
+  der mal versagt und mal nicht, waere aus nichts zu lernen.
+
+- ♻️ **Netz und Wechselstrom sind jetzt zwei verschiedene Dinge.**
+  `s.gridPower` ist die Quelle, `s.acPower` die Folge -- jeden Rechenschritt
+  neu gebildet aus Netz ODER Diesel. Ohne diese Trennung waere der Diesel
+  ein Knopf gewesen, der die Stoerung zuruecknimmt: die volle
+  Speisewasserregelung waere wiedergekommen und nach der Trupp-Reparatur
+  sogar die Hauptumwaelzpumpe angelaufen, die real nie an einem
+  Notstromdiesel haengt.
+
+  **Fuer den naechsten Leser:** `s.acPower` ist damit ABGELEITET. Wer das
+  Netz nehmen will, nimmt `gridPower`; ein direkt gesetztes `acPower` ist im
+  naechsten Takt wieder weg.
+
+- ⚡ **Was der Diesel traegt, und was nicht.** Eigenbedarf, Leittechnik
+  und Notspeisung ja -- letztere gedeckelt auf `spec.diesel.feedMax`
+  (130 kg/s, dieselbe Groessenordnung wie der Notkondensator, gegen
+  2059 kg/s im Vollastbetrieb). Die Hauptumwaelzpumpe nein: ihr
+  Trupp-Auftrag verlangt ausdruecklich `gridPower` und nennt mit
+  `repair_block_grid` auch den richtigen Grund. "Kein Motorstrom" waere am
+  laufenden Diesel schlicht falsch gewesen.
+
+  Gemessen statt behauptet: nach Blackout mit Schnellabschaltung steht der
+  Fuellstand nach 2000 s ohne Diesel bei 0,00 und mit Diesel bei 0,50.
+
+- 🐛 **Ein Blackout aus einem Stand von vor 0.6.23 bleibt einer.**
+  Solche Staende kennen `gridPower` nicht, der frisch gebaute Zustand steht
+  auf true -- ohne den Altstand-Zweig in `net/persist.js` haette sich ein
+  Stand mitten im Station-Blackout beim ersten Rechenschritt lautlos selbst
+  geheilt. Er bekommt sein Netz jetzt aus dem gespeicherten `acPower`.
+
+## 0.6.22
+
+- 🔒 **STARTTLS und SMTPS pruefen jetzt das Zertifikat des
+  Mailservers.** `smtplib` nimmt ohne eigenen Kontext
+  `ssl._create_stdlib_context()`, und der prueft nichts: `verify_mode=0`,
+  `check_hostname=False`. Die Leitung war also verschluesselt, aber nicht
+  authentifiziert -- wer sich dazwischenhaengt, legt ein beliebiges
+  Zertifikat vor und bekommt einen Wimpernschlag spaeter das
+  Postfachpasswort im Klartext, weil `login()` erst nach dem Aufbau laeuft.
+  Beide Wege bekommen jetzt `ssl.create_default_context()` (`mailer.py`).
+
+  **Das kann einen laufenden Versand stilllegen:** ein Mailserver im eigenen
+  Netz mit selbst ausgestelltem Zertifikat wird ab hier abgelehnt. Er
+  bekommt einen eigenen Grund (`tls_failed`) statt des bisherigen
+  Sammeltopfs "nicht erreichbar", damit im Panel steht, was wirklich fehlt.
+  Der Weg dahin ist der Zertifikatsspeicher des Containers, siehe DOCKGE.md.
+
+- ✨ **Die Mails tragen `Auto-Submitted: auto-generated`** (RFC 3834).
+  Passwort- und Willkommensmail sind Maschinenmails; ohne diese Zeile
+  antwortet die Abwesenheitsnotiz des Empfaengers darauf, und das Postfach
+  sammelt Urlaubsgruesse. `Message-ID`, `Date` und die Kodierung des
+  Betreffs standen schon vorher.
+
+- 🐛 **`send()` laesst auch beim Bauen der Kopfzeilen keine Ausnahme
+  mehr durch.** Die Zuweisungen standen ueber dem `try`: eine Adresse mit
+  Zeilenumbruch haette dort `ValueError` geworfen, und der Modulkopf sagt
+  zu, dass ein Mailfehler niemals ein Konto verhindert, das sonst angelegt
+  worden waere. Ueber die vorhandenen Wege war das nicht auszuloesen
+  (`_EMAIL_RE` in `users.py` verbietet Leerraum) -- die Zusage haengt jetzt
+  aber nicht mehr an dieser zweiten Pruefung. Neuer Grund: `bad_address`.
+
+## 0.6.21
+
+- ✨ **Der Schichtbericht zaehlt die Arbeiten des Instandhaltungstrupps
+  mit.** Bis 0.6.20 stand die Zahl nur im Spielstand (`Repairs.done`): wer
+  eine Nachtschicht lang Stoerungen abarbeiten liess, las alle acht Stunden
+  eine Bilanz, in der davon nichts vorkam. `ShiftLog` haelt jetzt einen
+  Verweis auf den Trupp und bilanziert dessen Zaehler wie jede andere
+  Groesse -- als Zuwachs dieser Schicht, nicht als Summe seit Rundenbeginn
+  (`game/shift.js`, `game/session.js`).
+
+- ✏️ **Als eigene Protokollzeile, nicht als weiterer Platzhalter.**
+  Die Zeile `log_shift_repairs` steht direkt hinter dem Bericht, mit
+  demselben Zeitpunkt, und nur dann, wenn in dieser Schicht ueberhaupt etwas
+  fertig geworden ist. Der Bericht selbst hat fuer die Netzauftraege schon
+  zwei Textfassungen; ein zweiter solcher Zweig haette vier gebraucht, je
+  eine fuer jede Kombination aus Auftraegen und Trupp. Getrennt bleibt es
+  bei zwei unabhaengigen Entscheidungen -- und eine stoerungsfreie Schicht
+  liest gar keine Zahl statt immer derselben Null.
+
+- 🐛 **Ein alter Spielstand schreibt der naechsten Schicht nichts
+  gut.** `ShiftLog.restore()` uebersprang bisher jede Groesse, die im Stand
+  fehlte, und liess ihre Bezugslinie auf der Null aus dem Rundenbau stehen.
+  Fuer die Reparaturen haette das geheissen: die erste Schicht nach dem
+  Laden meldet alles, was vor dem Speichern schon fertig war. Eine fehlende
+  Bezugslinie bekommt jetzt den JETZIGEN Wert -- das gilt fuer jede kuenftige
+  Groesse mit.
+
+## 0.6.20
+
+- 📉 **Die Fuellstandsanzeige des Siedewasserreaktors kann zu hoch
+  lesen.** Sie vergleicht den Druck einer stehenden Wassersaeule
+  (Referenzschenkel) mit dem Behaelterdruck. Ist der Sicherheitsbehaelter
+  heisser als die Saettigung zum Reaktordruck, kocht diese Saeule aus, der
+  Vergleichsdruck faellt -- und das Geraet meldet MEHR Wasser, als da ist.
+  `spec.refLeg` in `plants/bwr.js` fuehrt den Fuellstand der Saeule mit
+  (`s.refLegFill`), `derived()` legt den Fehler additiv auf den angezeigten
+  Wert. Im Normalbetrieb (70 bar im Dom gegen 1 bar im Behaelter) passiert
+  nichts; erst der abgesenkte Reaktor bei aufgeheiztem Behaelter kehrt das
+  Verhaeltnis um. Genau diese Lage hatte Fukushima-1: die Anzeige stand ueber
+  der Kernoberkante, waehrend der Kern frei lag.
+
+- 🔎 **Die Diagnose sagt es, das Instrument nicht.** Bisher kannte die
+  Zeile "Fuellstand" nur zwei Zustaende: Messung verfuegbar oder (ohne
+  Gleichstrom) eingefroren. Der ausgekochte Referenzschenkel ist der
+  gefaehrlichere dritte, weil das Instrument dabei voellig normal aussieht --
+  er steht jetzt als eigener Text unter den Bedienelementen. Die Meldung
+  "Fuellstand tief" arbeitet weiter am echten Stand: ohne sie haette der
+  Spieler bei leerem Schenkel gar keinen Hinweis mehr.
+
+- ✏️ **Szenarientext und Hilfe nennen den Fehler beim Namen.** Der
+  Auftrag zum Station-Blackout warnt jetzt davor, der Anzeige nach der
+  Druckabsenkung blind zu trauen, und die Hilfe zum Fuellstand fuehrt den zu
+  hohen Wert als eigene Ursache auf.
+
+## 0.6.19
+
+- 🧹 **Die Einstellungen fuers freie Spiel zeigen sich nur noch dort.**
+  Kaltstart-Haekchen und die fuenf Regler (Zufallsstoerungen, Kernalter,
+  Netzauftraege, Instandhaltung, Jahreszeit) standen auch dann im
+  Startbildschirm, wenn eine Szenarienkarte gewaehlt war -- wirkungslos, denn
+  ein Szenario bringt Startzustand, Zeitplan und frischen Kern selbst mit
+  (`start_overrides`/`events` in der JSON, siehe `game/scenario.js`).
+  `syncFreeSetupVisibility()` in `main.js` haengt die Zeilen jetzt an
+  `app.chosen === null` und wird an beiden Stellen gerufen, die die Auswahl
+  setzen: beim Aufbau der Liste und im Karten-Klick. Bei Reaktortypen ohne
+  Szenario bleiben sie stehen, dort gibt es nur freies Spiel.
+
+- ✏️ **Zwei Hinweise sind damit ueberfluessig geworden.** Der Vorsatz
+  "Alle fuenf gelten nur fuers freie Spiel" und der Zusatz "-- nur freies
+  Spiel" am Kaltstart-Haekchen sind raus (`locales/de.json`,
+  `locales/en.json`); die Erklaerungen zu den einzelnen Stufen bleiben.
+
+## 0.6.18
+
+- 🔧 **Ein Instandhaltungstrupp arbeitet Stoerungen ab, statt sie
+  liegen zu lassen.** Bis hierher war jede Zufallsstoerung im freien Spiel
+  endgueltig: `stepEvents()` (`game/events.js`) schreibt ihre Wirkung in
+  jedem Rechenschritt neu, und keine Stelle im Programm hat je einen ihrer
+  Merker wieder geloescht -- ein klemmender Pumpenschalter blieb geklemmt,
+  bis die Runde endete. Auf der Stufe "hart" (alle 10 bis 20 Minuten eine
+  Stoerung) sammelte eine lange Schicht damit Defekte an, ohne dass je einer
+  verschwand. Das war nicht schwer, sondern zermuerbend. Neu sind
+  `game/repairs.js` und `ui/repairs.js` plus eine eigene Stufe im
+  Startbildschirm (aus / normal / langsam, Vorgabe normal).
+
+- 🔌 **Der Trupp gibt das Stellteil frei, er bedient es nicht.** Nach
+  der Reparatur ist `ctx.pumpsStuck`/`ctx.msivStuck`/`ctx.boronRunaway`
+  geloescht -- anwerfen oder oeffnen muss der Bediener selbst. Das ist keine
+  Kleinigkeit, sondern der Punkt: solange der Merker steht, wirft
+  `stepEvents()` die Pumpe in JEDEM Takt erneut aus, und ein Klick auf den
+  Einschaltknopf war innerhalb eines Rechenschritts wieder ueberschrieben.
+
+- 🧭 **Die Tabelle haengt am Anlagenzustand, nicht am Ereignis.** Der
+  naheliegende Aufbau waere gewesen, jeder Stoerung in `events.js` neben
+  `apply()` ein `clear()` zu geben. Das waere falsch herum: `recircPumpStuck`
+  setzt sowohl `rcp_trip` (Motorschutz hat ausgeloest, der Elektriker stellt
+  ihn zurueck) als auch `station_blackout` (kein Motorstrom, da gibt es
+  nichts zurueckzustellen). Ein `clear()` an `rcp_trip` haette im zweiten
+  Fall eine Pumpe freigegeben, die gar keinen Strom hat. Jetzt steht die
+  Voraussetzung an der ARBEIT, wird bei der Vergabe geprueft und waehrend der
+  Arbeit erneut -- faellt sie weg, bricht der Trupp ab.
+
+- ⏱ **Vier Arbeiten, und mehr absichtlich nicht.** Motorschutz am
+  Pumpenabgang 12 min (SWR-Umwaelzpumpe 15 min), Zuspeisung absperren bei
+  unkontrollierter Bor-Verduennung 6 min, Antrieb der Frischdampf-Absperrung
+  40 min. Die Dauer ist Simulationszeit: im Zeitraffer vergeht sie schnell,
+  bei 1x dauert sie wirklich so lange -- und wer gerade eine Transiente
+  faehrt, kann den Zeitraffer nicht hochdrehen. Ein klemmender Steuerstab
+  sitzt im Kern, ein Dampferzeuger-Rohrleck und ein klemmendes Abblaseventil
+  sind nur ueber das Abfahren der Anlage zu erreichen; diese drei bleiben
+  fuer den Rest der Schicht. Der Trupp nimmt der Schicht die Aufschaukelung,
+  nicht die Folgen.
+
+- 👥 **Es gibt genau einen Trupp.** Stehen zwei Stoerungen an, ist zu
+  entscheiden, welche zuerst drankommt -- das ist der Inhalt der Mechanik,
+  nicht eine fehlende Ausbaustufe. "Trupp zurueckrufen" bricht die laufende
+  Arbeit ab; der Fortschritt ist damit verloren. Jeder Vorgang steht in der
+  Zeitleiste, mit der Arbeit als Schluessel und dem Vorgang als `kind` --
+  dieselbe Mechanik, mit der eine Meldung ihr "an"/"aus" bekommt.
+
+- 💾 **Der laufende Auftrag ueberlebt das Speichern**
+  (`Session.snapshot()`), die gewaehlte Stufe kommt dabei NICHT aus dem
+  Spielstand zurueck: sie wurde beim Start dieser Runde gewaehlt, gleiche
+  Regel wie bei Stoerungen und Netzauftraegen. Ein unschluessiger Auftrag aus
+  einem fremden Stand wird verworfen statt geglaubt -- er loescht am Ende
+  einen Stoerungsmerker.
+
+## 0.6.17
+
+- 🔧 **Der Kernzerstoerungs-Klang kommt jetzt bei der Zerstoerung, nicht beim
+  Endbildschirm.** Er haengt nicht mehr an `showDestroyed()`/`showDebrief()`,
+  sondern an der Zustandsgroesse selbst (`game/endSounds.js`). Zwischen
+  Brennstoffversagen und Fenster liegen naemlich mindestens drei Sekunden
+  (`DESTROY_PAUSE_MS`, damit der Ausschlag auf den Anzeigen ueberhaupt
+  sichtbar wird), und beim RBMK bis zu fuenfzehn, weil `deferEnd()` den
+  Nachlauf abwartet -- der Ton kam also, wenn alles vorbei war. Er faellt
+  weiterhin genau einmal je Lauf.
+
+- ✨ **Die Explosion bekommt einen eigenen Klang.** Eine eigene Stelle
+  (`Horn.explosion()`, `EXPLOSION_CLIP`), ein eigener Ausloeser: der
+  abhebende obere Schild beim RBMK (`s.aftermath.lid`, nicht schon
+  `done` -- ein haltender Deckel ist keine Explosion) und die
+  Wasserstoffexplosion beim SWR (`s.h2Exploded`, die auch in einem Lauf
+  kommen kann, den der Spieler danach noch haelt). Bis der eigene Clip
+  vorliegt, spielt sie denselben wie die Kernzerstoerung; dann wird genau
+  `EXPLOSION_CLIP` umgesetzt und sonst nichts.
+
+- 🔧 **Der Zweitbildschirm bekam vom Nachlauf gar nichts mit.**
+  `s.aftermath` haengt als Objekt am Zustand und fiel deshalb durch
+  `packState()`. Auf dem Monitor hob der obere Schild damit nie ab -- weder
+  im Fliessbild (`data-aftermath`) noch als Klang. Das Feld kommt jetzt im
+  Bild mit; es ist klein und aendert sich genau zweimal je Lauf. Damit hupt
+  der zweite Schirm nicht nur beim Alarm, sondern meldet auch das Ende.
+
+## 0.6.16
+
+- ✨ **Jede Stablinie im Fliessbild sagt jetzt, wer sie ist und aus welcher
+  Richtung sie kommt.** Bisher griff dort die Hover-Gruppe des Kerns, und die
+  sagt nur „Kanaele" -- ausgerechnet die eine Linie, die von unten kommt,
+  blieb unerklaert. Neu je Linie: „Regelgruppe — von oben",
+  „Verkuerzte Gruppe — von unten", und beim SWR beide von unten. Gilt fuer
+  alle drei Fliessbilder.
+
+- 📝 **Eine Aussage zu den verkuerzten RBMK-Staeben war zu stark
+  formuliert.** Im Quelltext stand, die USP koennten den positiven
+  Schnellabschalteffekt „gar nicht ausloesen". Belegt ist davon die eine
+  Haelfte: der dokumentierte Mechanismus sitzt am KERNBODEN (1,25 m
+  Wassersaeule, vom Graphitverdraenger herausgeschoben), und ein von unten
+  kommender Stab faehrt dort in die andere Richtung. Ob die USP oben einen
+  Verdraenger tragen -- und damit einen spiegelbildlichen Effekt haetten --,
+  war nicht zu belegen; die WNA nimmt von den Verdraengern nur die 12
+  AR-Staebe aus. `_tipReactivity` ueberspringt die Gruppe also als Annahme,
+  nicht als Befund. Gerechnet wird unveraendert; nur Kommentar und BACKLOG
+  sagen jetzt, was Quelle ist und was Setzung.
+
+  Die Anzahl selbst bleibt Anlagentechnik und ist belegt: 24 der 211 Staebe
+  fahren von unten ein (INSAG-7, Abschnitt 2.2).
+
+## 0.6.15
+
+- 🔧 **Der Zweitbildschirm blieb im Startbanner haengen.** `/monitor` zeigte
+  dauerhaft nur das Titelbild. Das Banner (`#rs-splash`) liegt per z-index
+  ueber allem und wartet auf die erste Nutzergeste, weil danach Musik laufen
+  darf -- ausgeblendet hat es bisher nur `initStart()` in `main.js`, und die
+  laeuft auf dem Monitor nie. Es faellt dort jetzt sofort weg, ohne Ton und
+  ohne Klick; Reaktorauswahl und Reaktorseite mit dazu, deren Knoepfe auf
+  diesem Schirm ohnehin tot waren.
+
+  Bis zum ersten Bild steht jetzt nur noch die Statuszeile mittig auf der
+  Flaeche. Leere Kacheln mit Zeigern am Anschlag sahen aus wie eine tote
+  Anlage, waren aber nur eine, die noch nicht angekommen war.
+
+  Mit Test, der auch den naechsten Fall dieser Art faengt: jeder Block, der
+  in `index.html` ohne `hidden` steht, muss in `monitor.js` eine Behandlung
+  haben (`tests/test_dockerfile.py`). Gegengeprobt -- ohne die Zeile im
+  Monitor schlaegt er fehl.
+
+- 🔧 **Die verkuerzten RBMK-Staebe wurden von der falschen Seite
+  gezeichnet.** Die 24 USP-Staebe fahren als einzige von UNTEN in den Kern
+  ein (die uebrigen 187 von oben, siehe `rodBanks` in `plants/rbmk.js`). Ihr
+  Balken fuellte sich trotzdem von oben -- bei 43 % Einfahrtiefe zeigte er
+  eine Absorberlage im oberen Kernbereich, wo gar keine ist. Der Zusatz „von
+  unten" in der Beschriftung widersprach damit dem Bild direkt darueber.
+  `bar()` kennt jetzt `fromBelow`, und die Richtung kommt aus der
+  Anlagendatei statt aus einer Sonderregel in der Oberflaeche. Der
+  angezeigte Prozentwert bleibt die Einfahrtiefe und wird NICHT gespiegelt:
+  sonst stuende dort „57 %", eine Zahl, die es in der Anlage nicht gibt.
+
+- 🔧 **Ein Balken mit langer Beschriftung schob den Balken daneben aus der
+  Flucht.** Die Stabstellungen standen unten buendig (`align-items:
+  flex-end`), also hob eine dreizeilige Beschriftung die Schiene darueber
+  an -- zwei Balken, die man vergleichen soll, standen auf zwei
+  verschiedenen Nulllinien, und im Uebersichtsfenster (Taste O) lief die
+  Karte ausserdem ueber ihren Rand. Jetzt teilen sich alle Balken ihre drei
+  Zeilen (`subgrid`), und ohne subgrid-Unterstuetzung bleiben die Schienen
+  wenigstens buendig. Die Beschriftung selbst ist wieder kurz („Verkuerzte
+  Gruppe"); die Erklaerung steht im Titel, wo sie Platz hat -- samt der
+  Zahlen 24 und 187 und dem Grund, warum ausgerechnet diese Gruppe den
+  positiven Schnellabschalteffekt nicht ausloesen kann.
+
+## 0.6.14
+
+- ✨ **Zweitbildschirm: `/monitor` zeigt den laufenden Leitstand mit, auf
+  jedem Geraet mit derselben Anmeldung.** Zweiter Monitor am Rechner,
+  Tablet daneben, Fernseher im Nebenraum -- die Seite zeigt Statuszeile,
+  alle acht Reiter, Fliessbild, Trendkurven, Meldetafel und die
+  Instrumentenuebersicht auf Taste O. Sie bedient nichts: es gibt keinen
+  Rueckweg vom Monitor zur Anlage, und alle Stellteile stehen gesperrt
+  (`setControlsLocked()`, derselbe Vorfuehrmodus wie in der
+  Chernobyl-Uebung). Der Link steht in der Fusszeile des Startbildschirms.
+
+  Warum das nicht "der Monitor rechnet mit" heisst: die Simulation laeuft
+  vollstaendig im Browser (`loop.js`). Zwei Engines mit zwei Bildraten
+  laufen auseinander -- genau das schliesst `verify_run.mjs` sonst aus. Der
+  Leitstand schickt deshalb zweimal je Sekunde ein Bild an den Server
+  (`/api/monitor`), der Monitor holt es ab. Der Server haelt genau EIN Bild
+  je Konto, nur im Arbeitsspeicher: ein Monitorbild ist in einer halben
+  Sekunde veraltet, es zu speichern hiesse zweimal je Sekunde zu schreiben,
+  um etwas aufzubewahren, das nie wieder jemand sehen will.
+
+  Auf dem Monitor entsteht eine ECHTE Engine des richtigen Typs -- sie wird
+  nur nie getreten. Statt `engine.step()` schreibt `applyFrame()` den
+  ankommenden Zustand hinein, und `buildPanels()` laeuft unveraendert
+  darueber. Deshalb steht kein einziges Instrument zweimal im Quelltext,
+  und `/monitor` liefert dieselbe Vorlage wie `/` -- nur mit einem anderen
+  Einstiegsmodul. Neu herausgeloest, damit beide Seiten sie teilen:
+  `ui/statusBar.js` (waehlbare Kopfzeile) und `ui/instruments.js`
+  (Uebersicht auf Taste O).
+
+  Im Bild steckt derselbe Zustand wie in einem Spielstand (`packState()`,
+  `packComponents()` aus `net/persist.js`), aber nicht die Trendhistorie,
+  nicht das Lernprotokoll, nicht der Zufallszahlenstand. Schon nach vierzig
+  Minuten Betrieb ist allein der Trendblock eines Spielstands groesser als
+  das ganze Monitorbild, und er waechst bis zu acht Stunden weiter -- die
+  Kurve baut sich der Monitor deshalb aus den ankommenden Bildern selbst.
+  Gemessen liegt ein Bild bei 4-8 kB; steht es still, schickt der Server
+  auf `?seq=` nur das Alter zurueck und keine Nutzlast.
+
+  Abgeholt statt Dauerverbindung, mit Grund: der Server laeuft unter
+  waitress mit 24 Arbeitsfaeden. Ein Server-Sent-Events-Strom belegt je
+  Zuschauer dauerhaft einen davon -- drei Geraete fraessen ein Achtel des
+  Servers, waehrend sie nichts tun als warten.
+
+  Eine Groesse wird mitgeschickt statt drueben nachgerechnet: die
+  Reaktivitaet. `engine.step()` bildet sie VOR der Vergiftung, `derive()`
+  liest sie DANACH -- wer sie aus dem fertigen Zustand neu bildet, bekommt
+  einen Wert, den der Leitstand so nie angezeigt hat (gemessen rund 4e-6
+  daneben). Ein Monitor, der etwas anderes zeigt als der Schirm daneben,
+  ist schlimmer als keiner.
+
+- ✨ **Der Monitor sagt immer, wie alt sein Bild ist -- und warum.** Ein
+  stehendes Instrument sieht aus wie eine ruhige Anlage, und das ist der
+  gefaehrlichste Irrtum, den eine Fernanzeige haben kann. Ueber der
+  Statuszeile steht deshalb dauerhaft eine Zeile mit dem Alter des letzten
+  Bildes; ab drei Sekunden wird der ganze Leitstand grau, ab zehn Sekunden
+  meldet er "keine Verbindung" und wird schwarzweiss. Gegraut wird die
+  ganze Flaeche, nicht nur die Zeile: eine einzelne Warnung ueber lebendig
+  aussehenden Zeigern wird uebersehen.
+
+  Und weil der Browser einem Reiter im Hintergrund keine Bilder mehr gibt,
+  rechnet ein minimierter Leitstand auch nicht weiter -- sein Bild altert
+  dann genau wie bei abgerissenem Netz. Der Sender meldet den
+  Sichtbarkeitswechsel deshalb eigens, und beim Schliessen des Reiters geht
+  per `sendBeacon` noch ein Abschiedsbild raus. Der Monitor nennt daraufhin
+  den Grund -- Fenster im Hintergrund, Schicht beendet, Leitstand
+  geschlossen, angehalten -- statt "keine Verbindung" zu raten. Die
+  Reihenfolge dieser Faelle steht als eigene, reine Funktion in
+  `net/monitorStatus.js` und hat ihren eigenen Test: ein genannter Grund
+  schlaegt jedes Alter, nur "angehalten" nicht, denn ein pausierter
+  Leitstand sendet weiter.
+
+  Das Alter kommt vom Server, nicht aus einem Vergleich zweier Uhren --
+  Leitstand und Monitor stehen oft auf verschiedenen Geraeten, und eine
+  falsch gehende Tablet-Uhr wuerde sonst ein frisches Bild als tot melden
+  oder ein totes als frisch.
+
+## 0.6.13
+
+- ✨ **Debug-Modus: die ganze Schicht wird mitgeschrieben und am Ende
+  heruntergeladen.** Kaestchen in der Fusszeile des Startbildschirms,
+  Standard aus, gilt ab der naechsten Runde. Am Ende jeder Schicht --
+  Debrief, Verlustbildschirm oder Abbruch ins Menue -- entsteht genau eine
+  Datei `reactorsim-<szenario>-<zeit>.ndjson.gz`. Eine Zeile je Datensatz,
+  kein Einruecken, kein CSV: lesbar muss sie nicht sein, durchsuchbar
+  (`zcat … | grep '\"k\":\"event\"'`) schon.
+
+  Warum so wenig neue Mechanik noetig war: der Lauf ist laengst
+  reproduzierbar. `game/recorder.js` schreibt jede Bedienhandlung mit
+  Schrittzahl mit, `game/replay.js` rechnet daraus denselben Lauf unter Node
+  bitgleich nach. Das Protokoll sammelt deshalb zweierlei -- was zum
+  Nachrechnen fehlt (Kopfdaten, Spur, Zustandsabzug) und was beim
+  Nachrechnen NICHT herauskommt: Bildrate, verworfener Rueckstand,
+  Zeitrafferwechsel. Genau diese letzte Gruppe unterscheidet den Satz "bei
+  mir explodiert es, bei dir nicht" von einem Ratespiel.
+
+  Drin sind: Kopf (Version, Typ, Szenario, Seed, Zeitschritt, Browser,
+  Aufloesung), Spaltennamen zu den Zahlenreihen, die volle Zahlenliste des
+  Zustands je Simulationssekunde -- und je SCHRITT, sobald AZ-5/RESA steht
+  oder der Kern zerstoert ist, weil sich dort alles in Sekunden
+  entscheidet --, der Zustandshash alle zehn Sekunden, jeder Eintrag aus
+  Zeitleiste und Lernprotokoll, die Bildraten je Realsekunde, die Spur des
+  Recorders, der Trend-Schnappschuss, der Zustandsabzug und der Befund.
+  Gemessen an einem vollen Chernobyl-Lauf: 7.213 Zeilen, 2,1 MB roh,
+  560 KB gepackt.
+
+  Die Hashkette ist der eigentliche Hebel: sie macht aus "die Nachrechnung
+  sieht anders aus" ein "sie laeuft ab Schritt N auseinander".
+
+  Grenzen, die im Protokoll selbst stehen: bei einem FORTGESETZTEN Stand
+  verwirft `boot()` den Recorder (ein Sprung auf einen gespeicherten Zustand
+  ist aus Schritten plus Spur nicht nachrechenbar) -- `meta.resumed` sagt
+  es, das Protokoll ist dann beobachtend statt reproduzierend. Und bei sehr
+  langen Runden bricht die Aufzeichnung bei 400.000 Zeilen ab, mit Vermerk
+  im Kopf statt stillschweigend.
+
+- 🔧 **`sim/state.js` hat jetzt `numberLabels()` neben `numbers()`.**
+  Ohne die Spaltennamen waere jede Zahlenreihe im Protokoll nur mit dem
+  Quelltext daneben zu lesen. Beide bauen aus denselben Listen, ein Test
+  vergleicht trotzdem ihre Laenge fuer alle drei Reaktortypen -- genau hier
+  koennte eine Aenderung an einer Stelle still danebengehen.
+
+- 🔧 **Gefunden beim Testen des neuen Pfads:** im freien Spiel gibt
+  es gar keine Szenariodatei, und der Protokollkopf griff ungeprueft darauf
+  zu. Der Debug-Modus waere ausgerechnet dort gestorben, wo er am
+  haeufigsten gebraucht wird. Die Lebenszyklus-Tests decken den Fall jetzt
+  ab.
+
+## 0.6.12
+
+- 🔧 **Die Haltezeit im Uebungsstatus steht wieder in ganzen
+  Sekunden.** Nicht jeder Schritt hat eine runde Haltezeit: 'recover' und
+  'hold' der Chernobyl-Uebung zielen auf eine UHRZEIT und rechnen ihre Dauer
+  in jedem Takt neu aus (`chernobylTutorial.js: holdSeconds`). Roh angezeigt
+  stand da "0/2289,9500000034 s". Gerechnet wird weiter mit dem vollen Wert,
+  gerundet wird nur die Anzeige -- und aufgerundet, damit sie nicht fertig
+  ist, bevor der Schritt es ist. Mit eigenem Test
+  (`tests/test-tutorial-ui.mjs`), der ohne die Rundung auch wirklich
+  fehlschlaegt.
+
+- 🔧 **Die Tastenkuerzel des Leitstands wirken nur noch im
+  Leitstand.** Nach dem Ende einer Schicht oeffneten M, O, V und die
+  uebrigen Panel-Tasten weiter ihre Fenster, obwohl der Spieler laengst
+  wieder auf der Reaktorseite oder in der Uebersicht stand -- Fenster zu
+  einer Runde, die es nicht mehr gibt. Dieselbe Luecke traf Leertaste,
+  Zeitraffer-Ziffern, Stabfahrt und Quittieren. Der Tastaturhaken prueft
+  jetzt zuerst, ob `#rs-app` ueberhaupt sichtbar ist.
+
+## 0.6.11
+
+- ✨ **Die Chernobyl-Uebung zeigt endlich die dokumentierte
+  Abschaltreserve von 6 bis 8 Stabaequivalenten** (gemessen 7,4) statt der
+  bisherigen 0,0. Der Grund fuer die alte Null war weder eine Skalenfrage
+  noch eine falsche Kurve, sondern das Stabmodell: mit EINER Stellung fuer
+  alle 211 Staebe laesst sich der Zustand der Nacht nicht abbilden. Die 6-8
+  kamen nicht daher, dass alle Staebe ein Stueck im Kern standen, sondern
+  daher, dass die grosse Mehrheit ganz oben stand und eine kleine Gruppe
+  drin blieb.
+
+  Diese Gruppe gibt es jetzt, und sie ist keine Erfindung: der RBMK-1000 hat
+  24 verkuerzte Absorberstaebe (USP), die von UNTEN einfahren. Ihnen fehlt
+  der Graphitverdraenger am Kernboden, sie koennen den positiven
+  Schnellabschalteffekt also gar nicht ausloesen -- `rbmk.js:
+  _tipReactivity` ueberspringt sie deshalb, und im Fliessbild stehen sie
+  sichtbar andersherum. Bei gleicher Stellung aller drei Gruppen ist die
+  Rechnung dieselbe wie vorher (Wirksamkeiten 5600 pcm, Stabzahl 211);
+  nachgemessen weichen die physikalischen Skalare ueber 1200 Schritte erst
+  in der fuenfzehnten Stelle ab, also in der Rundung.
+
+- ✨ **Die Exkursion ist prompt-ueberkritisch mit Abstand statt auf der
+  Kante.** Vorher lag die Spitze bei 295 % der Nennleistung und die
+  Reaktivitaet bei 494 pcm gegen beta = 480 -- die Zerstoerung hing an
+  vierzehn pcm. Jetzt sind es rund 1090 % und 850 pcm, also etwa 1,8 beta.
+  Die Stellschraube ist die Gesamtwirksamkeit der Graphitverdraenger
+  (`tip.worth_pcm_total`, 1150 statt 2 x 320) -- eine Kalibrierung, wie sie
+  es immer war, nur an einer anderen Groesse: zwischen 1050 und 1400 pcm
+  zerstoert AZ-5 den Kern durchgehend
+  (`tests/tools/chernobyl_tip_sweep.mjs`).
+
+  Der Preis steht im Audit: die Zerstoerung faellt jetzt auf 01:23:42 statt
+  01:23:45, dokumentiert sind 01:23:44 bis 01:23:47. Eine staerkere
+  Exkursion ist zwangslaeufig auch eine schnellere. Und der Druckzeitpunkt
+  innerhalb des Auslaufs entscheidet nicht mehr: neu vermessen zerstoert
+  AZ-5 von der ersten bis mindestens zur 110. Sekunde. Das frueher
+  dokumentierte schmale Fenster war eine Eigenschaft der Kante bei beta,
+  kein eigenstaendiger Befund -- was bleibt, ist die belegbare Aussage:
+  dieselbe Anlage ueberlebt AZ-5 muehelos, solange die Staebe auf
+  Haltestellung stehen.
+
+- ✨ **Der abgeschaltete Reaktorschutz ist modelliert, nicht erzaehlt.**
+  Neu sind die Ausloesung beim Schnellschluss beider Turbosaetze
+  (`trip_rbmk_tg_stop`) und der Anlagenzustand daneben
+  (`alarm_rbmk_tg_stop_blocked`). Die Uebung schaltet sie beim Auslaufbeginn
+  ab, mit Eintrag in der Zeitleiste. Bis 0.6.10 kannte das Modell das Signal
+  gar nicht -- die Uebung stellte etwas nach, dessen Abschaltung sie nicht
+  zeigen konnte.
+
+- ✨ **Der ORM-Ausdruck um 01:22:30 steht in der Zeitleiste.** Rund eine
+  Minute vor dem Versuch holte die Mannschaft einen Ausdruck des
+  Prozessrechners: die Abschaltreserve lag weit unter dem Minimum von 15
+  Staeben, das Reglement verlangte die sofortige Abschaltung, der Versuch
+  lief weiter. Die wichtigste Nicht-Handlung der Nacht fehlte bis dahin
+  ganz. Eigener Schritthinweis und Beobachtungstempo dazu; der Hinweis
+  stellt die dokumentierten 6-8 neben die Anzeige dieses Modells, statt eine
+  der beiden Zahlen zu verschweigen.
+
+- 🔧 **Die Uebung wird jetzt durch den ECHTEN Simulationstakt
+  geprueft** (`tests/test-chernobyl-apploop.mjs`). Alle bisherigen Tests
+  dieser Uebung riefen `engine.step`/`session.step` selbst auf -- dieselbe
+  Reihenfolge wie in main.js, aber ein Nachbau. Der Weg, den ein Spieler
+  nimmt (`loop.js` mit Bildtakt, Zeitraffer-Umschaltungen der Uebung und
+  verworfenem Rueckstand bei zu langsamen Bildern), war nicht abgedeckt. Er
+  laeuft jetzt bei 60, 20 und 5 Bildern je Sekunde mit, einschliesslich des
+  Falls mit verworfenem Rueckstand.
+
+- 🔧 **`tests/tools/chernobyl_press_window.mjs` war seit 0.6.4
+  unbrauchbar.** Sein Laufbudget von 2500 s endete, bevor der Auslauf
+  ueberhaupt begann -- der beginnt seit dem Wegfall des Uhrensprungs erst
+  nach rund 3360 s. Jeder Lauf meldete folgerichtig "nicht zerstoert".
+  Budget auf 4200 s angehoben.
+
+- 🔧 **Staende von vor 0.6.11 laden unveraendert weiter.** Ein alter
+  RBMK-Stand kennt zwei Stabgruppen; die dritte wurde aus der
+  Abschaltgruppe herausgeloest und uebernimmt deren Stellung, womit
+  Gesamtwirksamkeit, Stabzahl und Abschaltreserve gleich bleiben
+  (`net/persist.js`, mit eigenem Test). Ohne diesen Zweig waeren die Staebe
+  nach dem Laden stumm auf ihrem Anfangswert stehengeblieben.
+
+## 0.6.10
+
+- ✨ **Die Hintergrundfotos sind wieder zu erkennen.** Splash, Uebersicht
+  und die drei Reaktorseiten legten einen Schleier von 66 bis 93 % Schwarz
+  ueber Fotos, die selbst schon Nachtaufnahmen sind -- uebrig blieb eine
+  fast schwarze Flaeche. Den Schleier allein zu lichten reicht nicht, dann
+  wandert die Schrift ins Motiv. Stattdessen liegt das Foto jetzt in einer
+  eigenen Ebene (`base.css`: `.rs-splash/.rs-start/.rs-reactor::before`) und
+  wird dort mit `filter: brightness(1.75) saturate(1.12)` aufgehellt; der
+  Schleier sitzt ungefiltert darueber (`::after`) und faellt auf 45-75 %
+  (Splash 60-80 %, weil dort Schrift ohne Karte direkt auf dem Foto steht).
+  Unter dem Strich kommt vom Motiv oben rund das Dreifache, unten rund das
+  Sechsfache an.
+
+  Der Filter gehoert auf das Pseudoelement, nicht auf den Container -- dort
+  wuerde er Karten, Schrift und Knoepfe mit aufhellen. Beide Ebenen sind
+  `position: fixed` und nicht `absolute`, weil Uebersicht und Reaktorseite
+  scrollen (`overflow-y: auto`) und eine absolute Ebene mit `inset: 0` nur
+  die Hoehe des Padding-Bereichs bekaeme. Die Inhalte (`*-inner`) stehen mit
+  `z-index: 1` darueber, die Ebenen mit `pointer-events: none` fangen keine
+  Klicks ab. Die Bildpfade bleiben fest in der CSS-Datei verdrahtet, aus
+  demselben CSP-Grund wie vorher.
+
+## 0.6.9
+
+- ✨ **Der Druckwasserreaktor bekommt einen Leistungsbegrenzer.** Weil dieser
+  Typ turbinengeführt fährt, holte sich das Regelventil bei warmem Kühlwasser
+  einfach mehr Dampf: im Sommer (0.6.7) stand der Kern bei 101,9 % der
+  thermischen Nennleistung und lieferte unverändert volle Klemmenleistung. Der
+  Sommer kostete dort also nicht Leistung, sondern Kernreserve — lautlos, denn
+  die Leistungsauslösung greift erst bei 112 %. Neu nimmt ein Begrenzer der
+  Anforderung so viel weg, dass der Kern bei 101 % bleibt
+  (`plants/pwr.js: _limitedDemand`). Damit kostet der Sommer auch hier
+  Megawatt, rund 11 an der Klemme — dasselbe, was er SWR und RBMK schon immer
+  kostete, nur weniger, weil der Kern das erste Prozent abfängt.
+
+  Die Schwelle liegt mit Bedacht bei 101 % und nicht bei 100 %: bei der
+  Auslegungstemperatur von 15 °C steht die Anlage bei voller Klemmenleistung
+  auf 100,02 % der thermischen Nennleistung, die beiden Nennwerte sind genau
+  aufeinander abgestimmt. Eine Schwelle bei 100 % griffe damit im
+  Auslegungspunkt selbst, also in JEDEM Szenario. Auslegungspunkt, Winter,
+  Frühjahr und Herbst bleiben unberührt.
+
+- 🔧 **Zwei verworfene Entwürfe, beide im Kommentar festgehalten.** Rein
+  proportional (Beiwert 3) pendelte: die Strecke vom Regelventil über den
+  Dampferzeuger in die thermische Leistung hat mehrere hundert Sekunden
+  Totzeit, und daraus wurde ein Grenzzyklus von 22 MW mit etwa 2000 s Periode
+  — dieselbe Falle, in die der erste Entwurf des Turbinenreglers schon einmal
+  gelaufen ist. Ein Integrator ohne Obergrenze regelte sauber, zog sich aber
+  bei einem gewöhnlichen Lastwechsel im Auslegungspunkt (60 auf 100 %) auf
+  99 MW hoch und verbog danach minutenlang jede Rampe. Geblieben ist der
+  Integrator mit einer Obergrenze von 2 % der Nennleistung — 28 MW, weniger
+  als das Toleranzband der Lastfolgebewertung, und der stationäre Bedarf des
+  wärmsten Sommers sind 11,4 MW.
+
+- 📖 **Hilfetexte für den Netzauftrag, je Reaktortyp.** Der Auftrag stand
+  seit 0.6.8 im Netz-Panel, aber WAS zu tun ist, stand nirgends — und es ist
+  je Typ etwas anderes. Die Überschrift „Netzleitstelle" ist jetzt ein Knopf
+  und öffnet dasselbe Hilfefenster wie ein Rundinstrument: erst die Mechanik
+  des Auftrags (Ablauf, Band, Nachfrist, RESA-Ausnahme), dann der Teil, auf den
+  von allein niemand kommt. Beim SWR etwa genügt der „Umwälzstrom" NICHT,
+  solange die „Stabregelung" auf Automatik die Moderatortemperatur hält und
+  jede Leistungsänderung wieder aufhebt — gefahren wird dort über die
+  „Steuerstäbe" von Hand. Beim RBMK reicht der Sollwert des
+  „Leistungsreglers", beim DWR ist nichts zu tun.
+
+- 🔧 **Rundinstrumente können einen typeigenen Hilfetext-Zusatz bekommen.**
+  `showGaugeHelp()` nimmt jetzt mehrere Schlüssel und hängt an, was es gibt;
+  jede Kachel sucht zusätzlich `<key>_<reaktortyp>`. Das löst ein Problem, das
+  ein gemeinsamer Text nicht lösen kann: dieselbe Kachel bedeutet je Typ etwas
+  anderes. Erster Nutzer ist `gauge_power_th_help_pwr` — der Leistungsbegrenzer
+  gilt nur für den turbinengeführten Druckwasserreaktor, stünde im gemeinsamen
+  Text aber bei allen drei.
+
+## 0.6.8
+
+- ✨ **Die Netzleitstelle gibt Aufträge.** Die Tageslastkurve seit 0.6.6 ist
+  ein Fahrplan, den niemand ausspricht: man fährt hinterher und erfährt nur im
+  Schichtbericht, ob das gut war. Neu kommt alle 40 bis 120 Minuten eine
+  Zusage mit Frist — „auf 600 MW bis 14:20, dann 30 Minuten halten" — in fünf
+  Phasen: angekündigt (3 bis 7 Minuten Vorlauf zum Vorbereiten), Rampe,
+  Haltefenster, Rückfahrt auf den Fahrplan, erledigt (`game/dispatch.js`).
+  Eigenes Auswahlfeld im Startdialog, *aus* / *selten* / *normal*, bewusst
+  NICHT an die Störungsstufe gekoppelt: eine ruhige Schicht mit Aufträgen und
+  eine wilde ohne sind beide sinnvoll.
+
+  Der Auftrag ist **kein zweiter Sollwertgeber**, der gegen die Kurve antritt.
+  Eine Netzleitstelle kämpft nicht gegen einen Fahrplan, sie IST die Quelle des
+  Sollwerts. Es bleibt deshalb bei einem Schreiber auf `s.P_demand`, der seine
+  Vorgabe entweder aus der Kurve oder aus dem Auftrag nimmt; beides durchläuft
+  dieselbe Rampengrenze, an keinem Übergang springt etwas. Während eines
+  Auftrags entfällt das Lastrauschen — ein Leitstellen-Sollwert ist sauber.
+  Die Rückfahrt gehört zum Auftrag, nicht der Kurve: sonst bekäme der Spieler
+  eine Rampe aufgeladen, die er nicht verursacht hat und die über
+  `RunState.accumulate()` voll in seinen Lastfolgefehler einginge.
+
+  Bewertet wird nicht, ob der Sollwert bekannt ist, sondern ob die Anlage ihn
+  halten konnte. Die Haltezeit läuft im Band von 3 % der Nennleistung und
+  fällt bei einer Verletzung auf null — dieselbe Regel wie bei den
+  Szenariozielen in `objectives.js` —, gefordert ist die ungebrochene Zeit, das
+  Fenster hat 25 % Nachfrist. Erfüllt und gescheitert zählt der Schichtbericht
+  mit (eigener Protokollschlüssel, damit eine Runde ohne Aufträge nicht in
+  jeder Schicht „0/0" lesen muss). Der laufende Auftrag steht im Netz-Panel,
+  neben Klemmenleistung, Anforderung und Abweichung — also den drei Zahlen,
+  gegen die er gelesen wird.
+
+- 🔒 **Ein Auftrag muss fahrbar sein.** Sonst ist er kein Schwierigkeitsgrad,
+  sondern kaputt. Er liegt deshalb zwischen 40 und 92 % der Nennleistung (die
+  Obergrenze lässt Luft für warmes Kühlwasser, siehe 0.6.7), ist mindestens
+  8 % von der aktuellen Anforderung entfernt und rampt mit 3 % der
+  Nennleistung je Minute. Letzteres kam aus einer Messung: die bestehende
+  Rampengrenze der Anforderung erlaubt 0,2 % je SEKUNDE, beim DWR also
+  168 MW/min — drei- bis viermal schneller, als eine Anlage folgen kann. Bei
+  der Tageskurve fällt das nicht auf, die ist ohnehin langsam; ein Auftrag, der
+  die Grenze ausschöpfte, wäre unfahrbar gewesen. Nichts kommt vor Ablauf
+  einer Einfahrzeit, bei abgeschaltetem Reaktor oder offenem Netzschalter, und
+  eine Schnellabschaltung ZIEHT einen laufenden Auftrag ZURÜCK statt ihn als
+  gescheitert zu zählen — dieselbe Ausnahme, die `grid_deviation` in
+  `checkFail()` schon macht. Ein Test fährt alle drei Typen mit echter Physik
+  und verlangt, dass der erste Auftrag erfüllt wird.
+
+- 📋 **Was der Auftrag abverlangt, hängt am Regelkonzept.** Beim DWR erfüllt
+  ihn die Anlage ohne jeden Eingriff: das Regelventil holt sich den Dampf, der
+  Kern zieht nach. Dem DWR-Spieler verlangt ein Auftrag damit nichts ab — die
+  Kehrseite derselben Eigenschaft, die ihn in 0.6.7 den Sommer mit Kernleistung
+  statt mit Megawatt bezahlen liess. SWR und RBMK halten ihre Leistung und
+  folgen keiner Anforderung von allein: dort ist der Auftrag echte Arbeit, über
+  den Leistungsregler beim RBMK und über die Stäbe von Hand beim SWR. Beim SWR
+  genügt der Umwälzstrom allein nicht, solange die Stabregelung auf Automatik
+  die Moderatortemperatur hält und die Wirkung wieder aufhebt.
+
+## 0.6.7
+
+- ✨ **Das freie Spiel legt Rechenschaft ab.** Eine Runde ohne Szenario bekam
+  bisher gar keine `RunState` — gerechnet wurde dieselbe Physik wie im
+  Szenario, nur sammelte sie niemand, und am Ende einer durchgefahrenen Nacht
+  stand nirgends, ob sie gut war. Neu läuft die Kennzahlensammlung auch ohne
+  Szenario (`game/scenario.js`: `RunState` nimmt jetzt `null` und liest die
+  Anforderung aus dem Zustand statt aus der Bedarfskurve), und alle acht
+  Stunden Simulationszeit — bei 60× alle acht Minuten — legt sie eine Bilanz
+  ins Protokoll: gelieferte Energie, Lastfolgefehler außerhalb eines
+  Toleranzbands von 50 MW, Alarmminuten, Schnellabschaltungen
+  (`game/shift.js`). Gemeldet wird der **Zuwachs** dieser Schicht, nicht die
+  Summe seit Rundenbeginn: eine Summe wird mit jeder Schicht träger und sagt
+  irgendwann nur noch, wie lange gespielt wurde. Der Bericht ist eine
+  Protokollzeile und kein Dialog — ein Kasten, der alle acht Minuten die
+  Anlage verdeckt, wäre nach der dritten Schicht ein Gegner. Er übersteht
+  Speichern und Laden mitsamt seiner Bezugslinie und zählt danach die
+  vorherige Schicht nicht noch einmal mit. Gewertet wird weiterhin nichts:
+  eine Runde ohne vorgesehenes Ende hat kein Ergebnis.
+
+- ✨ **Und es hat jetzt eine Jahreszeit.** Die Kühlwassertemperatur war in
+  allen drei Anlagendateien dieselbe Konstante (15 °C) und damit die einzige
+  Randbedingung des Kraftwerks, die sich nie änderte. Sie wandert in den
+  Zustand (`s.T_cw`, `sim/state.js`) und ist vor dem Start wählbar: Frühjahr
+  12 °C, Sommer 26 °C, Herbst 18 °C, Winter 4 °C (`game/season.js`). Der Weg
+  ist immer derselbe — Kühlwasser, Grädigkeit des Kondensators,
+  Turbinengegendruck, nutzbares Enthalpiegefälle, elektrische Leistung —, aber
+  wo er herauskommt, hängt am Regelkonzept: SWR und RBMK halten ihre
+  Reaktorleistung, dort fehlen im Sommer rund 3 % der Nennleistung und die
+  Abendspitze der Tageskurve ist nicht mehr zu decken. Der DWR fährt
+  turbinengeführt, hält die Klemmenleistung und holt sich den fehlenden Dampf
+  aus dem Kern: dort kostet der Sommer stattdessen etwa 2 % mehr thermische
+  Leistung, 25 K Brennstofftemperatur und ein Stück DNBR-Reserve. Ein
+  Begrenzer auf die thermische Leistung ist beim DWR nicht modelliert. Dass
+  der Herbst wärmer ist als das Frühjahr, ist die Wärmekapazität des Wassers,
+  kein Tippfehler. Die neue Statuskachel „Kühlwasser" zeigt den Wert;
+  Szenarien bleiben beim Auslegungspunkt von 15 °C, auf den ihr Zeitplan und
+  ihre Wertung abgestimmt sind, und ein Spielstand von vor 0.6.7 lädt
+  unverändert auf diesen Punkt.
+
+## 0.6.6
+
+- ✨ **Das freie Spiel hat jetzt einen Tag.** Die Netzanforderung folgte
+  bisher einem Zufallsspaziergang: alle 5–15 Minuten ein neues Ziel, aus dem
+  Nichts gezogen. Der war nie in Ruhe, aber auch nie vorhersehbar — kein
+  Punkt des Tages sagte etwas über den nächsten, und ohne Planung bleibt vom
+  Lastfolgen nur Hinterherfahren. Neu führt eine Tageslastkurve mit Nachttal
+  bei 55 %, Morgenrampe, Mittagsplateau und Abendspitze bei 100 %
+  (`session.js: freeDemandFrac`). Die Schicht beginnt um 22:00 Uhr, und die
+  Statuskachel „Uhrzeit" zeigt sie an — das freie Spiel war bisher die einzige
+  Betriebsart ohne Uhr. Damit wird die Xenonvergiftung zu einem Gegner, den
+  man kommen sieht: wer nachts weit heruntergefahren ist, fährt die
+  Morgenrampe gegen das aufgebaute Xenon. Bei 60× dauert ein ganzer Tag 24
+  Minuten. Die Kurve ist eine plausible Form, keine nachgerechnete
+  Lastprognose.
+
+- ✨ **Und Zufallsstörungen, in vier Stufen.** Die Störungsbibliothek gibt es
+  seit langem, aber nur Szenarien haben sie je aufgerufen: im freien Spiel
+  lief `stepEvents()` jeden Takt über einen leeren Satz Merker. Es war damit
+  die einzige Betriebsart, in der nie etwas ausfiel. Neu wählst du vor dem
+  Start *aus*, *selten* (angekündigt, nur milde Störungen, alle 45–90 Minuten),
+  *normal* (20–40 Minuten) oder *hart* (10–20 Minuten, dazu Erdbeben und
+  Notstromfall). Gezogen wird aus derselben Bibliothek wie im Szenario; neu
+  ist nur, dass der Zeitplan aus einem gesäten Würfel kommt statt aus einer
+  JSON-Datei (`game/freeEvents.js`). Die Auswahl prüft jedes Mal, ob die
+  Störung im aktuellen Zustand überhaupt etwas bewirkt — eine schon
+  geschlossene Frischdampfabsperrung schließt nicht noch einmal, und die
+  letzte laufende Hauptkühlmittelpumpe fällt nicht aus. Nichts kommt vor
+  Ablauf der Einfahrzeit von 10–30 Minuten, nichts bei stehendem oder
+  abgeschaltetem Reaktor, und was während eines Stillstands fällig gewesen
+  wäre, verfällt, statt sich aufzustauen. Nach dem Wiederanfahren beginnt die
+  Einfahrzeit von vorn: sonst schlüge die nächste Störung mitten in den
+  Wiederanlauf, weil ihr Zeitpunkt noch während der Abschaltung gezogen
+  worden war.
+
+- ✨ **Der Kern darf älter sein als neu.** `createEngine()` kennt den Abbrand
+  seit je als Anfangswert, aber gesetzt hat ihn nur ein Spielstand: jedes neue
+  freie Spiel begann frisch beladen. Dabei ist das der billigste
+  Schwierigkeitsregler, den das Modell hergibt — die Überschussreaktivität
+  wird jeden Rechenschritt frisch aus `s.burnup` gebildet (`reactivity.js`,
+  Teil `excess`), und mit ihr schrumpft der Vorrat, aus dem sich Xenon,
+  Temperaturrückwirkung und Lastwechsel bedienen. Neu sind drei Stufen:
+  frisch beladen, Zyklusmitte, Zyklusende. Am Zyklusende bleibt beim DWR noch
+  rund 145 ppm Bor und beim RBMK eine Stabstellung von 0,15 — genug für
+  Nennleistung, wenig für eine Xenonvergiftung nach dem Nachttal.
+
+  Die Stufen sind je Reaktortyp andere Anteile der Zykluslänge, und das ist
+  keine Willkür: der DWR hält seinen Überschuss mit Bor nieder und kommt über
+  zwei Drittel des Zyklus, der SWR hält alles mit Stäben und ist nach einem
+  Fünftel am Ende seiner Reserve, der RBMK wird in Wirklichkeit im Betrieb
+  nachgeladen und steht dauerhaft nahe seinem Gleichgewichtskern. Ein Test
+  hält fest, worauf es dabei ankommt: auch der älteste angebotene Kern muss
+  sich noch auf Nennleistung bringen lassen, sonst ist die Stufe kein
+  Schwierigkeitsgrad, sondern ein kaputter Start. Abbrennbare Gifte rechnet
+  das Modell nicht, und der Abbrand wächst während einer Runde nicht weiter.
+
+## 0.6.5
+
+- ✨ **Die Anlage endet nicht mehr mit „Brennstoff zerstört" — beim RBMK hebt
+  der Deckel ab.** Bis 0.6.4 hörte das Modell mit `destroyed` auf; die Nacht
+  des 26. April endete aber nicht mit zerlegtem Brennstoff, sondern mit einem
+  abgehobenen oberen Schild. Neu rechnet die Engine genau den einen Schritt
+  weiter, den der eigene Zustand hergibt — eine Energiebilanz, keine
+  Explosionsmechanik (`engine.js: startAftermath`, `rbmk.js: sp.aftermath`):
+
+  - rund **20 GJ** stehen im Brennstoff über der Sättigungstemperatur des
+    Kühlmittels — nur diese Energie kann beim Zerlegen übergehen,
+  - das reicht, um **13,8 der 24 t** Kühlmittel im Kern schlagartig zu
+    verdampfen,
+  - der obere Schild — 2000 t auf 17 m Durchmesser — hebt schon bei **0,86
+    bar** Überdruck ab (Gewicht durch Fläche, zwei nachschlagbare Zahlen und
+    eine Division),
+  - seine Hubarbeit von **196 MJ** sind **knapp 1 %** der freigesetzten
+    Energie; angenommen sind 2 % Umsetzungsgrad, wie sie Versuche für
+    Dampfexplosionen nennen.
+
+  Zwei Simulationssekunden nach dem Brennstoffversagen hebt er ab. Die
+  einzige Annahme in dieser Kette ist der Umsetzungsgrad — dass sie WIRKT und
+  nicht nur danebensteht, hält ein Test fest: drückt man sie unter den
+  gerechneten Bedarf, bleibt derselbe Deckel liegen.
+
+- ✨ **Im Fließbild ist das zu sehen, nicht nur zu lesen.** Der obere Schild
+  steht ab sofort im Bild — er gehört ohnehin hinein, schließlich rechnet der
+  Nachlauf mit seinem Gewicht. Hebt er ab, kippt er sichtbar zur Seite, der
+  Schacht reißt auf, und eine Dampf- und Trümmerfahne steht über dem Kern.
+  Vorher gab es dafür nur einen roten Rand um die verkohlte Kernzone. Ohne
+  Bewegung (`prefers-reduced-motion`) bleibt dasselbe Bild stehen, nur ohne
+  Flackern.
+
+- 🐛 **Der Endbildschirm sagt jetzt, welche der beiden Grenzen gefallen ist.**
+  963 J/g sind die Zerlegung des Brennstoffs selbst; 250 J/g Enthalpie-Zuwachs
+  im heißesten Kanal sind das Versagen der Hüllrohre. Bei einer schnellen
+  Exkursion fällt fast immer die zweite zuerst — im Chernobyl-Lauf steht der
+  Brennstoff bei 191 J/g, also weit unter der ersten. Trotzdem meldete das
+  Spiel in beiden Fällen „der Brennstoff ist zerlegt". Neu ist
+  `event_fuel_failure` mit eigenem Text; die alte Meldung bleibt für den Fall,
+  in dem sie stimmt.
+
+- 📝 **Und der Endbildschirm sagt, wo das Modell aufhört.** Unter den
+  gerechneten Zahlen steht abgesetzt, was in der Nacht danach kam und hier
+  weder gerechnet noch behauptet wird: die zweite Explosion, deren Ursache bis
+  heute umstritten ist, der Graphitbrand über Tage, die Freisetzung. Dazu die
+  unbequemste Zahl: Auch die Wucht bleibt zurück — die Exkursion erreicht hier
+  rund 295 % der Nennleistung, Schätzungen für die reale nennen ein
+  Vielfaches. Der Nachlauf für DWR und SWR steht im BACKLOG; beim SWR gäbe es
+  mit Sicherheitsbehälter und Wasserstoffpfad schon eine Schwelle, beim DWR
+  fehlt sie noch ganz.
+
+## 0.6.4
+
+- ✨ **Der Speisewasserschwall um 01:19 wird in der Chernobyl-Übung gefahren.**
+  Er stand seit 0.5.10 auf der Liste der nicht nachgebildeten Vorgänge der
+  Nacht — dabei brauchte es dafür keine neue Physik: die Kette steckt in
+  `rbmk.js` vollständig drin. Mehr kaltes Speisewasser hebt die Unterkühlung,
+  das lässt die Dampfblasen zusammenfallen, und über den positiven
+  Blasenkoeffizienten zieht das Reaktivität ab. Gefahren wird deshalb die
+  **Handlung** — Speisewasserregler auf Hand, 15 % des Nennstroms, 30
+  Sekunden —, alles Weitere macht die Anlage: Unterkühlung 1,2 → 2,6 K,
+  Blasenanteil 5,3 → 1,9 %, Leistung −0,3 Prozentpunkte. Die zweite Hälfte des
+  historischen Vorgangs — erst zu viel Wasser, dann zu wenig — fährt die
+  Automatik von selbst: sie nimmt den Strom zurück, um den Trommelpegel wieder
+  herunterzuholen, und die Blasen kommen mit einem Überschwinger auf das
+  Doppelte zurück. Der Schwall steht als Ereignis in der Zeitleiste, die
+  Schritttafel zeigt währenddessen Unterkühlung und Speisestrom.
+
+  Nachgebildet ist der Vorgang, **nicht seine Dauer**, und das steht auch so
+  im Code: real lief der Schwall bis kurz vor den Versuch; so lange gehalten,
+  fährt er den zusammengefassten Trommelpegel dieses Modells in seinen
+  Anschlag bei 1,00 m und lässt die Anlage in einem Zustand in den Test gehen,
+  auf den die AZ-5-Wirkung nicht kalibriert ist. Beim Auslaufbeginn steht die
+  Anlage deshalb wieder dort, wo sie ohne ihn stünde (Blasenanteil 5,16 statt
+  5,19 %), und AZ-5 zerstört den Kern weiterhin — eine Sekunde später und mit
+  295 statt 300 % Spitze. Mit 120 s Schwall zerstört er ihn gar nicht mehr;
+  auch das steht als Fall im Messwerkzeug.
+
+- ✨ **Die Uhr springt nicht mehr — die fehlende halbe Stunde wird gerechnet.**
+  Bis 0.6.3 machte sie genau einen Sprung, am Ende des Schritts „Der
+  Leistungseinbruch": der Einbruch selbst wurde seit 0.6.1 wirklich gefahren,
+  die Erholung danach dauerte hier aber Minuten statt der realen guten halben
+  Stunde. Jetzt hält der Schritt bis zur Pumpenzuschaltung um 01:07, genau wie
+  die zweite Haltephase bis zum Testbeginn hält — beide zielen auf eine
+  Uhrzeit statt auf eine feste Zahl. Damit ist die Uhr durchgehend die
+  Betriebszeit plus einem festen Versatz, von der Schichtübernahme bis zur
+  Zerstörung.
+
+  Nachgemessen kostet das nichts und bringt etwas: alle dokumentierten Zeiten
+  treffen weiter (Pumpen 01:07, Testbeginn 01:23:04, AZ-5 01:23:40,
+  Zerstörung 01:23:46), die Spitze liegt bei 294 statt 300 %, und die
+  Abschaltreserve sinkt über die zusätzlichen 38 gerechneten Minuten von 81,7
+  auf 72,2 — das Xenon baut sich wirklich auf, statt mit dem Sprung
+  auszufallen. Weil die Übung damit rund 3400 statt 1200 Sekunden rechnet,
+  stellt sie den Zeitraffer jetzt selbst: 60× durch die beiden langen
+  Haltephasen, 1× für die Pumpenzuschaltung um 01:07, 4× für den
+  Speisewasserschwall samt Nachschwingen, 1× für den Auslauf, ¼× ab vier
+  Sekunden vor AZ-5. Umgeschaltet wird nur an den Flanken
+  — wer selbst am Zeitraffer dreht, behält ihn.
+
+- 📝 **Die Rotorzeitkonstante τ = 15 s ist keine Kalibrierung mehr, an der die
+  Nacht hängt.** Herleiten lässt sie sich nicht — τ = J·ω₀²/(2·P₀) bräuchte
+  die Rotorträgheit von TG-8, für die es keine nachschlagbare Quelle gibt.
+  Gemessen wurde deshalb das Gegenteil einer Herleitung
+  (`tests/tools/chernobyl_tau_sweep.mjs`): Über τ = 8 bis 30 s — Faktor vier —
+  fällt AZ-5 unverändert auf 01:23:40, der Kern ist fünf bis sechs Sekunden
+  später zerstört, und die historischen 36 s liegen jedes Mal im Wirkfenster;
+  nur dessen unterer Rand wandert mit τ. Empfindlicher ist die Pumpenzahl:
+  drei bis fünf am auslaufenden Generator tragen den Mechanismus, bei sechs
+  zerstört derselbe Ablauf den Kern nicht mehr. Die historischen vier liegen
+  mittig im tragenden Bereich, nicht an seinem Rand. Details:
+  `audit/CHERNOBYL-2026-09-21.md`.
+
+## 0.6.3
+
+- ✨ **Der Xenon-Zeitsprung meldet sich beim Server an.** Die Spielhistorie
+  deckelt die gemeldete simulierte Dauer bei dem, was 60-facher Zeitraffer in
+  der gemessenen echten Zeit hergibt — nur kennt das freie Spiel einen Knopf,
+  der diese Grenze von innen bricht: `fastForwardXenon()` rechnet die Jodgrube
+  in einer engen Schleife statt im Bildtakt und erzeugt binnen Sekunden bis zu
+  48 h. Bis 0.6.2 hob der Server den Deckel deshalb für **jedes** freie Spiel
+  pauschal um diese 48 h an, ob gesprungen wurde oder nicht; im freien Spiel
+  ging damit immer alles durch. Jetzt meldet der Sprung sich an
+  (`/api/runs/skip`) — mit der Zeit, die wirklich gerechnet wurde, auch nach
+  einem Abbruch, denn auch ein halber Sprung ist gesprungen. Gezählt wird nur,
+  was ein offener Lauf **dieses** Kontos angemeldet hat, und anmelden kann nur,
+  was dieser Server selbst als freies Spiel führt: ein Szenario bekommt auf
+  diesem Weg gar nichts. Nachrechnen kann er die Zahl nicht, die Physik läuft
+  im Browser; über dem 24-h-Deckel ist ohnehin Schluss. Der Client wartet die
+  Antwort ab, bevor er den Lauf abmeldet — sonst könnte eine Kernzerstörung im
+  Sprung die Abmeldung an der Anmeldung vorbeiziehen lassen.
+
+- ✨ **Die Zeitmessung überlebt einen Neustart des Containers.** Sie lag bis
+  hierher nur im Speicher: ging der Container hoch, war die Messung des gerade
+  laufenden Spiels weg, und seine Dauer fiel auf den alten 24-h-Deckel
+  zurück. Die offenen Läufe stehen jetzt in `/data/runs.db` neben den Konten,
+  mit der Wanduhr ihres Beginns. Die Ausfallzeit zählt dabei **nicht** als
+  Spielzeit — davor saß niemand: in derselben Datei steht eine Marke, die der
+  laufende Betrieb alle 20 Sekunden erneuert, auch aus dem Healthcheck des
+  Containers (die einzige Anfrage, die selbst dann noch kommt, wenn niemand
+  spielt). Beim Hochfahren ist die Lücke zwischen ihr und jetzt genau die
+  Zeit, in der niemand spielen konnte, und sie wird von jedem übernommenen
+  Lauf abgezogen. Einträge, die länger offen stehen als das längste mögliche
+  Spiel, räumt das Hochfahren weg, statt sie als Messung auszugeben. Bleibt
+  die Datei stumm (Schreibfehler, altes Verzeichnis), läuft alles wie vorher
+  — ein fehlender Messwert ist kein Grund, einen Lauf gar nicht erst
+  aufzuzeichnen.
+
+  Was ein Neustart nicht heilen kann, bleibt benannt: Ein Client, der
+  `/api/runs/start` nie gerufen hat — ein Tab, der vor dem Update geladen
+  wurde — liefert nichts zu messen. Solche Läufe stehen weiterhin mit leerer
+  Spalte „Am Schirm" in der Historie, nicht mit einer geschätzten Zahl.
+
+## 0.6.2
+
+- 🐛 **Richtigstellung zu 0.6.1: AZ-5 war der Auslöser, nicht die alleinige
+  Ursache.** Der Abschlusstext der Chernobyl-Übung und der Changelog-Eintrag
+  davor schlossen aus „ohne AZ-5 bleibt die Leistung bei 7 %", vor dem
+  Knopfdruck sei nichts geschehen. Nachgemessen
+  (`tests/tools/chernobyl_pre_az5.mjs`) stimmt das nicht: In den 36 Sekunden
+  zwischen Testbeginn und AZ-5 steigt der Dampfblasenanteil von 5,9 auf 7,7 %
+  und die Reaktivität mit ihm. Flach bleibt nur die **Anzeige**, weil die
+  schmale automatische Regelgruppe mit bis zu −111 pcm dagegenhält — nimmt man
+  ihr diese Autorität, zerstört sich dieselbe Anlage schon nach 20 Sekunden,
+  ohne dass jemand den Knopf berührt. AZ-5 legt darauf weitere 600 pcm aus den
+  Graphitspitzen. Das ist genau der historische Befund: Die Leistung blieb rund
+  36 Sekunden nahezu konstant bei ~200 MWth, während der Kern längst geladen
+  war. Debrief- und Schritttexte sagen das jetzt so, und ein neuer Test hält
+  das Gleichgewicht fest (Blasenanteil steigt, Trimm hält dagegen, Leistung
+  steht), damit die Formulierung nicht wieder abrutscht.
+
+## 0.6.1
+
+- ✨ **Der Turbinenauslaufversuch im Chernobyl-Tutorial ist keine Kulisse
+  mehr.** Bis 0.6.0 war er ein Drehbuch: ein Ereignis fuhr den
+  *Pumpen-Sollwert* linear über dreißig Sekunden auf null. Zwei Dinge waren
+  daran falsch. Es bewegte den Schieber des Spielers, ohne dass jemand ihn
+  angefasst hätte — auf dem Schirm sah das aus wie eine Bedienhandlung, die
+  nie stattgefunden hat. Und der Endwert war null, während historisch nur
+  **vier der acht** Hauptumwälzpumpen am auslaufenden Generator hingen; die
+  anderen vier blieben am Netz. Neu ist die Drehzahl eine echte
+  Zustandsgröße (`s.tgSpeed`, `rbmk.js: sp.turbogen`): Der Rotor bremst gegen
+  die Pumpenlast, und weil eine Kreiselpumpe Leistung mit der dritten Potenz
+  der Drehzahl zieht, folgt daraus `w(t) = w0/(1 + t/τ)` — der Rechenschritt
+  dafür ist exakt, der Zeitschritt fällt heraus. Der Kernstrom sinkt damit auf
+  etwa die Hälfte statt auf null, der Sollwert bleibt unberührt, und der
+  Auslauf kommt über den ganz normalen Zustandsteil eines Spielstands mit
+  statt über einen Sonderfall in `persist.js`.
+
+- ✨ **Damit treffen zum ersten Mal ALLE dokumentierten Zeiten der Nacht.**
+  Das Wirkfenster von AZ-5 wurde neu vermessen
+  (`tests/tools/chernobyl_press_window.mjs`): In den ersten zwölf Sekunden
+  nach Auslaufbeginn übersteht der Kern den Knopfdruck, ab etwa 15 Sekunden
+  zerstört er ihn — und das bis mindestens 105 Sekunden. Vorher waren es 8–21
+  Sekunden mit einem Überlebensstreifen dahinter; das war eine Eigenschaft der
+  alten Rampe auf null, nicht der Anlage. Weil die historischen 36 Sekunden
+  zwischen Testbeginn und AZ-5 jetzt mitten im Fenster liegen, muss die Übung
+  nicht mehr zwischen zwei Zeiten wählen. Sie zeigt nun der Reihe nach:
+  Schichtübernahme 00:27, Einbruch ab 00:28, Pumpen **01:07:00**, Testbeginn
+  **01:23:04**, AZ-5 **01:23:40**, Zerstörung 01:23:45. Jede dieser Marken ist
+  nachgemessen, nicht behauptet — Tests halten sie fest.
+
+- ✨ **AZ-5 ist jetzt die alleinige Ursache, nicht der Auslöser eines ohnehin
+  laufenden Ausbruchs.** Lässt man den Knopf in derselben Ausgangslage ganz
+  weg, bleibt die Leistung bei rund 7 % — vier Pumpen kühlen weiter. Vorher
+  trieb die Rampe die Anlage schon ohne jeden Knopfdruck auf 133 %, und der
+  Abschlusstext musste das einräumen. Der zweite Befund ist geblieben und
+  steht weiter im Debrief: Nimmt man der schmalen automatischen Regelung ihre
+  500 pcm, zerstört sich dieselbe Anlage nach rund 22 Sekunden von selbst.
+
+- ✨ **Die Pumpen laufen um 01:07 an, nicht um 01:23:25.** Historisch schaltete
+  die Mannschaft sie mitten in der Haltephase zu; die Übung ging ihre Schritte
+  der Reihe nach durch und kam deshalb erst danach dazu. Die Haltephase ist
+  jetzt geteilt (`recover` bis 01:07, dann `pumps`, dann `hold` bis zum
+  Testbeginn), die Summe bleibt bei den historischen rund 19 Minuten. Die
+  Dauer von `hold` steht dabei nicht fest, sondern zielt auf die Uhr — der
+  Pumpenhochlauf davor dauert, was er dauert, und der Auslauf beginnt trotzdem
+  auf die Sekunde richtig. Nachgemessen ändert die frühere Zuschaltung den
+  Zustand beim Auslaufbeginn praktisch nicht (n 6,25 % → 6,29 %).
+
+- ✨ **Der Leistungseinbruch wird gefahren, statt nur erzählt zu werden.** Im
+  Backlog stand, ein echter Einbruch reiße in diesem Modell mehr Xenon auf,
+  als sich je zurückholen lasse. Das galt für die damalige, ungetrennte
+  Stabkurve und stimmt seit deren Korrektur nicht mehr: nachgemessen
+  (`tests/tools/chernobyl_dip.mjs`) kommt die Anlage aus Einbrüchen bis
+  hinunter zu 0,05 % zuverlässig wieder auf 7,3 %, mit ORM ~76 und rho ~0 pcm
+  — praktisch auf den Zustand, den `prepare()` vorher fest hinterlegt hat.
+  Xenon spielt dabei kaum eine Rolle; ein Einbruch von Minuten ist gegen die
+  Jod-Halbwertszeit von knapp sieben Stunden zu kurz. Der Schritt „Der
+  Leistungseinbruch" fährt deshalb jetzt wirklich: Regelung auf Hand, Stäbe
+  ein, halten, und dieselbe Regelung holt die Leistung zurück. Nachgestellt
+  wird die *Wirkung*, nicht eine bestimmte Fehlbedienung — die Ursache ist bis
+  heute nicht abschließend geklärt (INSAG-7, Anhang I). Die Uhr springt danach
+  nur noch über den Rest der Erholung, die real bis kurz nach 01:00 dauerte.
+
+- ✨ **Zeitlupe.** Der Simulationstakt konnte Faktoren unter 1 immer schon
+  (`loop.js` rechnet mit festem Zeitschritt, der Faktor bestimmt nur die Zahl
+  der Schritte je Realsekunde) — es gab nur keine Bedienung dafür. Neu sind
+  ¼×- und ½×-Knöpfe in der Statusleiste sowie `−` und `+`, die die ganze
+  Leiter von ¼× bis 60× entlanggehen. Die Chernobyl-Übung fordert ¼× von sich
+  aus an, vier Sekunden vor AZ-5: Im Vorführmodus sind die Stellteile gesperrt,
+  und bei 1× ist der Moment, den die ganze Übung aufbaut, vorbei, bevor der
+  Blick von der Leistungsanzeige zum Reaktivitätsbalken gewandert ist.
+  Umgeschaltet wird nur an den Flanken — wer selbst pausiert, wird nicht
+  überfahren.
+
+- 📝 **Die Abschaltreserve bleibt niedriger als die dokumentierten 6–8
+  Stabäquivalente, und wir wissen jetzt warum.** Der Backlog vermutete eine
+  Skalenfrage. Das ist sie nicht: Bei der historischen Einfahrtiefe von 1,25 m
+  zeigt die Anzeige zwar exakt 7,4 — aber dort zerstört AZ-5 den Kern gar
+  nicht mehr, die Spitze bleibt bei 40 % (`tests/tools/chernobyl_rod_sweep.mjs`,
+  elf Stabstellungen zwischen 0,02 und 0,22 geprüft, nur 0,02 trägt den
+  Mechanismus). Dieses vereinfachte Zwei-Bank-Modell braucht die Stäbe weiter
+  draußen, als sie historisch standen. Statt die Zahl zurechtzubiegen steht
+  jetzt die Einfahrtiefe in Metern daneben, und der Schritttext sagt den
+  Unterschied ausdrücklich — „0,14 m von 7 m" sagt, was „ORM 0,0" verschweigt.
+
+- ✨ **Spieler können ihr Passwort jetzt selbst ändern.** Bis 0.6.0 gab es im
+  Spiel gar keinen Weg dafür: entweder setzte der Admin es im Panel zurück,
+  oder man ging über „Passwort vergessen" und wartete auf eine Mail — und ohne
+  eingerichteten Mailserver auch das nicht. Neu öffnet der Knopf „Konto" in
+  der Fußzeile des Startbildschirms einen Dialog. Das **alte** Passwort muss
+  mit: Die Sitzung läuft 30 Tage, ohne diese Abfrage genügte ein kurz
+  unbeaufsichtigter Browser, um ein Konto zu übernehmen. Der Wechsel wirft
+  jedes andere angemeldete Gerät hinaus, die eigene Sitzung bekommt ein
+  frisches Token als Cookie zurück. Zehn Versuche je Stunde und Konto.
+
+- ✨ **Konten lassen sich löschen, nicht nur sperren.** Sperren bleibt das
+  Mittel der Wahl — reversibel, Historie bleibt. Löschen ist für den anderen
+  Fall da, und mit der seit 0.6.0 deutlich längeren Historie je Konto ist das
+  kein Randfall mehr. Es geht nur von der Kontoseite aus, wo ein Konto allein
+  auf dem Schirm steht, und nur nach Abtippen der E-Mail-Adresse: Ein Klick
+  daneben in einer Zeile mit drei Knöpfen ist zu leicht, und es gibt keinen
+  Rückweg. Mitgelöscht wird alles, was an der Kennung hängt — Spielhistorie,
+  Anmeldeprotokoll, offene Reset-Vorgänge und sämtliche Spielstände als
+  Dateien —, und die laufende Sitzung wird entwertet. Bestenlisten-Einträge
+  bleiben stehen: Sie tragen einen frei gewählten Anzeigenamen und keine
+  Kontokennung, es gibt also nichts zuzuordnen.
+
+- ✨ **Blättern im Admin-Panel.** Die Übersicht zeigte die letzten 50 Einträge,
+  die Kontoseite die letzten 200 — und schwieg über den Rest, der nur noch
+  direkt in `users.db` zu sehen war. Jede der vier Listen hat jetzt eine
+  Blätterleiste mit Erster/Zurück/Weiter/Letzter und sagt, welcher Ausschnitt
+  auf dem Schirm steht und wie viele Zeilen es insgesamt gibt. Die
+  Seitennummer der jeweils anderen Tabelle wird mitgeführt, damit sie nicht
+  zurückspringt.
+
+- ✨ **Die Spielzeit in der Historie misst jetzt der Server selbst.** Sie war
+  reine Klientenangabe und nur bei 24 h gedeckelt — mehr konnte der Server
+  nicht tun, weil er vom Lauf selbst nichts wusste. Neu meldet der Client den
+  **Beginn** (`/api/runs/start`), der Server merkt sich seine eigene Uhr dazu
+  und schließt die Messung beim Beenden. Daraus fällt zweierlei ab: eine neue
+  Spalte „Am Schirm" mit der tatsächlich verbrachten Zeit, die gar nicht aus
+  einer Anfrage stammt — und eine Obergrenze für die gemeldete *simulierte*
+  Zeit, denn schneller als 60× kann kein Browser rechnen. Bei einem
+  fortgesetzten Lauf kommt auch der Startpunkt nicht mehr aus der Anfrage: Er
+  steht als `t_sim` im gespeicherten Stand auf der eigenen Platte. Eine
+  Kennung, die zu einem anderen Konto oder Szenario gehört, misst einen
+  anderen Lauf — dann wird lieber gar nicht gemessen als falsch. Kommt keine
+  Messung zustande (Neustart des Containers, älterer Client), steht die Spalte
+  leer, statt eine geschätzte Zahl zu erfinden. Für das freie Spiel bleibt die
+  60×-Grenze wirkungslos, weil der Xenon-Zeitraffer schneller rechnet; das
+  steht offen im Code, statt eine Grenze zu behaupten, die der eigene
+  Vorspulknopf bricht.
+
+## 0.6.0
+
+- ✨ **Das Admin-Panel zeigt jetzt die vollständige Spielhistorie — vorher
+  einen Bruchteil davon.** Ein Lauf landete bisher nur dann im Panel, wenn
+  der Spieler am Ende ausdrücklich auf „Eintragen" drückte: Die einzige
+  Aufzeichnung entstand als Nebenwirkung der Bestenlisten-Einsendung. Alles
+  andere fehlte vollständig — Tutorials (die gar nicht gewertet werden),
+  freies Spiel, gescheiterte Läufe, zerstörte Anlagen, jeder Abbruch —, und
+  die Spalte „Spielzeit gesamt" zählte entsprechend nur einen Bruchteil der
+  wirklich gespielten Zeit. Neu meldet der Client jeden beendeten Lauf über
+  `/api/runs` (`main.js: reportRun()`), unabhängig von jeder Wertung: mit
+  Art (Szenario/Tutorial/freies Spiel), Dauer und Ausgang (geschafft,
+  gescheitert, abgebrochen, Anlage zerstört). Ein später eingereichter
+  Punktestand wird an denselben Eintrag **nachgetragen**
+  (`UserStore.attach_score()`) statt einen zweiten anzulegen — sonst stünde
+  jeder gewertete Lauf doppelt da und die Spielzeit wäre doppelt gezählt.
+  Art und Tutorialeigenschaft kommen aus dem Szenariokatalog, nicht aus der
+  Anfrage (derselbe Grundsatz wie beim Schwierigkeitsgrad); die Dauer ist
+  Client-Angabe und bei 24 h gedeckelt, Läufe unter 30 simulierten Sekunden
+  werden gar nicht erst aufgezeichnet. Bestehende Einträge bleiben erhalten
+  und stehen mit „unbekannt" in den neuen Spalten — für sie *ist* die Art
+  unbekannt, eine erfundene Vorgabe wäre eine falsche Angabe.
+
+- ✨ **Neue Kontoseite `/admin/users/<id>`: alles zu einem Spieler an einem
+  Ort.** Die Übersicht zeigt je Konto eine Zeile und daneben die letzten 50
+  Ereignisse aller Spieler gemischt — die Frage „was hat dieser eine
+  eigentlich gespielt?" ließ sich damit nicht beantworten. Die Kontoseite
+  zeigt Kennzahlen (Läufe, Spielzeit, davon geschafft, bester Wert,
+  Anmeldungen), eine Auswertung je Szenario und die vollständigen Listen
+  aller Läufe und Anmeldungen dieses Kontos (jeweils die letzten 200, was
+  darüber liegt, ist ausdrücklich als gekürzt gekennzeichnet). Erreichbar
+  über die E-Mail-Adresse in jeder Tabelle des Panels.
+
+- ✨ **Mailversand — eingerichtet über Dockge, nicht im Panel.** Neues Modul
+  `mailer.py` mit `REACTORSIM_SMTP_HOST/_PORT/_SECURITY/_USER/_PASSWORD/
+  _FROM/_TIMEOUT` und `REACTORSIM_PUBLIC_URL`. Die Zugangsdaten des Postfachs
+  stehen damit dort, wo schon das Admin-Passwort steht; das Panel *zeigt* die
+  Einstellung nur (ohne Passwort, nur „gesetzt"/„nicht gesetzt") und kann
+  eine Testmail schicken. Ein Postfachpasswort über ein Browserformular
+  entgegenzunehmen hieße, ein weiteres Geheimnis zu speichern, zu
+  verschlüsseln und wieder anzuzeigen — dafür gibt es keinen Grund, solange
+  Dockge daneben liegt. Verschickt wird reiner Text, kein HTML, kein
+  nachgeladenes Bild, kein Zählpixel (dieselbe Linie wie bei der Seite
+  selbst). **Ohne gesetzten Mailserver ändert sich nichts**: das Panel zeigt
+  erzeugte Passwörter weiterhin einmalig an, und „Passwort vergessen" ist
+  gar nicht erst sichtbar. Fehler nennen den Grund im Panel (Anmeldung
+  abgelehnt, nicht erreichbar, Empfänger abgelehnt) statt nur im Protokoll.
+
+- ✨ **Willkommens-Mail an ein neu angelegtes Spielerkonto.** Ein Kreuzchen
+  im Anlegen-Formular, kein Automatismus — wer zwanzig Konten für einen Kurs
+  anlegt und die Zugänge ausdruckt, lässt es weg. Die Mail enthält Adresse,
+  Benutzername und Passwort; dasselbe Passwort steht **zusätzlich weiterhin
+  einmalig im Panel**, damit ein fehlgeschlagener Versand kein unbrauchbares
+  Konto hinterlässt. Auch „Passwort zurücksetzen" schickt das neue Passwort
+  jetzt direkt an den Spieler, sofern ein Mailserver bereitsteht — das war
+  als „Passwort-Reset Phase 2" seit Einführung der Konten offen.
+
+- ✨ **„Passwort vergessen" auf der Anmeldeseite.** `/forgot` nimmt die
+  Adresse entgegen, `/reset?token=…` setzt das neue Passwort. Der Link gilt
+  **zwei Stunden und genau einmal**; in der Datenbank liegt nur sein
+  SHA-256-Abdruck, nie der Link selbst — wer `users.db` liest, kann daraus
+  keinen bauen. Ein neuer Link entwertet alle vorherigen, und ein gesetztes
+  Passwort beendet jede noch laufende Sitzung des Kontos. Die Antwort auf
+  `/forgot` ist **immer dieselbe**, ob es die Adresse gibt, ob das Konto
+  gesperrt ist oder ob die Mail ankam; der Versand läuft deshalb
+  asynchron, damit auch die Antwortzeit nichts verrät. Grenzen: fünf
+  Anfragen je Stunde und Absenderadresse, drei je E-Mail-Adresse, zwanzig
+  Einlöseversuche je Stunde. CSRF-Token sind je Formular getrennt — ein
+  Token des Anmeldeformulars gilt hier nicht.
+
+- 🔧 **Anmeldung, „Passwort vergessen" und „Neues Passwort" teilen sich jetzt
+  eine Vorlage** (`templates/auth_base.html`). Dieselbe Regelmenge dreimal
+  nebeneinander wäre beim nächsten Farbwechsel auseinandergelaufen. Wie
+  vorher lädt keine dieser Seiten eine Datei nach, die hinter der Anmeldung
+  liegt.
+
+- ✅ 34 neue Tests: `tests/test_mail.py` (22, mit einer smtplib-Attrappe —
+  STARTTLS-Reihenfolge, Anmeldung, Fehlergründe, Willkommens-Mail, Reset-Mail,
+  Testmail, der gesamte Passwort-vergessen-Ablauf samt Einmaligkeit des Links
+  und gleicher Antwort für unbekannte und gesperrte Konten), sieben in
+  `tests/test_admin.py` (Historie für Tutorial/freies Spiel/Abbruch/
+  Zerstörung, Art aus dem Katalog statt aus der Anfrage, Nachtragen statt
+  Verdoppeln, Kontoseite) und vier in `tests/test-lifecycle.mjs`
+  (`reportRun()` meldet genau einmal, auch im freien Spiel und bei zerstörtem
+  Kern, und ein kurzes Hineinschauen gar nicht).
+
+## 0.5.11
+
+- 🐛 **Admin-Panel zeigte bei jedem Besucher dieselbe Docker-Gateway-Adresse
+  statt der echten IP.** Waitress entfernt `X-Forwarded-*`-Header seit
+  Version 0.8.10 standardmäßig, bevor die App sie sieht
+  (`clear_untrusted_proxy_headers=True` per Default) -- hinter Reverse
+  Proxy (NPMPlus) und optional Cloudflare Tunnel kam dadurch nur noch die
+  Adresse des letzten Zwischenglieds an. `clear_untrusted_proxy_headers=False`
+  lässt die Header wieder durch. Da sie dadurch erneut fälschbar sind (wer
+  den Port direkt erreicht, kann sie setzen), vertraut die eigene Auswertung
+  (`_client_ip()`) nicht mehr blind einer festen Kettenposition wie zuvor
+  ProxyFix mit `x_for=1`, sondern nimmt die erste öffentliche Adresse aus
+  `X-Forwarded-For`/`CF-Connecting-IP`. Ändert nichts daran, dass der
+  Punktestand ohnehin serverseitig gerechnet wird.
+
+## 0.5.10
+
+- ✨ **Neue Anzeige "Uhrzeit": das Chernobyl-Tutorial zeigt jetzt die Uhr
+  jener Nacht.** Bisher gab es nur die Betriebszeit, die stur ab null läuft
+  -- AZ-5 fiel dort auf 00:19:43, während der Text von 01:23:40 sprach
+  (Nutzerrückfrage). Die neue Anzeige läuft mit der Betriebszeit mit und
+  macht genau einen Sprung: am Ende des Schritts "Historische Einordnung",
+  also dort, wo die Übung ohnehin offenlegt, dass sie den Leistungseinbruch
+  um 00:28 samt Erholung nicht nachstellt. Danach stimmt sie auf die
+  Sekunde -- Haltephase ab 01:04:08, AZ-5 um 01:23:40, Zerstörung um
+  01:23:45. Sie steht neben der Schrittzeile, im Schritt-Fenster und in der
+  Schrittliste des Debriefs, und ist zusätzlich als Statuskachel wählbar
+  (in anderen Szenarien bleibt sie auf "—"). Einzige offen benannte
+  Abweichung: Die beiden zusätzlichen Pumpen liefen historisch ab 01:07,
+  also mitten in der Haltephase -- die Übung geht ihre Schritte der Reihe
+  nach durch und schaltet sie erst an deren Ende zu, die Uhr zeigt dort
+  deshalb 01:23. Ein Test misst die drei historischen Marken nach.
+
+## 0.5.9
+
+- ✨ **Chernobyl-Tutorial läuft jetzt als Vorführung ab -- und AZ-5 drückt
+  endlich im richtigen Fenster.** Der Ablauf ließ sich nicht sauber
+  nachspielen: Es gab keine einzige Sperre, jeder Klick auf irgendein
+  Stellteil konnte den nachgestellten Ablauf verschieben, und die Übung war
+  ohnehin schon zu weiten Teilen automatisch (5 von 7 Schritten). Ab der
+  Schichtübergabe fährt das Drehbuch die Anlage jetzt komplett selbst: Es
+  schaltet die beiden zusätzlichen Hauptumwälzpumpen zu (der Zeitpunkt ist
+  nachgemessen unkritisch -- zwischen sofort und 5 Minuten Verzögerung
+  ändert sich der Zustand beim Auslaufbeginn praktisch nicht) und löst AZ-5
+  aus. Gesperrt sind dabei nur die kritischen Stellteile: Stäbe,
+  Leistungsregler, Pumpen und AZ-5 (Knopf wie Strg+Z) -- Trends, Panels,
+  Quittieren und Speichern bleiben bedienbar. Die gesperrten Kacheln werden
+  sichtbar abgeblendet, wie schon bei der Pause.
+- 🐛 **Der Knopfdruck war gar nicht die Ursache der Zerstörung -- die
+  gezeigten Zeitfenster stimmten nicht.** AZ-5 löste bei Sekunde 41 aus, im
+  vermeintlich "zweiten Zerstörungsfenster" (39-43s). Nachgemessen war der
+  Kern zu diesem Zeitpunkt aber ohnehin am Durchgehen: Der positive
+  Dampfblasenkoeffizient treibt die Leistung ab ~33s von selbst hoch. Das
+  Tutorial verkaufte damit eine Selbstzerstörung als Folge des Knopfdrucks
+  -- und der Hinweistext nannte dem Spieler dazu Fenstergrenzen, die bei
+  einer Neumessung über den echten `prepare()`-Pfad nicht reproduzierbar
+  waren. AZ-5 fällt jetzt auf Sekunde 14,5, mitten in das nachgemessene
+  Fenster (8-21s), in dem der Knopf tatsächlich die Ursache ist.
+- ✨ **Neuer Schlussbefund im Debrief.** Der zweite Messbefund geht dabei
+  nicht verloren: Das Ergebnis benennt jetzt ausdrücklich, dass der Ausbruch
+  schon vor dem Knopfdruck läuft (ohne AZ-5: 133 % bei 38s, gehalten allein
+  vom schmalen AR-Trimm mit seinen 500 pcm -- ohne diese Autorität versagt
+  der Brennstoff schon bei 19s). Beide Zahlen hängen an eigenen Tests, damit
+  der Text nicht stillschweigend veraltet.
+
+## 0.5.8
+
+- ✨ **Chernobyl-Tutorial: AZ-5 löst jetzt automatisch aus.** Das
+  Zerstörungsfenster ist nur 4 Sekunden breit (39-43s seit Auslaufbeginn) --
+  der AZ-5-Knopf braucht aber zwei Klicks (erst scharf machen, dann
+  bestätigen, Unfallschutz gegen Versehen-Drücken). Die Reaktionszeit
+  zwischen beiden Klicks fraß das Fenster in der Praxis zuverlässig auf
+  (Nutzerrückmeldung: zwei Versuche hintereinander 1,7-2,6s zu spät). AZ-5
+  löst in diesem Tutorial jetzt bei Sekunde 41 (Fenstermitte) von selbst
+  aus -- verifiziert per Testlauf ganz ohne jeden Klick, Kern wird
+  zuverlässig zerstört. Nur diese eine Übung ist betroffen, der Knopf
+  bleibt überall sonst unverändert zweistufig.
+
+## 0.5.7
+
+- 🐛 **Chernobyl-Tutorial Schritt 6/7: "0/0.2 s" sah nach "gleich fertig"
+  aus, obwohl noch bis zu ~35 s zu warten waren.** HOLD[5]=0.2s ist ein
+  interner Entprellwert für den schnellen Übergang zu 'az5', keine echte
+  Wartezeit -- die Kopfzeile zeigte ihn trotzdem als Countdown an
+  (Nutzerrückmeldung). Zusätzlich sah "Schritt 7" identisch aus, egal ob es
+  erschien WEIL man im richtigen Zeitfenster ist, oder WEIL man (zu
+  früh/spät) schon gedrückt hat -- beides führt über denselben Übergang.
+  Schritt 6 und 7 zeigen jetzt in der Kopfzeile direkt den Live-Hinweis
+  ("warten" / "JETZT AZ-5 drücken!" / "Fenster vorbei") statt einer
+  Haltezeit-Zahl, ohne das Popup öffnen zu müssen.
+
+## 0.5.6
+
+- 🐛 **Speichern/Laden während des Chernobyl-Turbinenauslaufversuchs killte
+  die Leistungsregelung, Kern lief unkontrolliert hoch.** Der schmale
+  AR-Trimm (`ctx.arTrim`), der die Leistung nach `_triggerCoastdown()` nahe
+  am Sollwert hält (`c.powerCtl.auto` ist ab dann bereits aus, der Trimm ist
+  die EINZIGE noch aktive Gegenkopplung), ist ein Ad-hoc-Objekt auf `ctx`,
+  kein `ctx.saveable`-Regler mit eigenem `snapshot()`/`restore()` --
+  persist.js kannte ihn nicht. Nach jedem Laden während dieser Phase war die
+  Regelung komplett weg, ohne jede Fehlermeldung: die Anlage lief danach
+  ungebremst hoch, teils sekundenschnell statt wie vorgesehen über Minuten
+  (Nutzerrückmeldung: 73-80 % Leistung bei nur 22 Sekunden seit
+  Auslaufbeginn, erwartet ~6 %). `arTrim` wird jetzt genau wie das
+  bestehende `mcpRunback` im Speicherstand mitgeführt.
+
+## 0.5.5
+
+- 🐛 **0.5.4 zeigte das falsche Zerstörungsfenster: Schritt 6 war teils unter
+  einer Sekunde sichtbar, ohne Leistungsanstieg.** Es gibt technisch zwei
+  Zerstörungsfenster (7-22s und 39-43s seit Auslaufbeginn), aber 'test'
+  schließt schon um t+8s -- mitten im ERSTEN. Der neue 'window'-Schritt aus
+  0.5.4 sprang dadurch sofort weiter, und in diesem ersten Fenster ist von
+  einem Leistungsanstieg optisch noch nichts zu sehen (der beginnt real erst
+  ab ~t+33s). Jetzt zählt für 'window' nur noch das ZWEITE Fenster
+  (PRESS_WINDOW in chernobylTutorial.js): der Schritt bleibt auf "warten"
+  stehen, während die Leistung sichtbar ansteigt, und schaltet erst in den
+  39-43s auf "JETZT AZ-5 drücken!".
+
+## 0.5.4
+
+- ✨ **Chernobyl-Tutorial: neuer Schritt 'Auf den richtigen Moment warten'.**
+  Wann genau AZ-5 die Anlage zerstört, hängt an der exakten axialen
+  Schieflage im Moment des Drückens -- für einen Menschen ohne Anhaltspunkt
+  praktisch nicht treffbar, selbst mit dem Sekundenzähler aus 0.5.3
+  ("kein Mensch versteht wann er AZ5 drücken muss", Nutzerrückmeldung). Die
+  Zerstörungsfenster sind deterministisch und wurden nachgemessen: 7-22 s
+  und 39-43 s seit Auslaufbeginn. Ein neuer Schritt zeigt jetzt live "warte"
+  bzw. "JETZT AZ-5 drücken!" an und schaltet nur während eines dieser
+  Fenster zum letzten Schritt weiter -- der AZ-5-Knopf selbst war nie
+  gesperrt und bleibt es auch jetzt nicht (siehe 'pressing AZ-5 too early'-
+  Test).
+- 🐛 **Statuszeile sagte "Anfahren-Tutorial abgeschlossen", auch nach der
+  Chernobyl-Übung.** Der Text war für die drei echten Anfahrtutorials fest
+  verdrahtet. Ein tutorialspezifischer Schlüssel (tut_chernobyl_completed)
+  überschreibt ihn jetzt für die Chernobyl-Übung, mit Rückfall auf den
+  alten Text für die drei Anfahrtutorials.
+
+## 0.5.3
+
+- 🐛 **0.5.2 (AZ-5-Hinweis erst bei Leistungsanstieg) zurückgenommen, echter
+  Fix: Sekundenzähler seit Auslaufbeginn.** Der Hinweistext von Schritt
+  'az5' nennt die Zerstörungsfenster bereits korrekt als Sekunden seit
+  Auslaufbeginn (7-22 s, 39-43 s) -- er brauchte dafür nur den vollen
+  Zeitraum ab Auslaufbeginn, den 0.5.2 versehentlich verkürzt hatte (Schritt
+  'test' schloss erst bei n ≥ 15 % ab, das erste Fenster war damit
+  unerreichbar, vom zweiten blieb nur ein Rest). Schritt 'test' schließt
+  jetzt wieder sofort wie ursprünglich, dafür zeigen 'test' und 'az5' einen
+  laufenden Sekundenzähler seit Auslaufbeginn, damit sich der Hinweistext
+  tatsächlich befolgen lässt, statt die Sekunden im Kopf mitzählen zu
+  müssen.
+
+## 0.5.2
+
+- 🐛 **Chernobyl-Tutorial: AZ-5-Hinweis erschien lange vor dem Leistungsanstieg.**
+  Schritt 'test' schloss bereits ab, sobald der Kühlmitteldurchsatz unter 90 %
+  fiel -- das passiert Sekunden nach Auslaufbeginn, lange bevor die Leistung
+  überhaupt reagiert (der Blasenkoeffizient braucht die volle 30-Sekunden-
+  Auslauframpe). Ein Spieler, der dem Hinweis sofort folgte, drückte AZ-5
+  noch beim unveränderten ~200-MWth-Ausgangswert und sah nie den
+  historischen Leistungsanstieg. `conditions()` verlangt jetzt zusätzlich
+  n ≥ 15 % -- ändert nichts an der Physik oder am AZ-5-Knopf selbst (der war
+  nie gesperrt), nur am Zeitpunkt des Hinweistexts. Damit fällt der
+  vorgeschlagene Drückzeitpunkt fast genau auf das validierte historische
+  Zerstörungsfenster (t+40s nach Auslaufbeginn).
+
+## 0.5.1
+
+- 🐛 **Chernobyl-Tutorial: Schritt 'dip' sprang nach 2s ungelesen weiter.**
+  Der reine Erzähltext zum historischen Leistungseinbruch schloss automatisch
+  nach der kurzen Haltezeit ab -- braucht jetzt wie 'handover' einen
+  expliziten Bestätigen-Klick (`StartupTutorial.confirmIndices`).
+- 🐛 **Chernobyl-Tutorial: Schritt 'recover' sagte 'von Hand halten', hielt
+  aber automatisch.** Die Leistungsregelung (`c.powerCtl`) läuft während der
+  19-Minuten-Haltephase durchgehend automatisch -- das ist Absicht (siehe
+  Machbarkeitsprüfung, BACKLOG.md), der Text widersprach dem aber. Text/Hinweis
+  korrigiert statt der Physik.
+
+## 0.5.0
+
+- ✨ **Kernzerstörung jetzt im Fließbild sichtbar.** Bisher zeigte nur das
+  Auswertungsfenster ("Anlage verloren") die Zerstörung an -- das Fließbild
+  selbst lief unverändert weiter, als wäre nichts passiert, wer das Fenster
+  einmal wegklickte, sah am Bild keinen Unterschied mehr. Der Kern faerbt
+  sich jetzt bei `state.destroyed` dauerhaft schwarz-verkohlt mit rotem
+  Rand (`data-destroyed` auf der SVG-Wurzel, siehe `update()` in
+  `mimic.js`), unabhängig vom Auswertungsfenster.
+- ⚡ **Startseite/Splash deutlich schneller.** `splash.jpg`/`background.jpg`
+  ersetzen die alten, unkomprimierten `splash.png`/`background.png` (je
+  ~1,85 MB → ~170 KB, wie schon die Reaktorfotos in 0.3.0). Beide werden bei
+  jedem Seitenaufruf gleichzeitig geladen (Übersicht + Splash-Banner) und
+  hielten dabei bislang lange Serverthreads belegt.
+- ⚡ **Waitress-Threadpool 8 → 24 Threads.** Docker-Protokoll zeigte
+  wiederholt "Task queue depth" bis 15 -- der Pool war unter Last (mehrere
+  gleichzeitige Seitenaufrufe, je mit den grossen Hintergrundbildern von
+  oben) erschöpft. Kein CPU-Limit im `docker-compose.yml`, die Arbeit ist
+  I/O-gebunden (Netzwerk, Platte) -- mehr Threads kosten hier praktisch nur
+  Stack-Speicher, keine GIL-Konkurrenz um Rechenzeit.
+
+## 0.4.1
+
+- 🐛 **Instrumentenübersicht zeigte leere Karten.** RBMK/SWR kennen keine
+  Bordosierung (`#rs-chem-ctl` bleibt leer), der DWR keine Sicherheits-
+  systeme unter `#rs-safety-ctl` -- eine Karte mit Überschrift und sonst
+  nichts stand trotzdem da. `openInstrumentsWindow()` überspringt jetzt
+  Abschnitte ohne Inhalt.
+- ✨ **Stabstellung in der Instrumentenübersicht.** Die Steuerstäbe-Karte
+  bediente Automatik/Hand und Ziehen/Einfahren, zeigte aber nirgends, wie
+  weit die Stäbe stehen -- reine Blindbedienung. Die Balken aus dem Reiter
+  (samt eigener %-Anzeige je Bank) stehen jetzt mit in derselben Karte.
+- 🐛 **Spielstände standen doppelt: Übersicht und Reaktorseite.** Die
+  Übersicht behielt beim Umbau auf die neue Reaktorseite (0.3.0) ihre
+  eigene Fortsetzen-Liste je Karte -- seit die Reaktorseite dieselben
+  Stände zeigt, war das nur noch Dopplung. Die Karten der Übersicht zeigen
+  jetzt nur noch Reaktortyp und Beschreibung, Fortsetzen läuft
+  ausschließlich über die Reaktorseite.
+
+## 0.4.0
+
+- ✨ **Instrumentenübersicht (Taste O).** Rundinstrumente (Kern/Primär/
+  Sekundär) und alle Stellteile (Stäbe, Pumpen, Speisewasser,
+  Sicherheitssysteme, Bor, Netz) bündeln sich jetzt auf einer Fläche statt
+  über acht Reiter verstreut zu sein -- kein Trend-Diagramm, keine reinen
+  Zahlenzeilen, nur Gauges und Bedienung, wie gewünscht. Dieselbe
+  Verschieben-statt-Kopieren-Regel wie bei „Kachel als Fenster" (R/P/S/G/A/
+  V/M/C): jede Karte im neuen Fenster ist der echte Knoten aus seinem
+  Reiter, keine zweite Instanz mit totem Zustand -- Schließen legt alles an
+  seinen ursprünglichen Platz zurück. Anders als die einzelnen
+  Panel-Fenster bewusst NICHT auf Desktop beschränkt: auf dem Handy ist das
+  der einzige Weg, mehrere Stellteile ohne Reiterwechsel nebeneinander zu
+  sehen. Q bleibt die Meldetafel-Quittierung, keine Kollision.
+
+## 0.3.1
+
+- 🐛 **Reaktor öffnen -> zurück -> denselben Reaktor wieder öffnen ergab ein
+  leeres, schwarzes Fenster.** `fadeScreens()` (main.js) plante bei jedem
+  Bildschirmwechsel einen `setTimeout`, der den alten Bildschirm nach der
+  Sekunde Überblendung verbirgt -- ohne den vorigen Timer zu canceln. Zwei
+  Wechsel innerhalb dieser Sekunde ließen den älteren Timer zuletzt feuern
+  und den gerade erst wieder eingeblendeten Bildschirm erneut verstecken:
+  `#rs-start` und `#rs-reactor` standen danach beide auf `hidden`, nur ein
+  Neuladen half. Jetzt genau ein aktiver Timer je Wechsel.
+
+## 0.3.0
+
+- ✨ **Eigene Reaktorseite statt Inline-Auswahl.** Klick auf eine Karte in der
+  Übersicht öffnet jetzt eine eigene Zwischenseite (`#rs-reactor`) mit
+  Überschrift, Beschreibung, Hintergrundfoto des Typs, den gespeicherten
+  Ständen und der Szenarienauswahl -- vorher erschienen Szenarienliste und
+  „Los“-Knopf inline unter den Karten auf der Übersicht selbst. Übergang als
+  1s-Opacity-Crossfade (`fadeScreens()`, `.rs-fade` in `base.css`); die URL
+  wechselt per `history.pushState` auf `/reaktor/<typ>` (Browser-Zurück
+  funktioniert, Direktaufruf/Neuladen liefert dieselbe Seite dank neuer
+  Flask-Route `reactor_page()`). Hintergrundfotos (`pwr.jpg`/`bwr.jpg`/
+  `rbmk.jpg`, `static/img/`) von ~1,85 MB PNG auf ~140 KB JPEG verkleinert.
+  Zwei Lifecycle-Tests (`test-lifecycle.mjs`) prüften bisher `#rs-start` als
+  Stellvertreter für „Simulation nicht gestartet“ -- jetzt direkt `#rs-app`,
+  da die Ladeanzeige nun auf der neuen Seite sitzt. Alle 413 JS- und 196
+  Python-Tests weiterhin grün.
+
+## 0.2.4
+
+- 🐛 **Speicher-Rückmeldung schob das Bedienfeld kurz nach unten.** Der Text
+  „Speichern läuft …“ / „Speichern fehlgeschlagen“ neben dem Speichern-Knopf
+  (`#rs-save-state`) nahm sichtbaren Platz ein und ließ beim
+  Erscheinen/Verschwinden die Kopfzeile kurz springen -- wirkte wie ein
+  Layout-Bug. Der Text bleibt für Screenreader im DOM (`role=status`), ist
+  jetzt aber per `rs-sr-only` unsichtbar. Sichtbares Feedback kommt
+  stattdessen vom Speichern-Knopf selbst: 2 s Grün bei Erfolg
+  (`data-flash-ok`, `flashSaveOk()` in `main.js`), dauerhaft Rot bei Fehler
+  bis zum nächsten erfolgreichen Speichern (`data-error`) -- ein
+  unaufgelöster Fehler gewinnt dabei bewusst gegen ein kurzes Grün aus einem
+  anderen, gleichzeitig erfolgreichen Speichervorgang (CSS-Reihenfolge in
+  `layout.css`). Zwei neue Tests in `test-save-feedback.mjs` (alle 413 Tests
+  weiterhin grün).
+
+## 0.2.3
+
+- 🐛 **AZ-5 zerstörte den Kern unabhängig davon, ob man es drückte.** Die
+  generische Stabwirksamkeitskurve (`rodWorthCurve`) zog schon ab
+  Stabposition h=0 Absorberreaktivität ab -- ohne die 1,25-m-Wassersäule
+  vor dem Graphitverdränger zu kennen. Das hob praktisch alles wieder auf,
+  was der Spitzeneffekt (`_tipReactivity`) für dieselbe Stabbewegung
+  hinzufügte: der reale, dokumentierte Effekt ("positive scram effect",
+  INSAG-7) blieb ein Rechenartefakt statt eines echten Ausschlags. Neue
+  `_rodReactivity()` in `plants/rbmk.js` lässt den Absorber erst ab
+  `tip.span` wirken, mit auf den verbleibenden Fahrweg umskalierter Kurve.
+  Nebenwirkung, mit eigenem Hebel behoben: die Betriebskennzahl ORM
+  (`_orm()`) zählt jetzt über dieselbe volle `rodWorthCurve` (h=0…1, nicht
+  um `tip.span` verschoben) -- die um die Spitzenspanne verschobene Version
+  hätte jede Stabstellung darin auf ORM≈0 (schlechtesten Blasenkoeffizienten)
+  gezwungen, unabhängig von der genauen Tiefe, und den historischen Wert
+  (6–8 von 211) im Modell unerreichbar gemacht, ohne die Anlage sofort
+  instabil zu machen.
+- ✨ **„Block 4" reproduziert AZ-5 jetzt als echte, promptkritische
+  Exkursion** (`s.promptCritical`), nicht mehr über ein zufällig
+  zusammenfallendes weiches Kriterium. Zwei neue Mechanismen in
+  `game/chernobylTutorial.js`: ein schmaler AR-Trimm (`step()`, begrenzt auf
+  ±500 pcm über `s.rho_ext`, NICHT über die Stabstellung) bildet die
+  historische automatische Regelgruppe nach, die die Leistung ~36 s vor dem
+  Test nahezu flach hielt; `_withdrawToTipSpan()` zieht beim Auslösen des
+  Kühlmittelauslaufs die Hauptstäbe auf die dokumentierte
+  Nacht-vor-dem-Unfall-Stellung (tief in der Graphitspitzen-Spanne, mit
+  live nachgezogenem Xenon-Ausgleich statt fest hinterlegtem Wert) zurück.
+  Gemessen destruktiv: Druck auf AZ-5 etwa 7–22 s und erneut 39–43 s nach
+  Beginn des Auslaufs, dazwischen und danach übersteht die Anlage es --
+  abhängig von der axialen Schieflage im Moment des Drückens, nicht von
+  einer einfachen "je länger gewartet"-Regel. Hinweistext für Schritt 'az5'
+  nennt die gemessenen Fenster jetzt.
+- 🐛 Die Haltezeit für Schritt 'az5' (`HOLD[5]`) stand bei 1 s -- der jetzt
+  echte promptkritische Ausschlag braucht nach dem Drücken selbst mehrere
+  Sekunden bis zur Brennstoffenthalpie-Grenze (gemessen: 1,85–6 s je nach
+  Zustand). Bei 1 s galt der Schritt (und damit die Übung) schon als
+  geschafft, bevor die Physik überhaupt zu Ende gelaufen war. Jetzt 15 s.
+- 🐛 **Kernzerstörung beendete jede Runde im selben Bildschirmtakt, in dem
+  sie erkannt wurde** -- `session.js` schaltet `phase` synchron auf
+  `DEBRIEF`, `main.js` fror das Bild (`setSpeed(0)`) und zeigte den
+  Auswertungsdialog sofort darüber, bevor der Ausschlag überhaupt sichtbar
+  ablaufen konnte. Gilt für jedes Szenario, nicht nur „Block 4". Neues
+  `deferEnd()` in `main.js` lässt die Anlage nach Erkennen der Zerstörung
+  noch 3 s sichtbar weiterlaufen (bei der 1×-Geschwindigkeit, auf die
+  `triggerScram()` beim Drücken ohnehin zurückschaltet), bevor angehalten
+  und der Dialog gezeigt wird -- gilt gleichermaßen für den
+  Szenario-Auswertungsdialog wie für die Verlustanzeige im freien Spiel.
+- ✨ Beide Enddialoge (Auswertung und Kernzerstörung) haben jetzt einen
+  „Schließen"-Knopf, der nur das Fenster wegnimmt, statt (wie bisher nur
+  „Menü") die ganze Runde zu verlassen -- Trends, Meldetafel und
+  Instrumente lassen sich danach in Ruhe ansehen, „Menü" bleibt jederzeit
+  erreichbar.
+
+## 0.2.2
+
+- ✨ **Neues Tutorial: „Block 4 – Die Nacht des 26. April“ (RBMK).** Geführter
+  historischer Nachbau der Chernobyl-Nacht ab der Schichtübergabe um
+  Mitternacht bis zum Turbinenauslaufversuch und AZ-5, basierend auf IAEA
+  INSAG-7. Der Ausgangszustand (ORM ≈ 28, ≈237 MWth) ist das Ergebnis einer
+  validierten zweistufigen Vorgeschichte (Volllast → 50 % → neun Stunden
+  halten → 7 %) und wird als geprüfter, fester Zustand in `prepare()`
+  hinterlegt (Live-Neuberechnung dauert im Browser ~3,7 s, siehe unten).
+  AZ-5 kombiniert mit einem geskripteten Kühlmittelauslauf (neues Event
+  `rbmk_mcp_runback`, 30 s) führt bei ausreichender Wartezeit zuverlässig zu
+  echter Brennstoffzerstörung -- mit der **bestehenden** RBMK-Physik
+  (Graphitverdränger- und Dampfblasen-Rückkopplung), keine neue Kalibrierung
+  nötig. Ein realer Leistungseinbruch wird bewusst NICHT mechanisch
+  nachgestellt: Schon ein kurzer, moderater Einbruch riss beim Testen mehr
+  Xenon auf, als sich mit den verbleibenden Steuerstäben je zurückholen
+  ließ, auch mit voll gezogenen Stäben -- eine Grenze dieses vereinfachten
+  Modells, keine Kalibrierfrage, im Anleitungstext offen benannt.
+- 🔧 **Tutorial-Basisklasse generalisiert.** `TUTORIAL_STEPS`/`HOLD_SECONDS`
+  in `game/tutorial.js` waren Modulkonstanten, geteilt von allen drei
+  bestehenden Anfahrtutorials (PWR/BWR/RBMK) -- keine Unterklasse konnte
+  eine andere Schrittzahl haben. Jetzt überschreibbare Instanz-Getter
+  (`steps`/`holdSeconds`), Default unverändert. `ui/tutorial.js` liest die
+  Schrittliste jetzt von der lebenden Instanz bzw. (für die Debrief-Anzeige
+  nach Sitzungsende) von einem zusätzlichen, nur dort angehängten Feld --
+  das Speicherformat von `snapshot()` bleibt unverändert. Keine Auswirkung
+  auf die drei bestehenden Anfahrtutorials (26 Regressionstests weiterhin
+  grün).
+
+## 0.2.1
+
+- 🐛 Admin konnte sich nicht abmelden: die Rollenweiche in `_require_login()`
+  schickte ihn bei jedem Aufruf zuerst nach `/admin`, bevor `logout()`
+  überhaupt lief. `/logout` läuft jetzt unabhängig von der Rolle immer durch.
+
+## 0.2.0
+
+- ✨ **Admin-Panel statt REACTORSIM_USERS.** Das Konto aus
+  `REACTORSIM_USER`/`REACTORSIM_PASSWORD` ist jetzt ein reines Admin-Konto --
+  es spielt nicht, sondern landet nach der Anmeldung im Panel unter `/admin`.
+  Dort legt es Spielerkonten an (E-Mail-Adresse als Benutzername, Passwort
+  frei wählbar oder erzeugt), sperrt/entsperrt sie, setzt Passwörter zurück
+  und sieht je Konto Anmeldezeitpunkt, Absenderadresse (per `ProxyFix`,
+  konfigurierter Hop-Zaehler unveraendert bei 1) und die zuletzt gespielten,
+  ausgewerteten Läufe (Reaktortyp, Szenario, Dauer). `REACTORSIM_USERS`
+  entfällt ersatzlos; Spielerkonten liegen jetzt in `/data/users.db`
+  (SQLite) statt in der Umgebung. Eine Sperre wirkt sofort, auch bei
+  bereits laufender Sitzung. Mehrere Spielerkonten können gleichzeitig
+  spielen (eigene Spielstände, eigene Ratenbegrenzung, wie zuvor); je Konto
+  bleibt genau eine aktive Sitzung erzwungen, das Admin-Konto ist davon
+  ausgenommen (mehrere Tabs/Geräte fürs Panel erlaubt, da es ohnehin nicht
+  spielt). Passwort-Reset ist in dieser Phase manuell (Admin liest das neue
+  Passwort einmalig im Panel ab und gibt es weiter); automatischer
+  Mailversand folgt später. Bestehende Spielstände/Konten aus der
+  Entwicklungszeit werden mit diesem Umbau nicht migriert.
+- Anfahr-Tutorial für den SWR: vorbereiteter heißer, unterkritischer Start,
+  Umwälzpumpe, manueller Leistungsaufbau und rund 300 MWe mit 120 Sekunden
+  stabilem Betrieb. Dynamische Reaktivitätshinweise, eigene deutsche und
+  englische Texte zu Dampfblasen, Durchsatz und Domdruckregelung. Speichern
+  und Fortsetzen einschließlich ausstehender Inspektionsbestätigung;
+  keine Bestenlistenwertung und keine Änderungen am laufenden Anlagenmodell.
+- Alle Anfahr-Tutorials öffnen Schritt 1 im bestehenden Dialog und warten
+  nach der Zustandsprüfung auf „Zustand geprüft – weiter“. Messwerte und
+  Sollbereiche bleiben bis zur bewussten Bestätigung sichtbar.
+- Anfahr-Tutorial für den RBMK-1000: fünf zustandsbasierte Lernziele vom
+  vorbereiteten heißen Stillstand über acht Hauptumwälzpumpen und manuellen
+  Leistungsaufbau bis zu rund 300 MWe und 120 Sekunden stabilem Betrieb.
+  Eigene deutsche und englische Hinweise zu Trommeldruck, Wasserhaushalt,
+  ORM, Dampfblasen-Rückkopplung und Leistungsautomatik. Fortschritt inklusive
+  Haltezeit wird gespeichert; Abschluss ohne Bestenlistenwertung.
+- 🐛 `users.py` fehlte im Dockerfile-`COPY`: Container startete seit dem
+  Admin-Panel-Umbau mit `ModuleNotFoundError`, sobald `app.py` es importierte.
+  Dockerfile korrigiert; `test_dockerfile.py` prüft jetzt den echten
+  Python-Importgraph ab `app.py` statt einer festen Namensliste, damit ein
+  fehlendes lokales Modul künftig in der CI auffällt statt erst beim Deploy.
+
+## 0.1.35
+
+- "Prompt kritisch" (ρ > β, s.promptCritical aus sim/kinetics.js) ist jetzt
+  eine echte Meldetafel-Kachel (`prompt_critical`, höchste Schwere) in allen
+  drei Reaktortypen statt nur ein Kopfzeilentext ohne Hupe, Protokoll oder
+  Quittierung. Eigener Hilfetext mit Handlungsschritten; automatischer
+  Helfer meldet bewusst "nicht behebbar" -- nur SCRAM/RESA/AZ-5 wirkt, wie
+  bei "Leistung hoch"/"Periode kurz".
+- Rechenrückstand (Simulation kommt beim Zeitraffer nicht hinterher) zeigt
+  sich wieder, jetzt als rotes ❗ fest links in der oberen Werteleiste --
+  ausserhalb der frei wähl-/verschiebbaren Werte, nur sichtbar, wenn's
+  wirklich klemmt, mit Erklärung als Mouseover.
+
+## 0.1.34
+
+- `#rs-status-alarm`-Zeile ganz entfernt statt nur bei Bedarf ein-/
+  auszublenden -- das Ein-/Ausblenden selbst verschob Inhalte darunter.
+  Ersatz: Meldetafel-Kopfzeile (`#rs-p-alarm > .rs-panel-h`) färbt sich wie
+  eine Kachel (gelb/orange/rot je Schwere), blinkt, solange etwas
+  unquittiert ist, bleibt farbig, solange es nicht rückgestellt ist -- sie
+  steht im Desktop-Raster ohnehin immer da, verschiebt beim Auftauchen also
+  nichts. Auf dem Handy übernimmt weiterhin der Tab-Reiter (unverändert).
+  Als Nebenwirkung sind die eigenständigen Slip- und Prompt-kritisch-
+  Hinweise (`#rs-slip`, `#rs-prompt`) mit entfernt -- sie hingen an
+  derselben Zeile und hatten sonst keine Anzeige; kein Ersatz dafür in
+  dieser Version.
+
+## 0.1.33
+
+- "keine Störung"-Zeile in der Kopfzeile entfernt, solange nichts ansteht --
+  derselbe Zustand steht schon in der Meldetafel. Die Zeile (samt farbigem
+  Schweregrad-Hintergrund) erscheint jetzt nur noch bei tatsächlich aktivem
+  Alarm oder Slip-/Kritisch-Hinweis.
+- Trends-Kachel steht im Desktop-Raster nur noch mit Kopfzeile da, Diagramme
+  eingeklappt -- die volle Ansicht ist über den bestehenden Klick auf die
+  Kopfzeile bzw. Taste V (openPanelWindow(), siehe PANEL_KEYS) weiterhin nur
+  einen Schritt entfernt, gibt beim Schließen des Fensters aber wieder Platz
+  für Kern/Primär/Sekundär/Netz/Chemie/Meldetafel frei. Nur ab 1024px --
+  auf dem Handy bleibt der Trends-Reiter unverändert voll sichtbar.
+
+## 0.1.32
+
+- Neuer Hotkey Q: quittiert die Meldetafel wie der Knopf selbst (löst
+  `#rs-ack`.click() aus). Rückstellen bleibt bewusst ohne Taste, nur per
+  Klick -- ein Fehlklick dort gibt bei stehendem SCRAM den Reaktorschutz
+  frei. In der Tastenkürzel-Hilfe gelistet (`sc_ack`).
+
+## 0.1.31
+
+- "Passendes Panel anzeigen" im Tutorial-Anleitung-Dialog wirkte auf breiten
+  Bildschirmen wie ein toter Knopf: der Reiterwechsel ist dort unsichtbar
+  (alle Panels stehen ohnehin im Raster), und scrollIntoView+focus allein
+  auf ein bereits sichtbares Panel fiel direkt nach dem Schliessen des
+  Dialogs kaum auf. Kopfzeile des Zielpanels blinkt jetzt kurz auf
+  (`rs-panel-jump`), respektiert prefers-reduced-motion.
+
+## 0.1.30
+
+- Anfahren-Tutorial nimmt keine eigene Zeile über dem Arbeitsbereich mehr
+  ein (0.1.29 hatte sie nur verkleinert, nicht entfernt -- weiterhin ein
+  eigener Balken). Schritt+Livewerte stehen jetzt als kleiner klickbarer
+  Text (11 px, zentriert, zwei Zeilen) direkt in der Kopfzeile neben
+  Speichern. Klick öffnet #rs-tutorial-modal mit Aufgabentext,
+  zustandsabhängigem Hinweis, Warum-Erklärung, Lernzielen und dem Knopf
+  "Passendes Panel anzeigen" (schließt den Dialog und springt zum Panel).
+  Passt auch im schmalen Querformat, da die Kopfzeile ohnehin umbricht.
+
+## 0.1.29
+
+- Anfahren-Tutorial-Statusleiste (`#rs-tutorial`) verkleinert: der statische
+  Aufgabentext, die "Warum wirkt das?"-Erklärung und die Lernziele-Checkliste
+  wandern in einen eigenen "Anleitung"-Dialog (`#rs-tutorial-modal`), der
+  wie Glossar/Tastenkürzel per Knopf geöffnet wird -- sie ändern sich nur
+  fünfmal pro Lauf, kosteten aber dauerhaft Platz. In der Leiste bleiben nur
+  Schritttitel, Livewerte, kompakte Haltezeit (`tut_hold_compact`) und der
+  zustandsabhängige Hinweis (`tut_hint_*`) sichtbar -- die ändern sich
+  während der Bedienung tatsächlich.
+
+## 0.1.28
+
+- Ein-Zeiler-Hinweise unter Ventilstellung, Speisewasserstrom, Druckhalter
+  und Stäbe entfernt (`hint_gov`, `hint_fw`, `hint_pzr`, `hint_rods`) --
+  offensichtlich, kosteten nur Platz unter jeder Regelstation.
+
+## 0.1.27
+
+- Kopfzeilen-Icon-Buttons (Stummschalten/?/⌨/⚙/Einweisung) wieder gleich
+  breit. `.rs-status-controls > button` setzte `min-width: 0` fuer alle
+  Knoepfe (noetig, damit lange Text-Knoepfe auf schmalen Ansichten
+  umbrechen), das ueberschrieb `.rs-btn-icon`s eigenes `min-width: 38px` --
+  jedes Icon zog sich auf seine eigene Zeichenbreite zusammen. Icon-Knoepfe
+  jetzt per `flex: 0 0 38px` fest quadratisch, Text-Knoepfe schrumpfen
+  weiterhin.
+
+## 0.1.26
+
+- Trendpanel: Live-/Auswahl-Statuszeile (`trend_following`/`trend_selected`,
+  z.B. "Live: gemeinsame Simulationszeitachse...") komplett entfernt --
+  0.1.25 hatte nur den statischen Erklärtext (`trend_help`) darüber
+  gestrichen, diese Zeile blieb stehen. Zeitpunkt bei Auswahl steht bereits
+  im Ereignis-Button selbst (`HH:MM:SS / n,nnn.n s`), keine Dopplung noetig.
+
+## 0.1.25
+
+- Laufzeit-Hinweisbereich `#rs-guidance` (Ziele, Bedienhinweise, Ein-/Ausblenden)
+  vollständig entfernt statt nur eingeklappt -- kostete auch geschlossen noch
+  Platz in der Seitenleiste. Die Einweisung bleibt über den vorhandenen
+  `#rs-briefing-btn` erreichbar; nur dort und im Vorlauf (`#rs-brief-guidance`)
+  rendert `renderGuidance()` noch.
+- Trendpanel: statischer Erklärtext (`trend_help`) über den Diagrammen entfernt,
+  reiner Platzverbrauch ohne dynamischen Inhalt. Der Live-/Auswahl-Status
+  bleibt, der zeigt tatsächlich Zustand an.
+- "Zuletzt erfolgreich gespeichert"-Zeile aus der sichtbaren Statuszeile
+  entfernt; der Text steht jetzt als Tooltip (`title`) auf dem
+  Speichern-Knopf, bleibt aber unsichtbar (`.rs-sr-only`) im DOM fuer
+  Screenreader und Tests erhalten.
+
+## 0.1.24
+
+- 15. Szenario: **AZ-5 war erst der Anfang**, RBMK, Schwierigkeit 3,
+  30 Simulationsminuten bei 0 MW Netzbedarf. `rbmk_post_az5_v1` löst bei t=0
+  echtes Engine-SCRAM aus; Stäbe fahren noch, Nachwärmegruppen, heißer Brennstoff
+  und Graphit bleiben erhalten. Nach 90 s fallen vier Hauptumwälzpumpen aus,
+  nach 180 s ist die normale Speisung physisch auf 15 kg/s begrenzt; nach 240 s
+  ist die Hilfsspeisung verfügbar, aber nicht automatisch eingeschaltet.
+- Begrenzte Hilfsspeisung mit maximal 220 kg/s und 160.000 kg Vorrat vor der
+  bestehenden Massen-/Energiebilanz; beide Speisewege verwenden abstrahiert
+  165 °C warmes Wasser. Tatsächliche Ströme statt bloßer Regleraufträge zählen.
+  Ausgefallene Pumpen bleiben auch gegen Helfer-/Replay-Neustarts gesperrt.
+  Übungsspezifische Bedienung und Diagnose zeigen Auftrag, Kapazität, Iststrom,
+  Vorrat/Reichweite, Trommelmasse, Bilanz, Kühlmittel-/Graphitwärme und T_gr.
+- Genau zwei Ziele mit unverändertem `incident_v1`: Inventarversorgung 30 s,
+  stabile Wärmeabfuhr 120 s, erst nach allen drei Ereignissen und dem nächsten
+  Physikschritt. Grenzverletzungen setzen Haltezeiten zurück und widerrufen
+  Erfolg; beide Ziele müssen bei 1800 s aktuell erfüllt sein. Kein versteckter
+  Fehlertimer, keine Energie-/SCRAM-Strafe; Server-Replay für die Bestenliste
+  zwingend, geladene Läufe weiterhin nur lokal. Sinkende Wärme verlangt dosierte
+  Speisung, keine vorgeschriebene Bedienfolge. Gemessene erfolgreiche Läufe:
+  3650 Punkte ohne Quittierung; Nichtstun und alle 111 geprüften konstanten
+  Stellwerte ab 240 s scheitern, kein Beweis über beliebige spätere Eingaben.
+- Neue flache Speicherfelder streng geprüft, Altstände neutral ergänzt;
+  äußeres Format v1, Trendformat v1 mit 15 Kanälen und Wertungsversion unverändert.
+  `pendingLog: {engine, trips}` bewahrt je die letzten 120 noch nicht dargestellten
+  Meldungen. Laden ersetzt frische Start-/Vorbereitungsqueues durch gespeicherte
+  Ereignisse, ohne Feld durch leere Queues: keine doppelten Startmeldungen,
+  echte ausstehende Ereignisse genau einmal, auch bei DWR/SWR.
+- Mobile Meldetafel-/Loggruppe schrumpft nicht mehr auf null: 180 px Gruppe,
+  gemessen 142 px Log; Touch-Scrollen und Alarmhilfe bleiben erreichbar.
+  Alte Szenario-JSONs unverändert, bisherige RBMK-Physik per Regression geprüft;
+  zusätzlich `srv` initial auf 0 gesetzt. Kein identischer globaler Zustandshash
+  behauptet, da neue Felder hinzukommen. Modell weiterhin zusammengefasst,
+  sättigungsbasiert, ohne detaillierte Oxidation oder Sicherheitszertifizierung.
+- Finale vollständige Prüfungen: Node 380/380, Python 175/175, darunter 14 neue
+  API-Tests für echte RBMK-Bestenlisten ohne Änderung der Produktions-API-Formeln.
+  Browser 1350/1350 in 108 Fällen, vier DE/EN-Desktop-/Mobil-Kombinationen;
+  vier authentische UI-Läufe mit identischen Server-Replays zu je 3650 Punkten.
+  Geprüft am finalen Code unter 0.1.23 vor der reinen Versionsanhebung;
+  Methodik, Fortsetzung und Grenzen: [RBMK-Audit](audit/RBMK-POST-AZ5-2026-09-14.md).
+
+## 0.1.23
+
+- Globaler Speicherstatus unter den Bedienelementen: letzter erfolgreicher
+  Auto-/Handspeicherzeitpunkt, laufender Auftrag und bleibende Fehlermeldung
+  auch während eines Wiederholungsversuchs. Neue Schreibvorgänge verwenden die
+  Browser-Bestätigungszeit; geladene Stände ihr echtes serverseitiges `saved_at`,
+  ohne das Laden als neue Speicherung auszugeben. Anzeige je Runde zurückgesetzt.
+- Beim Auslösen abgetrennte Snapshots und rundenübergreifende FIFO je Slot
+  verhindern umgekehrtes Überschreiben. Maximal 16 Aufträge je Slot, doppelte
+  ausstehende Autosicherungen desselben Kontexts zusammengefasst. Fehlgeschlagene
+  oder geworfene Schreibvorgänge blockieren Folgeaufträge nicht; nur Antworten
+  des aktuellen Kontexts verändern dessen Anzeige. Der Handspeicherdialog zeigt
+  Listenfehler statt scheinbar leerer Plätze und erlaubt echte Wiederholung;
+  Schreibfehler lassen ihn offen, alte Antworten/Schaltflächen bleiben wirkungslos.
+- Szenariostart aus der Auswahl und Fortsetzen verwenden denselben festgehaltenen Ladekontext
+  mit Lade-, Fehler- und Wiederholungsanzeige. Fehlende Metadaten werden erneut
+  abgerufen, Definitionen einschließlich einfacher Störungsziele geprüft;
+  kein stiller Wechsel ins freie Spiel. Auswahlwechsel, Zurück, Boot und Menü
+  entwerten alte Antworten, auch einen in `boot()` wartenden Spielstandabruf.
+- Xenon-Zeitsprung nur im laufenden freien Spiel nach SCRAM bei `X > 1`.
+  Abbrechen, Pause, globale Leertaste oder SCRAM stoppen ihn mit aktuellem
+  Zustand in Pause; positive Tempowechsel sind währenddessen gesperrt.
+  Echte 0,05-s-Schritte in 2000er-Blöcken, Freigabe des Browsers vor dem ersten
+  Block und tickgenaues Limit von 48 Simulationsstunden. Nur `X <= 1` gilt als
+  Erfolg mit Log, Trendmarker und 1×; Limit, Fehler oder Zerstörung starten nicht
+  automatisch weiter. Normales SCRAM außerhalb des Sprungs bleibt bei 1×.
+- Punkt 8 der Verbesserungsvorschläge damit vollständig erfüllt: Trendhistorie
+  seit 0.1.22, Speicherstatus und Abbruch seit 0.1.23. Speicherformat, Physik,
+  Szenarioziele und Wertungen bleiben unverändert.
+- Bestätigter vollständiger Node-Lauf: 322/322; Python unverändert erneut 161/161
+  nach einem anfänglichen Windows-Zugriffsfehler im bestehenden Highscore-Stress-
+  test, ohne Produktionsfix. Browser final 724/724 in vier DE/EN-Desktop-/Mobil-
+  Kombinationen, zusätzlich vier uninstrumentierte Smokes. Funktionsprüfung vor
+  der reinen Versionsanhebung 0.1.22 auf 0.1.23; Details, Fehlerinduktion und
+  Grenzen: [Komfort-Audit](audit/KOMFORT-2026-09-14.md).
+
+## 0.1.22
+
+- Gemeinsame Trends für alle 14 Szenarien und das freie Spiel aller drei
+  Reaktortypen: 1 Hz Simulationszeit, letzte acht Stunden, maximal 28.800
+  Messpunkte. Vier Hauptdiagramme für Leistung, Druck, Füllstand und
+  Speise-/Dampfstrom sowie vier erweiterte Diagramme teilen die Zeitachse
+  mit Ansichten für 10 Minuten, eine und acht Stunden.
+- Bis zu 600 Ereignismarker unterscheiden Bedienaufträge von tatsächlicher
+  Schnellabschaltung, Rücksetzen/Wiederherstellung und Alarm-/Störungsflanken.
+  Zielmarker gibt es für die drei DWR-Störungsschichten und das Anfahren-Tutorial,
+  nicht für sämtliche Szenarien. Markerlisten-Schaltflächen setzen einen weißen
+  Cursor und halten die Ansicht fest; „Live“ hebt die Auswahl auf. Fehlende
+  Messwerte bleiben Kurvenlücken, auch beim SWR-Füllstand ohne Gleichstrom.
+- Spielstände erhalten die gesamte noch vorgehaltene Trendhistorie und Marker
+  binär/Base64, ohne Ausdünnung oder weiteren Präzisionsverlust gegenüber den
+  15 Live-Float32-Kanälen und Float64-Zeitwerten. Nur die Darstellung verdichtet
+  nach Min/Max. Alte oder ungültige Trendblöcke starten ausdrücklich ohne
+  Historie, ohne einen gültigen Anlagenzustand abzulehnen. Erfassung läuft auch
+  ohne Rendering, der Schlusswert liegt vor dem Abschluss-Callback vor;
+  Fortsetzen bleibt exakt und ohne doppelte Samples. Replay und Wertung bleiben
+  unverändert. Helferprotokollierung ist renderunabhängig und ohne Doppeleinträge;
+  der tatsächliche UI-SCRAM-Auftrag mit `null` wird korrekt verarbeitet.
+- Speicherlimit nur für Spielstand-PUTs auf 4 MiB (4.194.304 Bytes) angehoben;
+  sonstige Flask-Anfragen bleiben bei 256 KiB, Einstellungen bei 8 KiB.
+  Waitress erlaubt 4 MiB Transportgröße. 60 Slots ergeben maximal 240 MiB
+  Spielstände je Konto, zuzüglich Backups und sonstiger Daten.
+- Screenshot-Wunsch umgesetzt: Der gesamte Laufzeit-Hinweisbereich
+  `#rs-guidance`, einschließlich Zielen und Bedienhinweisen, klappt nun über
+  die Überschrift als natives `details` ein, geschlossen auf 40 px.
+  Standardmäßig offen; die Wahl bleibt über Neuladen und Szenariowechsel in
+  `localStorage` erhalten, bei gesperrtem Speicher zumindest im Arbeitsspeicher.
+  Ziele laufen auch geschlossen weiter. Die Einweisung erhält keinen äußeren
+  Klappbereich. Leertaste/Enter bedienen native Elemente ohne Tempo-Umschaltung.
+- Bestätigte vollständige Prüfungen: Node 288/288, Python 161/161 und Browser
+  1786/1786 in DE/EN auf Desktop und emulierter Mobilansicht. Browser-Endstand
+  vor der reinen Versionsanhebung 0.1.21 auf 0.1.22; Prüfumfang, gemessene
+  Speichergrößen und Grenzen: [Trend-Audit](audit/TRENDS-2026-09-14.md).
+
+## 0.1.21
+
+- Zustandsbasierte Sicherheitsziele und `incident_v1`-Wertung für die drei
+  neuen DWR-Schichten: Versorgung beziehungsweise begrenzte Wärmeleistung
+  15 Sekunden, stabile Wärmeabfuhr 120 Sekunden. Erst nach den erforderlichen
+  Störungen aktiv; in der Kombination erst nach beiden. Grenzverletzungen
+  setzen Haltezeiten zurück und widerrufen auch bereits erfüllte Ziele.
+  Beide Ziele müssen am unveränderten Ende bei 900 beziehungsweise 1080
+  Simulationssekunden aktuell erfüllt sein; kein vorzeitiger Erfolg.
+- Je aktuell erfülltem Ziel 1000 Punkte, bei erfolgreichem Abschluss zusätzlich
+  1000 plus 250 je Schwierigkeitsstufe. Energie, Netzabweichung, RESA und
+  Grenzwertdauer tragen null Punkte bei; unquittierte Alarme kosten höchstens
+  100 Punkte. Katastrophenabzüge und frühere Abbruchregeln bleiben erhalten.
+  Übrige Szenarien und Physik bleiben unverändert; Ziele prüfen kalibrierte
+  Spielzustände, keine vollständige Störfallbehandlung oder Leckreparatur.
+- Zielübersicht, laufende Haltezeiten, erster Erreichungszeitpunkt und
+  aufklappbare Kriterien in DE/EN; erneut geöffnete Einweisung mit aktuellem
+  Zielstand. Auswertung übernimmt Ergebnis, Punkte und Summary vom Server,
+  gegen verspätete Antworten nach Sitzungswechsel abgesichert.
+- Speicherformat bleibt Version 1 und erhält Haltezeiten, Fenstergrenzen und
+  ersten Erfolg. Alte/ungültige Zielblöcke starten ohne Zielfortschritt.
+  Geladene Läufe haben kein vollständiges Replay und bleiben lokal gewertet.
+  Für die drei neuen Bestenlisten ist Server-Replay Pflicht; Helfereingriffe
+  werden aufgezeichnet und gegen `guidance` geprüft. Alte Betriebswertungen
+  bleiben gespeichert, getrennt nach Wertungsversion.
+- Vollständige Tests: Node 210/210, Python 158/158 bestanden. Echter
+  Chromium-Test in DE/EN auf Desktop und emulierter Mobilansicht: 1541
+  Prüfungen bestanden. Dabei den Auswertungsdialog höhenbegrenzt und scrollbar
+  gemacht, damit Eintragen, Neustart und Menü auch bei langen Ergebnissen
+  erreichbar bleiben. Details und Nachweise:
+  `audit/SZENARIOZIELE-2026-09-14.md`.
+
+## 0.1.20
+
+- Drei kurze DWR-Schichten mit gestufter Unterstützung: Speisewasserregelung
+  (geführt, Schwierigkeit 1, 15 Minuten), Dampferzeuger-Rohrleck mit 8 kg/s
+  (selbständig, Schwierigkeit 2, 15 Minuten) und kombinierter Turbinen-/
+  Speisewasserstörung (anspruchsvoll, Schwierigkeit 3, 18 Minuten).
+- Szenarioauswahl nach Schwierigkeit, Tutorial zuerst; Stufenprofile auf den
+  Karten. Deutsche/englische Hinweise in Einweisung und Spiel, Einweisung
+  erneut zu öffnen. `guidance` steuert `hint_key`, `event_alerts` und
+  `auto_helper`: Stufe 1 erlaubt Vorwarnung/Helfer gemäß Einstellungen,
+  Stufen 2 und 3 nicht. Globale Helferpräferenz und alte Szenarien ohne
+  `guidance` bleiben unverändert.
+- Keine Physikänderung: Speisewasserregelung bleibt wiederherstellbar, ohne
+  Hilfsspeisung oder permanenten Pumpendefekt. Rohrleck nur im vereinfachten
+  zusammengefassten DE-Modell, ohne Einzelisolation/Aktivitätsmessung.
+  Zeitabschluss und Punkte prüfen keine Diagnose oder korrekte Behandlung;
+  beim Rohrleck kann auch Nichtstun zum Zeitabschluss führen. Diese Grenzen
+  stehen ausdrücklich in den deutschen und englischen Szenariotexten.
+- JavaScript 164/164 und Python 82/82 bestanden; neue Guidance- und
+  Progressionstests sowie ergänzte Lifecycle-/API-Tests. Echter Chromium-Check
+  auf Desktop und emulierter Mobilansicht: 289 Prüfungen bestanden. Dabei
+  übernommene Scrollpositionen in Einweisung und Hinweiskarten korrigiert.
+- Umfang, Reproduktion, Balancing und offener Ausbau:
+  `audit/SZENARIEN-2026-09-14.md`.
+
+## 0.1.19
+
+- Interaktives DWR-Anfahren-Tutorial als eigene Übung in der Szenarioauswahl.
+  Vorbereiteter heißer, unterkritischer Start; fünf Lernziele für
+  Zustandsprüfung, Pumpenhochlauf, Stabbedienung, Lastaufnahme und stabilen Betrieb.
+- Tutorialkarte mit aktuellen Werten, zustandsabhängigen Hinweisen,
+  Wirkungserklärungen, Lernzielliste und Sprung zum passenden Panel.
+- Fortschritt hängt vom Anlagenzustand ab. Die abschließende Haltezeit von
+  120 Sekunden beginnt bei einer Abweichung neu; bloßes Abwarten gewährt keinen
+  Erfolg. Schnellabschaltung, Schaden oder Zeitablauf beenden den Versuch.
+- Spielstände bewahren Schritt, Haltezeit und erreichte Ziele. Die Auswertung
+  zeigt Ziele und Schichtverlauf ohne Punkte; die API lehnt Tutorialwertungen ab.
+- Acht neue JavaScript-Tests einschließlich vollständigem Anfahren,
+  identischer Fortsetzung aus einer laufenden Haltezeit und UI-/Lifecycle-Fällen;
+  zusätzlicher API-Test und deutsche/englische Texte.
+- Umfang und Nachweise: `audit/TUTORIAL-2026-09-14.md`.
+
+## 0.1.18
+
+- Diagnosebereich im Primärpanel für alle drei Reaktortypen: Pumpenantrieb,
+  Drehzahl und Pumpenbeitrag; Ventilauftrag und tatsächliche Öffnung;
+  Kern- und Speisewasserstrom. Naturumlauf und Pumpenauslauf werden erklärt.
+- SWR: Notkondensator-Bedienwunsch und Rückmeldung getrennt; Messausfall bei
+  fehlendem Gleichstrom ausdrücklich sichtbar. Die Füllstandszahl zeigt dann
+  keinen scheinbar aktuellen Wert. Diesel-Einspeisung wird getrennt vom
+  Einschaltwunsch ausgewiesen.
+- Szenarioauswertung mit Störungen, Bedienaufträgen, Helfereingriffen und
+  Meldungswechseln. Erstes Warn-/Auslösesignal und der zeitliche Bezug zwischen
+  letzter Bedienung und erloschener Meldung helfen bei der Nachbesprechung.
+  Ein zeitlicher Zusammenhang wird nicht als bewiesene Ursache ausgegeben.
+- Eigenes, mitgespeichertes Auswertungsprotokoll mit bis zu 600 Einträgen,
+  unabhängig von Renderfrequenz und Replay-Recorder. Kontinuierliche
+  Stellbewegungen werden zusammengefasst; fehlende Historie wird benannt.
+- Deutsche und englische Texte; gezielte Diagnose-, Auswertungs- und
+  Fortsetzungstests. Details: `audit/VERBESSERUNGEN-2026-09-14.md`.
+
+## 0.1.17
+
+- Dampfentnahme durch Inventar und Energie begrenzt; kein dauerhaftes Restwasser.
+- Bedeckung und DNBR/CPR beeinflussen den Waermeuebergang; die kuenstliche
+  SWR-Heizquelle bei Kernfreilegung entfaellt. Brennstoff und Graphit bilanzieren
+  gespeicherte und abgegebene Waerme.
+- Druckabhaengige Diesel-Loeschwasserpumpe mit begrenztem Vorrat, Anzeige,
+  Druckentlastung und Gleichstrom-/Ersatzbatterie-Bedienung.
+- Wasserstoff: getrennte Gasraeume, Leckage und kontrollierte Entlastung.
+- RBMK-Stabwirkung folgt der Geometrie bei Handfahrt und AZ-5.
+- Sieben Nachwaermegruppen erhalten den Langzeitanteil. Alte Viergruppenstaende
+  werden unter Erhalt ihrer momentanen Nachwaermeleistung migriert.
+- IAPWS-Oberflaechenspannung; heisser Wiederanlauf korrekt bezeichnet.
+- Physik-Regressionen, Blackout-Gegenproben, Speicherung und Eingabe-Replay;
+  Details und Modellgrenzen in audit/PHYSIK-FIXES-2026-09-13.md.
+
+## 0.1.16
+
+- Spielstände bewahren interne Vorwerte, Reglertakt, Zufallszustand und
+  RBMK-Zonen-/AZ-5-Zustände. Neue Speicherstände setzen die geprüften
+  Transienten exakt fort; ältere Stände bleiben mit rekonstruierten
+  Vorwerten ladbar. Alarmursachen und freie Bedarfskurven werden mitgesichert.
+- Fortsetzen lädt den Zustand vor Panelaufbau, Simulation und Autosicherung.
+  Ladefehler bleiben im Menü sichtbar; veraltete Ladeantworten werden verworfen.
+- Verlassen des freien Spiels beendet die Sitzung, sodass anschließend wieder
+  Szenarien gestartet werden können. Neustart behält auch geladene Szenarien.
+- Szenarioverluste zeigen Ursache, Verlauf und Wertung in einer Auswertung.
+  Menü und Neustart räumen beide Enddialoge auf.
+- Trends werden im Simulationstakt erfasst, unabhängig von Bildrate und
+  Zeitraffer. Ein alter Xenon-Zeitsprung endet bei einem Sitzungswechsel.
+- 14 Regressionstests für Persistenz, Menü-/Ladeabläufe, Enddialoge und Trends.
+
+## 0.1.15
+
+- 🐛 **Fix: der eigentliche Grund hinter 0.1.14 -- vergangene Szenario-
+  Ereignisse feuerten nach JEDEM Laden erneut, nicht nur, weil ihre
+  ctx-Merker fehlten.** `Session`/`Scenario` werden bei jedem Rundenstart
+  frisch gebaut (auch beim Fortsetzen, main.js `boot()`), noch BEVOR der
+  Spielstand angewendet wird -- die neue `Scenario`-Instanz weiss darum
+  nichts von Ereignissen, die in einer früheren Sitzung schon liefen.
+  Sprang `t_sim` durchs Laden über deren Zeitpunkt, feuerte
+  `scenario.due()` sie beim nächsten Bild einfach noch einmal: doppelte
+  Protokollzeilen (sichtbar durch das rollende Log-Gedächtnis aus 0.1.3),
+  und bei einer laufenden Meldung wie "Pumpe ausgefallen" zusätzlich ein
+  Aus-und-wieder-An auf der Meldetafel samt Hupe -- 0.1.14 allein reichte
+  dafür nicht, weil es nur die ctx-Merker selbst sicherte, nicht das
+  erneute Feuern des Ereignisses verhinderte.
+  Neues `Scenario.catchUp(t)` (game/scenario.js) markiert nach dem Laden
+  alle bereits vergangenen Ereignisse als erledigt, OHNE sie anzuwenden --
+  ihre Wirkung steckt schon im geladenen Zustand. Geprüft per Nachbau des
+  kompletten Ablaufs über echte `Session`/`Scenario`-Objekte: Protokoll
+  bleibt unverändert, Meldung bleibt "ack", keine Hupe.
+
+## 0.1.14
+
+- 🐛 **Fix: "Pumpe ausgefallen" (und jede andere laufende Störung) verlor
+  ihren Quittierstatus beim Laden eines Spielstands -- der von 0.1.3
+  eigentlich schon gelöste Fall, nur an einer Stelle, die 0.1.3 nicht
+  erreichte.** Ursache: `ctx.stuckRods`, `ctx.msivStuck`, `ctx.pumpsStuck`,
+  `ctx.recircPumpStuck`, `ctx.recircRunback`, `ctx.porvStuck`,
+  `ctx.sgLeak`, `ctx.boronRunaway` (alle in `game/events.js` `stepEvents()`)
+  leben nur auf `ctx`, nie in `engine.state`, und waren deshalb komplett
+  vom Spielstand ausgeschlossen. Nach dem Laden verteidigte `stepEvents()`
+  nichts mehr aktiv: die Meldung fiel beim nächsten Bild sofort auf
+  "normal" zurück, obwohl sie schon quittiert war und die Ursache
+  unverändert weiter anstand -- UND der zugehörige Knopf (z.B. der
+  "ausgefallenen" Pumpe) ließ sich wieder anklicken, ganz ohne Wirkung
+  aus 0.1.11.
+  Alle acht Merker sind jetzt Teil von `persist.js` `pack()`/`apply()`
+  (neues, optionales `malfunctions`-Feld) -- geprüft per Nachbau des
+  genauen Ablaufs (Pumpenausfall → quittiert → gespeichert → geladen):
+  Meldung bleibt "ack", Knopf bleibt gesperrt.
+
+## 0.1.13
+
+- 🔧 **Fix: Reaktivitätsbilanz-Balken beim RBMK stand am Volllast-
+  Gleichgewicht schon dauerhaft am Anschlag.** Der feste Vollausschlag
+  von 3000 pcm (`reactivityBars()`) traf beim RBMK exakt den Gleichgewichts-
+  wert der Xenon-Vergiftung (`xenon_worth_pcm: 3000`) -- der Balken war
+  von der ersten Sekunde jedes Laufs an maximal ausgeschlagen, ganz ohne
+  Störung, und hätte einen echten Xenon-Brunnen (Nachtschicht-Szenario)
+  gar nicht mehr zeigen können. Vollausschlag ist jetzt 50 % über dem
+  größten bekannten Einzelwert des jeweiligen Typs (`xenon_worth_pcm`),
+  mindestens aber weiterhin 3000 -- betrifft auch DWR/SWR, deren
+  Gleichgewichtswerte (2800/2600 pcm) vorher ebenfalls nahe am Anschlag
+  lagen, nur nicht ganz so knapp.
+
+## 0.1.12
+
+- 🔧 **Fix: Quittieren/Rückstellen fehlten im vergrößerten Meldetafel-
+  Fenster.** Der Kachel-Kopf mit diesen beiden Knöpfen blieb bisher am
+  Ursprungsplatz stehen, wenn die Meldetafel per Klick auf den Titel als
+  eigenes Fenster geöffnet wurde (`openPanelWindow()`/`closePanelWindow()`
+  in main.js verschieben bisher nur `.rs-panel-body`) -- im Fenster selbst
+  liess sich dann nichts quittieren oder zurückstellen. Die Knöpfe wandern
+  jetzt mit ins Fenster (verschoben, nicht geklont) und zurück beim
+  Schließen.
+
+## 0.1.11
+
+- 🐛 **Fix: ausgefallene Pumpe liess sich einfach wieder anklicken --
+  keine Meldung, kein Widerstand.** Zwei getrennte Lücken, beide seit
+  Einführung von `mcp_trip`/`rcp_trip`/`station_blackout` (lange vor
+  dieser Session): der Ereignis-Griff rief nur `pump.trip()` EINMAL auf,
+  ohne den Zustand danach zu verteidigen -- derselbe Knopf, der die Pumpe
+  im Normalbetrieb auch anschaltet, holte sie sofort wieder zurück. Und
+  weil dafür keine eigene Meldetafel-Kachel existierte (anders als bei
+  einer klemmenden Stabgruppe oder einem klemmenden Ventil), stand auch
+  nirgends, dass überhaupt etwas kaputt ist.
+  - `ctx.pumpsStuck`/`ctx.recircPumpStuck` (game/events.js) hält jetzt
+    fest, WELCHE Pumpe durch ein Ereignis ausgefallen ist, `stepEvents()`
+    hält sie jeden Schritt gestoppt -- auch gegen den Ein-Knopf. Betrifft
+    `rcp_trip` (DWR/SWR/RBMK), `mcp_trip` (RBMK) und `station_blackout`
+    (SWR) gleichermaßen.
+  - Neue RBMK-Meldung "Pumpe ausgefallen" (`mcp_stuck`, Meldetafel-Kachel
+    „rcp"), mit eigener Hilfe -- dieselbe Lücke, die `rod_stuck` für
+    klemmende Stabgruppen schon lange geschlossen hatte.
+  - Betroffene Pumpenknöpfe werden jetzt zusätzlich ausgegraut und
+    gesperrt (`pumpStuckList` je Typdatei, `pumpRow()` in controls.js) --
+    eine vom SPIELER selbst abgeschaltete Pumpe bleibt dagegen ganz normal
+    bedienbar, nur die durch ein Ereignis ausgefallene ist gesperrt.
+  - Geprüft: `rbmk_night_shift`, `rbmk_cold_start` (beide nutzen
+    `mcp_trip` schon länger) und `bwr_fukushima` (`station_blackout`)
+    laufen mit dem Fix unverändert durch, keine Regression.
+
+## 0.1.10
+
+- 🔧 RBMK "Ausfall einer Umwälzpumpengruppe": Schwierigkeit ★★★→★★
+  korrigiert. Ein Ereignis, eine durchgehende Aufgabe (Leistung per Hand
+  halten), keine ORM-Krise, keine Xenon-Dynamik -- strukturell naeher an
+  SWR "Lastfolge über Umwälzstrom" (★★) als an den anderen beiden
+  RBMK-Dreisternern (Nachtschicht/Kaltstart: je drei gleichzeitige
+  Komplikationen). Die 3 in 0.1.6 war ein Fehlschluss aus "jetzt nicht
+  mehr trivial" auf "also drei Sterne".
+
+## 0.1.9
+
+- 🔊 Geigerzähler-Alarmton (`geiger_game_alert.mp3`) ausgetauscht.
+
+## 0.1.8
+
+- ⏪ Revert 0.1.7: `game_attention.mp3`-Tausch zurückgenommen, alter Ton
+  wieder da.
+
+## 0.1.7
+
+- 🔊 Meldeton "Dauerlicht/Quittierung" (`game_attention.mp3`) ausgetauscht.
+
+## 0.1.6
+
+- 🔧 **Fix: neues RBMK-Szenario "Ausfall einer Umwälzpumpengruppe" (0.1.5)
+  war ohne Wirkung, wenn der Leistungsregler auf Automatik blieb.**
+  Nachtest ergab: der automatische Leistungsregler trimmt selbst einen
+  Ausfall von 4 der 8 Hauptumwälzpumpen 60 Minuten lang praktisch ohne
+  Leistungsabweichung weg -- die Kernaufgabe des Szenarios (positive
+  Dampfblasen-Rückkopplung von Hand beherrschen) kam so nie zustande. Das
+  Szenario startet jetzt mit dem Leistungsregler auf Hand (Ereignis
+  `power_regulator_off` bei t=0, wie im historischen RBMK-Betrieb
+  üblich) -- ohne Gegensteuern über die Steuerstäbe läuft die Leistung
+  jetzt nachweislich auf "Leistung hoch" zu. Schwierigkeit deshalb auf
+  ★★★ angehoben.
+- 📝 Außerdem die Einweisung korrigiert: die Behauptung, geringerer
+  Durchsatz erhöhe die Kavitationsgefahr an den verbliebenen Pumpen, hält
+  der Simulation nicht stand -- die Unterkühlung (`_subcooling()` in
+  rbmk.js) steigt hier tatsächlich mit sinkendem Durchsatz, weil das
+  Speisewasser einen größeren Anteil der Mischtemperatur im Fallraum
+  bestimmt. Ersetzt durch die zutreffende Aussage: höhere Pumpendrehzahl
+  gleicht den Durchsatzverlust nur teilweise aus, das eigentliche
+  Gegenmittel sind die Steuerstäbe.
+
+## 0.1.5
+
+- 🆕 **Neuntes Szenario: RBMK "Ausfall einer Umwälzpumpengruppe"** (60 min,
+  ★★). Volllastbetrieb, nach zehn Minuten fallen zwei der acht
+  Hauptumwälzpumpen aus (bestehendes `mcp_trip`-Ereignis, bisher nur als
+  Nebenstörung in "Nachtschicht"/"Kaltstart" benutzt, hier erstmals als
+  einzige, klar lernbare Aufgabe). Lehrt den positiven Dampfblasen-
+  koeffizienten des RBMK aus der Durchsatz-Richtung: weniger Durchsatz →
+  mehr Blasen → mehr Reaktivität → mehr Leistung → noch mehr Blasen, dazu
+  steigendes Kavitationsrisiko an den verbliebenen Pumpen, wenn man
+  versucht, den Ausfall über deren Mehrleistung auszugleichen.
+- 📋 Weitere 13 Szenario-Ideen (DWR/SWR-Feedwater- und Pumpenausfälle,
+  SG-Rohrbruch, Druckmessungs-Drift, Vakuumverlust, RBMK-Trommelpegel/
+  Xenonfalle/Axialverzerrung/Graphitüberhitzung/Stabklemmer, SWR-ATWS)
+  nach Machbarkeit sortiert ins BACKLOG.md aufgenommen -- mehrere davon
+  (SG-Rohrbruch, Speisewasserverlust, DWR-Pumpenausfall) nutzen bereits
+  vollständig implementierte, aber noch nie in einem Szenario verpackte
+  Ereignisse (`sg_tube_leak`, `feedwater_loss`, `rcp_trip`).
+
+## 0.1.4
+
+- 📝 **Szenario-Einweisungen nach technischem Gegencheck geschärft.**
+  - DWR Lastfolge: "Reaktivität dann nur noch über Borsäure" überstellt --
+    eine klemmende Stabgruppe macht nicht die gesamte übrige Stabregelung
+    unbrauchbar. Jetzt: "weitere Reaktivitätsführung muss überwiegend über
+    Borierung/Deborierung erfolgen".
+  - DWR Turbinenschnellschluss & SWR Frischdampf-Absperrung: Text macht
+    jetzt explizit, dass eine reale Anlage hier automatisch schnell-
+    abschalten würde, dieses Spiel die Entscheidung aber bewusst dem
+    Spieler überlässt (Design gilt durchgängig im ganzen Spiel, siehe
+    bereits bestehender Hinweis bei der SWR-Dichtewellen-Instabilität) --
+    keine neue Auto-RESA-Logik, nur ehrliche Einweisung.
+  - SWR Dichtewellen-Instabilität: der Umwälzstrom-Abfall (`recirc_runback`)
+    lief bisher als Sollwert-Sprung, den die Pumpe in ~6s nachfährt --
+    jetzt ein echter, schleichender Abfall über 5 Minuten (`over_s` im
+    Ereignis, siehe events.js), das gibt mehr Zeit, die gefährliche
+    Kombination aus hoher Leistung und niedrigem Durchsatz selbst
+    herbeizuführen oder rechtzeitig gegenzusteuern. `bwr_flow_control.json`
+    (dieselbe Ereignis-ID, geplante Lastführung statt Defekt) bleibt beim
+    sofortigen Sollwert -- eigener Test dafür in test-bwr.mjs.
+
+## 0.1.3
+
+- 🔧 **Fix: Spielstand vergaß Quittierstatus und Ereignisprotokoll.**
+  Beides lag ausserhalb von `engine.state` (Meldetafel-Quittierung in
+  `engine.trips`, das Protokoll nur als `<li>`-Knoten im DOM) und landete
+  nie im Speicherstand. Nach dem Laden blinkte/hupte jede vorher schon
+  quittierte, aber weiterhin anstehende Meldung sofort wieder auf, und
+  das Log-Panel startete leer, egal wie lange vorher gespielt wurde.
+  - `TripSystem` bekommt `snapshot()`/`restore()` (sim/trips.js) --
+    Quittierstatus je Kachel ist jetzt Teil des Spielstands.
+  - Ein rollendes Protokoll-Gedächtnis (`ctx.history`, gedeckelt auf 120
+    wie die Anzeige selbst) läuft unabhängig vom DOM mit und wird beim
+    Laden einmalig ins Log-Panel nachgetragen.
+  - Beides optional wie die bisherigen Zusatzfelder: ein alter
+    Spielstand ohne sie lädt weiterhin normal, nur eben ohne diese zwei
+    Extras (wie bisher).
+
+## 0.1.2
+
+- 🔧 **Fix: Ausklapp-Pfeil bei den Spielstand-Karten hing am linken
+  Kartenrand statt am Text.** `list-style-position` bezieht sich beim
+  nativen Dreieck-Marker auf die Randbox des GANZEN Listenelements, nicht
+  auf den Textanfang -- bei einer ganzen Kartenbreite sass der Pfeil damit
+  sichtbar losgeloest links, weit vom Wort "Spielstände" entfernt. Jetzt
+  ein eigenes Dreieck per `::before` in einer Flexbox mit dem Text
+  zusammen, dreht sich beim Aufklappen.
+
+## 0.1.1
+
+- 💾 **Zehn feste Handspeicherplätze je Reaktortyp.** Der Speichern-Knopf
+  (und Strg+S) öffnet jetzt einen Auswahldialog mit allen zehn Plätzen
+  dieses Reaktortyps -- belegt (mit Datum/Uhrzeit/Szenario) oder frei --
+  statt stillschweigend einen einzigen, an Reaktor+Szenario gekoppelten
+  Slot zu überschreiben. Ein neu ausprobiertes Szenario legt keinen
+  elften Platz mehr an; der Spieler entscheidet selbst, welchen der
+  zehn er überschreibt. Löschen geht direkt im Dialog.
+  Die Autospeicherung bleibt unverändert (ein Slot je Reaktor+Szenario,
+  läuft alle 60s im Hintergrund weiter).
+- Die Spielstände unter jeder Reaktor-Karte sind jetzt **ausklappbar**
+  (`<details>`, collapsed per Default, Zusammenfassung zeigt nur die
+  Anzahl) -- bei bis zu zehn Handplätzen plus Autospeicherung wäre die
+  Karte sonst schnell voller Text als Inhalt. Neuester Stand zuerst.
+- 🔧 Serverseitiges Limit für Spielstände je Konto von 20 auf 60 Plätze
+  angehoben -- 30 Handplätze (10 × 3 Reaktortypen) allein sprengten das
+  alte Limit schon, bevor überhaupt eine Autospeicherung dazukam.
+
+## 0.1.0
+
+- 🔧 **Fix: Mouseover-Umsetzung aus 0.0.99 war falsch.** Namen erschienen
+  wieder an einer festen Stelle im SVG statt neben dem Mauszeiger, UND die
+  Messwerte (Temperatur, Druck, Prozent, MW) waren bis zum Hover unsichtbar
+  -- fuer eine Leitwarte inakzeptabel, die Zahlen muessen ohne Maus
+  durchgehend ablesbar sein. Jetzt: Messwerte sind wieder IMMER sichtbar
+  wie vor 0.0.99, nur der Bauteilname (Reaktor, Pumpe, Druckhalter, …)
+  kommt als echtes Tooltip direkt neben dem Mauszeiger (klappt am rechten/
+  unteren Fensterrand automatisch auf die andere Seite um) -- damit kann
+  ein Name nie mehr mit irgendetwas kollidieren, ganz gleich wo er
+  auftaucht.
+
+## 0.0.99
+
+- 🖼️ **Fließbild-Beschriftungen grundlegend umgebaut: Name und Messwert nur
+  noch per Mouseover statt dauerhaft im Bild.** Bei drei eng gepackten
+  Fließbildern (DWR/SWR/RBMK) liefen sich dauerhaft eingeblendete Texte
+  zuverlaessig gegenseitig ins Gehege, ganz gleich wie sorgfaeltig jede
+  einzelne Position von Hand justiert wurde -- das ließ sich mit fixen
+  Koordinaten nicht mehr zufriedenstellend loesen. Jetzt liegt Name und
+  Messwert jedes Bauteils (Reaktor, Druckhalter, Dampferzeuger/
+  Trommelabscheider, Pumpen, Ventile, Generator, Kondensator, …)
+  unsichtbar bereit und erscheint erst, wenn die Maus darueber steht --
+  damit kann nie mehr als eine Beschriftung gleichzeitig sichtbar sein,
+  Ueberlagerung ist strukturell ausgeschlossen statt nur wegjustiert.
+  Betrifft alle drei Reaktortypen gleichermaßen.
+- 🔧 **Fix: Reaktorkarten auf dem Startbildschirm unterschiedlich groß.**
+  Seit den Spielstaenden je Karte (0.0.95) war `.rs-card` kein direktes
+  Grid-Kind von `.rs-start-cards` mehr und sackte auf seine eigene
+  Inhaltshoehe zusammen -- DWR/SWR/RBMK sahen sichtbar unterschiedlich groß
+  aus. Per CSS-Subgrid teilen sich alle drei Karten jetzt wieder dieselbe
+  Zeilenhoehe, ganz gleich wie lang Beschreibung oder Spielstandsliste sind.
+
+## 0.0.98
+
+- 🖼️ **RBMK-Fließbild: Speisewasserpumpe ergänzt, Kern klarer beschriftet.**
+  Rückmeldung zum Schaubild: dieselbe fehlende Speisewasserpumpe wie bei
+  DWR (0.0.96) und SWR (0.0.97) -- zwischen Kondensator und Trommel-
+  abscheider fehlte sie, das Kondensat floss im Bild scheinbar von allein
+  zurück.
+  "Druckröhren" heißt jetzt "Reaktorkern" (EN: "Reactor core" statt
+  "Pressure tubes") -- der Block ist eben nicht nur die Rohre, sondern der
+  ganze Graphitmoderator mit den Druckröhren darin.
+
+## 0.0.97
+
+- 🖼️ **SWR-Fließbild: Speisewasserpumpe ergänzt, Behälter umbenannt.**
+  Rückmeldung zum Schaubild: dieselbe fehlende Speisewasserpumpe wie beim
+  DWR (0.0.96) -- zwischen Kondensator und Reaktordruckbehälter fehlte
+  sie, das Kondensat floss im Bild scheinbar von allein zurück. Zeigt
+  jetzt zusätzlich "tripped" (rot), wenn kein Wechselstrom anliegt (siehe
+  `s.acPower`) -- dann stehen die Speisewasserpumpen wirklich still, nicht
+  nur ein zugedrehtes Ventil.
+  "Druckbehälter" heißt jetzt "Reaktordruckbehälter" (EN: "Reactor
+  vessel" statt "Vessel") -- war zu allgemein für das zentrale Bauteil, in
+  dem beim SWR das Wasser tatsächlich siedet.
+
+## 0.0.96
+
+- 🖼️ **DWR-Fließbild: Speisewasserpumpe ergänzt, Primär-/Sekundärseite im
+  Dampferzeuger sichtbar getrennt.** Rückmeldung zum Schaubild: zwischen
+  Kondensator und Dampferzeuger fehlte die Speisewasserpumpe -- das Wasser
+  floss im Bild scheinbar von allein bergauf. Sitzt jetzt an der Ecke der
+  Speisewasserleitung, dreht sich mit dem tatsächlichen Speisewasserfluss.
+  Der Dampferzeuger zeigt zusätzlich eine Trennlinie zwischen Primärseite
+  (Rohrbündel, links) und Sekundärseite (Füllstand, rechts) -- beide Wasser
+  laufen im Bild jetzt sichtbar getrennt, nie vermischt.
+
+## 0.0.95
+
+- 💾 **Spielstände hängen jetzt an ihrer eigenen Reaktor-Karte.** Bisher
+  stand ein Eintrag je Reaktortyp in EINER gemeinsamen Liste unten auf dem
+  Startbildschirm; ein RBMK-Stand sah dort aus, als könnte er zwischen
+  DWR/SWR untergehen. Jeder Stand erscheint jetzt direkt unter seiner
+  eigenen Karte (DWR/SWR/RBMK) und bleibt dort sichtbar, ganz unabhängig
+  davon, welche Karte man gerade anklickt -- nichts geht verloren, nur
+  anders sortiert.
+
+## 0.0.94
+
+- 🔇 **Fix: Ton-Hauptschalter (Mute) liess zwei Klaenge stumm ungeschaltet
+  durch.** Der Schalter-Klick bei jeder Bedienung (Staebe, Automatik/Hand,
+  Pumpen -- controls.js) und der Geigerzaehler-Alarm riefen `playClip()`
+  direkt auf, ohne je den Mute-Zustand zu pruefen -- anders als Hupe,
+  Musik und Stabfahrgeraeusch, die schon vorher ihr eigenes `enabled`
+  hatten. `playClip()` hat jetzt selbst einen Hauptschalter
+  (`setMuted()`, gesetzt in derselben Stelle wie alle anderen
+  Ton-Einstellungen), der Mute-Knopf schaltet jetzt wirklich alles ab.
+
+## 0.0.93
+
+- 🐛 **Fix: Hintergrundbilder aus 0.0.92 unsichtbar.** Kamen als
+  Inline-Style (`style="--rs-splash-bg: url(...)"`) aus dem Template --
+  die serverseitige CSP (`style-src 'self' <nonce>`, kein `unsafe-inline`)
+  blockt jedes `style="..."`-Attribut ohne Nonce, der Browser hat die
+  Regel also stillschweigend verworfen. Jetzt liegt der Bildpfad fest in
+  `base.css` (`url("/static/img/...")`), das faellt unter `img-src`, nicht
+  `style-src`.
+
+## 0.0.92
+
+- 🖼️ **Startbanner und Reaktorauswahl bekommen Hintergrundbilder.** Splash
+  zeigt jetzt `splash.png` als Foto-Hintergrund, die Reaktorauswahl
+  `background.png` -- beide mit dunklem Schleier drueber, damit Text und
+  Karten lesbar bleiben.
+- Das Logo auf dem Splash erscheint nicht mehr sofort, sondern blendet erst
+  5s nach dem Laden langsam ein. Ein Klick auf den Splash VOR Ablauf der 5s
+  ueberspringt nur diese Wartezeit; danach blendet ein Klick wie gehabt das
+  ganze Banner aus.
+- Der Hinweistext "zum Start klicken" ist bis dahin unsichtbar und blinkt
+  erst zusammen mit dem Logo ROT auf, statt wie bisher die ganze Zeit leise
+  zu pulsieren.
+
+## 0.0.91
+
+- 🔧 **Wertungsformel grundlegend umgebaut.** `violation_seconds`
+  (Sekunden mit aktiver Meldetafel-Kachel, nach Schwere) ging bisher
+  UNGEDECKELT und linear in den Punktestand ein -- eine vier Stunden lang
+  sauber gefahrene Schicht mit einer einzigen harmlosen Dauerwarnung (z.B.
+  Graphittemperatur knapp über dem Normalband) sammelte mehr Minus als ein
+  kurzer Lauf, der in einer echten Katastrophe endete. Ergebnis in einem
+  realen Fall: Schicht vollständig gefahren, Energieziel erfüllt, kein
+  SCRAM, kein Kernschaden -- trotzdem **-2497 Punkte**, ohne jede Anzeige,
+  woher das kommt.
+  - Jede Schwere (INFO/WARN/TRIP) zählt jetzt als **Anteil der tatsächlich
+    gespielten Schichtdauer**, gedeckelt bei -100/-300/-1000 Punkten --
+    eine Warnung, die 25 % der Schicht ansteht, kostet unabhängig davon,
+    ob die Schicht eine oder vier Stunden dauerte, denselben Betrag.
+  - Neue Bodenregel: eine erfolgreich abgeschlossene, katastrophenfreie
+    Schicht (kein Kernschaden, kein Sicherheitsbehälterversagen, keine
+    Wasserstoffexplosion) fällt nie unter 0 Punkte, ganz ohne SCRAM sogar
+    nie unter 500.
+  - SWR-Sicherheitsbehälterversagen und Wasserstoffexplosion
+    (`plants/bwr.js`) setzten bisher nie `fuel_damage` und kosteten dadurch
+    nur die bis dahin aufgelaufenen `violation_seconds` -- jetzt eigene,
+    additive Katastrophenstrafen (-2500/-3000), die auch bei formal zu
+    Ende gelaufenem Schicht-Timer NIE durch die Bodenregel aufgehoben
+    werden.
+  - Gemeinsame Rundungsfunktion (`_round_score`/`roundScore`, "weg von
+    Null") in `scoring.py`/`scoring.js` ersetzt `round()`/`Math.round()`:
+    beide runden exakte `.5`-Werte unterschiedlich (Python zur geraden
+    Zahl, JavaScript immer aufwärts) -- bei Fließkomma-Zwischenwerten ein
+    echtes Risiko, dass Server- und Client-Score auseinanderlaufen.
+  - `parts` (die Zerlegung des Scores) ist jetzt vollständig: jeder
+    Faktor eigens aufgeschlüsselt, inklusive `rounding_adjustment` und
+    `floor_adjustment` -- die Summe aller Teile ergibt IMMER exakt den
+    Score, nicht nur ungefähr.
+- ✨ **Auswertung zeigt jetzt, woher jeder Punkt kommt.** Vollständige
+  Score-Zerlegung (Mission, Energie, Abweichung, Alarme, Bonus, SCRAM,
+  Kernschaden, Sicherheitsbehälterversagen, Wasserstoffexplosion,
+  Mindestwertung), dazu ein neuer Abschnitt "Grenzwertüberschreitungen"
+  (Zeit UND Punktewirkung je Schwere) und "Hauptursachen" (welche
+  Meldetafel-Kachel wie lange stand, bis zu drei). Ursachen-Daten
+  (`result.causes`) liegen bewusst NEBEN der Zusammenfassung, nicht darin
+  -- sie gehen nie zum Server, nur die Wertungs-Kennzahlen selbst.
+  Aus einer Rücksprache mit einer zweiten KI über mehrere Runden entstanden
+  (Formel, Bodenregel-Lücken, Rundungsfehler -- Details im Verlauf).
+
+## 0.0.90
+
+- ✨ **Rundinstrumente klickbar: eigene Hilfe je Messwert.** Alle 10
+  Rundinstrumente (Kern/Primär-/Sekundärkreis) lassen sich jetzt anklicken
+  (oder per Tastatur: Tab, dann Enter/Leertaste) -- genau wie eine
+  Meldetafel-Kachel öffnet das dasselbe Hilfefenster, mit konkreter
+  Zu-niedrig-/Zu-hoch-Anleitung statt bloßer Definition. Neue Schlüssel
+  `gauge_<name>_help` (DE+EN), Nutzer-Text.
+- 🛠️ **Hilfefenster kann jetzt Absätze, Zwischenüberschriften und Fettschrift.**
+  `renderHelpText()` (panels.js) ist eine winzige selbstgeschriebene
+  Markdown-Teilmenge (Leerzeile = Absatz, `### ` = Zwischenüberschrift,
+  `**..**` = fett), baut echte DOM-Knoten statt eines HTML-Strings -- kein
+  Escaping nötig. Betrifft auch die Meldetafel-Hilfe (dieselbe Funktion),
+  bestehende Texte ohne diese Zeichen sehen unverändert aus.
+- Verifiziert per Playwright gegen den laufenden Server: Klick UND Tastatur
+  getestet (DWR Primärdruck, RBMK/DWR-Verzweigung im Text korrekt
+  dargestellt), SWR-spezifisches Containment-Instrument ebenfalls verdrahtet.
+  Volle Testsuite 71/71 grün, inklusive
+  `test_help_texts_only_name_controls_that_exist` für die neuen Schlüssel.
+
+## 0.0.89
+
+- 🗑️ **Geigerzähler-Ticken entfernt.** Reiner WebAudio-Synthesizer
+  (gefiltertes Rauschen, `ui/geiger.js`), keine echte Aufnahme -- unnoetig
+  neben der Musik (`game_background_1.mp3`, echte Aufnahme, laeuft bereits
+  ueber denselben Musik-Schalter). Datei geloescht, Einstellung
+  "Geigerzähler-Ticken" raus, `Geiger`-Klasse aus `main.js`/`panels.js`
+  entfernt. Die akustische Ereignis-Vorwarnung (`geiger_game_alert.mp3`,
+  eine echte Aufnahme trotz des Dateinamens) bleibt unveraendert -- ein
+  eigenstaendiger Klang, keine Ticken-Synthese.
+
+## 0.0.88
+
+- ✨ **Thermische Nennleistung auf dem Startbildschirm.** Die Reaktorkarten
+  zeigten bisher nur die elektrische Leistung (z.B. "1400 MWe"). Jetzt steht
+  die thermische Leistung davor ("3850 MWth · 1400 MWe · ...") -- DWR 3850,
+  SWR 3840, RBMK 3200 MWth (Wirkungsgrad 31-36 %, je Typ verschieden).
+
+## 0.0.87
+
+- ✍️ **Alle 35 Meldetafel-Hilfetexte (DE+EN) neu geschrieben** -- Nutzer-
+  Ueberarbeitung, klarere Sprache, durchgehend "Konkret tun" / "Actions"
+  statt uneinheitlicher Formulierungen. In der englischen Fassung dabei alle
+  in Anfuehrungszeichen genannten Bedienelemente von den deutschen
+  Original-Bezeichnungen auf die tatsaechlichen englischen UI-Beschriftungen
+  umgestellt (98 Stellen, automatisch anhand von locales/en.json abgeglichen)
+  und zwei falsch benannte Querverweise korrigiert ("Pressure low",
+  "Dome pressure high"). test_help_texts_only_name_controls_that_exist
+  (tests/test_locales.py) prueft das jetzt wieder gruen fuer beide Sprachen.
+
+## 0.0.86
+
+- ✨ **Therm. Leistung auch als MW-Wert waehlbar.** Die Kopfzeile zeigte
+  Thermische Leistung bisher nur in Prozent der Nennleistung. Neuer Eintrag
+  "Therm. Leistung (MW)" im Einstellungen-Dialog (Zahnrad) -- zusaetzlich zum
+  Prozentwert waehlbar, nicht als Ersatz dafuer, und wie jede Kopfzeilen-
+  Auswahl je Reaktortyp getrennt gespeichert.
+
+## 0.0.85
+
+- 🐛 **Fluss-Animation im Fließbild auf hellen Dampfrohren praktisch
+  unsichtbar (0.0.84 reichte nicht).** Die helle gestrichelte Linie
+  (`--rs-flow`, hellblau) lag bei hohem Druck auf einem Dampfrohr, das durch
+  `--rs-steam-l` selbst schon fast weiß eingefärbt ist -- beide Töne lagen zu
+  nah beieinander, die Animation war zwar aktiv (Screenshot-Diagnose zeigte
+  die korrekte Opazität), aber am Bildschirm nicht zu erkennen. Jetzt liegt
+  unter der hellen Linie eine dunkle Kontur (`rs-flow-halo`, gleicher
+  Rhythmus, gleiches `--rs-w`), die auf jedem Rohrton sichtbar bleibt, dazu
+  eine kräftigere Flussfarbe (`#22d3ee` statt `#a9e7ff`). Per Playwright
+  gegen den laufenden Server verifiziert (RBMK, Regelventil 11 %, genau der
+  vom Nutzer gemeldete Fall).
+
+## 0.0.84
+
+- ✨ **Regelventil und Umleitung im Fließbild: Zustand jetzt klar erkennbar.**
+  Bisher unterschied sich "offen" (dunkles Grün) kaum von "zu" (dunkles Grau)
+  -- bei kleiner, aber echter Öffnung sah ein Ventil aus wie geschlossen.
+  "run" ist jetzt deutlich heller und dicker umrandet, "stopped" bewusst matt
+  (`mimic.css`).
+- ✨ **Prozentzahl direkt am Ventilsymbol.** Regelventil und Umleitung zeigen
+  jetzt ihre Stellung ("73 %" usw.) im Fließbild selbst, nicht nur als Farbe
+  -- bei allen drei Reaktortypen (`valve()` in `mimic.js`, optionaler
+  `pctId`-Parameter).
+- ✨ **Fluss-Animation bleibt bei kleinem, aber echtem Durchsatz sichtbar.**
+  Ihre Opazität hing bisher direkt am Durchsatz-Anteil -- bei einem fast
+  geschlossenen Regelventil war sie praktisch bei 0 und die Anlage sah aus,
+  als fördere sie hinter dem Reaktor gar nichts mehr. Ein Sockelwert
+  (`flowVis()`) sorgt jetzt dafür, dass jeder echte Fluss sichtbar bleibt;
+  nur ein wirklich geschlossenes Ventil zeigt weiterhin keine Animation.
+
+## 0.0.83
+
+- ✨ **Mehrbenutzerbetrieb: weitere Konten über `REACTORSIM_USERS`.** Bisher
+  gab es genau ein Konto (`REACTORSIM_USER`/`REACTORSIM_PASSWORD`). Jetzt
+  lassen sich beliebig viele weitere als `name:passwort,name2:passwort2`
+  eintragen -- jedes ein vollwertiges Konto mit eigenem Passwort.
+- 🔐 **Spielstände, Einstellungen und Bestenlisten-Ratenbegrenzung gehören
+  jetzt dem Konto, nicht mehr dem Browser.** Bisher hing das alles an einem
+  anonymen Cookie (`rs_player`) -- ein anderer Browser oder ein gelöschter
+  Cookie hieß: alte Spielstände sind weg. Jetzt liegt der Schlüssel im
+  angemeldeten Konto selbst (`persist.Store.account_key`, ein fester Hash aus
+  dem Benutzernamen), unabhängig vom Gerät. Beim ersten Login nach diesem
+  Update wird ein noch vorhandener alter `rs_player`-Spielstand einmalig ins
+  Konto übernommen.
+- 🔒 **Ein Konto, eine Sitzung.** Meldet sich ein Konto auf einem zweiten
+  Gerät an, wird die Sitzung des ersten sofort ungültig (eigene
+  Sitzungskennung je Konto in `sessions.json`, nicht nur die Signatur des
+  Cookies) -- dasselbe Konto kann nicht mehr gleichzeitig auf zwei Geräten
+  weiterlaufen. Abmelden entwertet die Sitzung ebenfalls serverseitig, nicht
+  nur das lokale Cookie.
+
+## 0.0.82
+
+- ✨ **Bestätigungston beim Quittieren.** 0.0.81 stellte sicher, dass der
+  Dauerton (`game_attention.mp3`) nach der Sirene ankommt -- quittiert der
+  Bediener aber VORHER, kam er nie zu Gehör, weil `silence()` beide Töne
+  sofort abstellt. Klick auf "Quittieren" spielt ihn jetzt einmal komplett
+  als eigenständigen Klang ab (`Horn.ack()`, `playClip()` -- kein Loop, kein
+  Zustand, unabhängig von Sirene/Dauerton), nur wenn gerade wirklich eine
+  Meldung anstand.
+
+## 0.0.81
+
+- 🐛 **Hupen-Fehler wirklich gefunden (Diagnose-Logs aus 0.0.79 haben ihn
+  gezeigt): `TripSystem.horn` lief nur bei Kachelzustand 'new', nicht bei
+  'clear'.** Eine Störung, die von selbst wieder verschwindet, BEVOR jemand
+  quittiert, wechselt nach `hold_s` von 'new' zu 'clear' (langsames Blinken,
+  siehe ISA-18.2-Folge im Dateikopf `sim/trips.js`) -- die Kachel bleibt
+  dabei unquittiert, aber die Hupe verstummte trotzdem sofort. Die Sirene
+  (0.0.74: einmal durch, dann Dauerton bis zum Quittieren) wurde dadurch
+  oft mitten im Ton abgewürgt, lange bevor sie fertig war -- der Dauerton
+  kam praktisch nie an, weil die meisten Störungen kürzer stehen als die
+  Sirene selbst läuft. 0.0.77/0.0.78 haben an der Symptomstelle
+  (Sirene→Dauerton-Übergabe) gesucht, der Fehler lag eine Ebene tiefer.
+  `horn` läuft jetzt für 'new' UND 'clear' -- verstummt erst durch echtes
+  Quittieren.
+  Temporäre Diagnose-Logs (0.0.79) wieder entfernt, 5 neue Tests
+  (`tests/test-trips.mjs`) sichern das Verhalten gegen Wiederauftreten ab
+  -- schlagen nachweislich fehl auf dem alten Stand, grün auf diesem.
+  Volle Suite: 65 Python + 98 JS, alle grün.
+
+## 0.0.80
+
+- 🐛 **Speichern-Knopf und Autospeicherung teilten sich einen Slot.**
+  `saveCurrentGame()` schrieb für beide in denselben `"auto-<typ>-<szenario>"`
+  -- die naechste automatische Sicherung (alle 60s) überschrieb einen gerade
+  von Hand gesicherten Stand kommentarlos mit dem inzwischen weitergelaufenen
+  Zustand. Eigener Slot jetzt: Autospeicherung bleibt `"auto-..."`, der
+  Speichern-Knopf (Klick UND Strg+S) schreibt nach `"manual-..."`
+  (`saveSlotName()`, `main.js`). Beide stehen als eigene Zeilen in der
+  Fortsetzen-Liste, an der Beschriftung unterscheidbar
+  (`btn_resume_named_manual`).
+
+## 0.0.79
+
+- 🔧 **Temporäre Diagnose-Logs für den Dauerton-Fehler.** 0.0.78 hat das
+  Problem nicht behoben (immer noch stumm nach der Sirene). Statt einer
+  weiteren Vermutung: `console.log`/`console.error` in `Horn.alarm()` und
+  `MusicLoop.start()` (`ui/annunciator.js`, `ui/music.js`), klar als
+  "TEMPORAERE DIAGNOSE" markiert -- zeigen bei jedem Poll den Zustand beider
+  `<audio>`-Elemente (paused/ended/currentTime/readyState/error). Fliegen
+  wieder raus, sobald die Konsolenausgabe den echten Fehler zeigt.
+
+## 0.0.78
+
+- 🐛 **Meldehupe: Dauerton kam wirklich nie, jetzt gefunden.** 0.0.77s Fix
+  (Abfrage statt Ereignis) traf nicht die Ursache. Der eigentliche Fehler:
+  `Horn.unlock()` spielte testweise auch den Dauerton (`game_attention.mp3`)
+  einmal an, um ihn fuer Autoplay freizuschalten -- und `unlock()` haengt am
+  Ack- UND am SCRAM-Knopf, also genau den Knoepfen, auf die ein Spieler
+  klickt, WAEHREND eine Meldung laeuft. `audio.play()` setzt `paused` sofort
+  synchron auf false, noch bevor die zurückgegebene Promise sich auflöst --
+  fiel dieser Klick mit dem Moment zusammen, in dem `alarm()` nach
+  Sirenenende den Dauerton ECHT starten wollte, sah `MusicLoop.start()`
+  "läuft schon" und tat nichts; `unlock()`s eigenes `.then(stop())` legte ihn
+  gleich darauf wieder still. Kein Fehler in der Konsole, weil beide
+  `play()`-Aufrufe technisch erfolgreich waren -- reines Zeitfenster-Problem.
+  `unlock()` schaltet jetzt nur noch die Sirene frei; der Dauerton braucht
+  das nicht, er startet ohnehin nur aus `alarm()` heraus, genau wie die
+  Sirene selbst auch nie eigens freigeschaltet werden musste.
+
+## 0.0.77
+
+- ✨ **Steuerstab-Anzeige im Anlagenfließbild** (`ui/mimic.js`). Bisher zeigte
+  keiner der drei Typen, wo die Stäbe stehen -- jetzt je zwei Linien im
+  Kernkasten (Regel- und Abschaltgruppe), Spitze folgt `s.rod[i]`. Fahrrichtung
+  typgerecht: DWR/RBMK von oben, SWR von unten (siehe Dateikopf `plants/bwr.js`).
+  Blinkt kurz auf, wenn sich die Stellung ändert (`rs-mimic-blink`
+  wiederverwendet) -- macht nebenbei eine klemmende Gruppe (`alarm_rod_stuck`)
+  im Bild sichtbar: die klemmende Linie bewegt sich nicht mit, die andere
+  schon.
+- 🐛 **Meldehupe: Dauerton nach der Sirene kam nie.** Die zweistufige Hupe aus
+  0.0.74 (Sirene einmal, danach `game_attention.mp3` bis zum Quittieren)
+  hing am `ended`-Ereignis der Sirene, um umzuschalten -- kam bei einem
+  Spieler nie an, vermutlich eine Eigenheit der Aufnahme oder des Browsers
+  beim Ereignis selbst. `Horn.alarm()` fragt jetzt `this._siren.audio.ended`
+  direkt ab, statt auf das Ereignis zu warten -- robuster, weil `alarm()`
+  ohnehin einmal je Sekunde aus dem Renderlauf gerufen wird (siehe
+  `panels.js` `hornNext`), eine Abfrage dort braucht keine korrekt
+  verdrahtete Einmal-Registrierung.
+
+## 0.0.76
+
+- ✨ **Serverseitige Nachrechnung statt reiner Plausibilitätsprüfung**
+  (Backlog "Serverseitige Nachrechnung statt Plausibilitätsprüfung").
+  Bisher prüfte `scoring.validate_summary()` nur, ob gemeldete Kennzahlen aus
+  *irgendeinem* Lauf stammen könnten -- jetzt rechnet der Server den Lauf,
+  wenn möglich, selbst nach und ersetzt die gemeldeten Kennzahlen komplett
+  durch das Ergebnis.
+  - `game/recorder.js`: zeichnet jede Bedienhandlung mit der Anzahl der
+    bisherigen Rechenschritte auf (fester Zeitschritt, kein Echtzeitstempel
+    nötig). `attachRecorder(engine)` haengt sich einmal an `engine.step()`.
+  - `game/coreActions.js`: die Handlungen, die jeder Reaktortyp hat (Stäbe,
+    Pumpen, Lastanforderung, Turbinenregler/Speisewasser, SCRAM, Quittieren,
+    Rückstellen, Turbine zuschalten) -- eine Funktion je Handlung, DOM-frei,
+    deshalb im Browser UND unter Node importierbar.
+  - `game/replayKit.js`: tauscht den Kit, den `hooks.uiControls()` bekommt
+    (siehe Dateikopf `plants/pwr.js`) -- `recordingKit()` zeichnet auf UND
+    baut echte Bedienelemente (Browser), `captureKit()` baut keine
+    Oberfläche und sammelt nur die Mutations-Funktionen (Server). Die
+    typspezifische Bedienung (Borsäure, Frischdampf-Absperrung, ...) steht
+    dadurch weiterhin nur einmal in der jeweiligen Typdatei.
+  - `game/replay.js`: baut dieselbe Engine, spielt das Protokoll durch
+    dieselbe `Session`/`RunState`-Maschine (unveränderter Wortlaut der
+    Wertung) noch einmal durch, liefert dieselbe Form wie
+    `RunState.summary()`. `verify_run.mjs` (neu, Repo-Wurzel) ist die dünne
+    Kommandozeilenhülle darum, die `app.py` per Subprocess unter Node
+    aufruft.
+  - `ui/panels.js`/`main.js`: jede Bedienhandlung läuft jetzt über
+    `record()`/`recordingKit()` statt die Engine direkt anzufassen --
+    dieselbe Wirkung, nur mit Aufzeichnung nebenbei.
+  - Ein geladener Spielstand (main.js `loadGame()`) verwirft das Protokoll
+    (`engine.recorder = null`): ein Sprung auf einen gespeicherten Zustand
+    lässt sich nicht aus Schritten plus Protokoll nachrechnen. Solche Läufe
+    fallen weiterhin auf die reine Plausibilitätsprüfung zurück, wie bisher.
+  - `Dockerfile`: `nodejs` ergänzt, `verify_run.mjs` wird mit ins Image
+    kopiert.
+  - 3 neue JS-Tests (`tests/test-replay.mjs`, beweisen Bitgleichheit
+    zwischen Live-Lauf und Nachrechnung) und 2 neue Python-Tests
+    (`tests/test_api.py`, End-zu-End über den echten Node-Subprozess).
+    Volle Suite: 65 Python + 93 JS, alle grün.
+  - Bekannte Grenze, bewusst nicht in diesem Schritt gelöst: ein sehr langer
+    Lauf mit vielen Schieber-Bewegungen kann das 256-KB-Anfragelimit
+    (`MAX_CONTENT_LENGTH`) erreichen -- die Übermittlung schlägt dann fehl,
+    genau wie jeder andere API-Fehler auch (keine Sonderbehandlung nötig,
+    aber auch keine besonders freundliche Meldung dafür).
+  - Rest von Backlog-Punkt 2 ("Wiedergabe eines Laufs") bleibt offen -- siehe
+    BACKLOG.md, jetzt mit den hier gelegten Bausteinen.
+
+## 0.0.75
+
+- ✨ **Acht Tastenkürzel öffnen ein Panel als Fenster** (nur Desktop, wie ein
+  Klick auf die Panel-Kopfzeile): `R` Reaktorkern, `P` Primärkreis,
+  `S` Sekundärkreis, `G` Generator und Netz, `A` Anlagenfließbild,
+  `V` Trendschreiber, `M` Meldetafel, `C` Reaktorchemie
+  (`PANEL_KEYS` in `main.js`). Reagieren nur ohne Strg/Alt/Cmd, damit sie
+  sich nicht mit `Strg+M` (Ton stumm) & Co. beißen.
+
+## 0.0.74
+
+- ✨ **Vier neue Tastenkürzel** (`ui/shortcuts.js`, `main.js`):
+  - `Strg+S` speichert sofort, dieselbe Stelle wie der Speichern-Knopf.
+  - `Strg+X` zeigt eine Abfrage ("Zum Hauptmenü?") und verlässt danach die
+    Schicht -- der Menü-Knopf selbst fragt weiterhin nicht nach, ein
+    Tastendruck kann aber aus Versehen kommen.
+  - `Strg+Z` **gehalten** (eine volle Sekunde) löst die Schnellabschaltung
+    aus -- der Knopf blinkt währenddessen über dasselbe `data-armed`, das
+    auch der Zwei-Klick-Knopf benutzt. Loslassen vor Ablauf bricht ab, ganz
+    ohne Auslösung.
+  - `Strg+M` schaltet den Ton stumm/an, dieselbe Stelle wie die beiden
+    Lautsprecher-Knöpfe (Startbildschirm, Kopfzeile).
+- ✨ **Meldehupe zweistufig statt Dauersirene.** Bisher lief `alarm_sirene.mp3`
+  in Dauerschleife, solange eine Meldung unquittiert war -- als nervig
+  empfunden. Jetzt läuft die Sirene EINMAL durch, danach übernimmt ein neuer
+  Dauerton (`game_attention.mp3`) bis zum Quittieren (`Horn` in
+  `annunciator.js`).
+
+## 0.0.73
+
+- ✍️ **Alle 9 Szenario-Einweisungen überarbeitet** (`scn_*_brief` in
+  `locales/de.json` und `locales/en.json`), Wortlaut vom Nutzer geliefert.
+  Nur die Fließtexte geändert, Titel (`scn_*_title`) unangetastet. Beim
+  Einpflegen der englischen Fassung mussten die in Anführungszeichen
+  genannten Bedienelemente noch auf die tatsächlichen englischen
+  UI-Beschriftungen umgestellt werden (z. B. „Blockventil“ → "Block valve",
+  „Steuerstäbe → Ziehen“ → "Control rods → Withdraw") -- sonst hätte
+  `test_help_texts_only_name_controls_that_exist` (läuft auch auf
+  `_brief`-Schlüsseln) fehlgeschlagen, weil die deutschen Namen im
+  englischen Sprachpaket nirgends existieren.
+
+## 0.0.72
+
+- 🐛 **Lange Einweisung ohne Scrollbalken -- Knöpfe unerreichbar.** Betraf
+  vor allem die RBMK-Kaltstart-Einweisung ("Kaltstart nach Revision"): der
+  Text ist der längste aller Einweisungen, aber `#rs-brief` fehlte die
+  `rs-modal-wide`-Klasse (Höhendeckel + `overflow-y: auto`), die Glossar,
+  Alarmhilfe & Co. längst haben. Der Dialog lief einfach über den sichtbaren
+  Bildschirm hinaus, ohne jede Möglichkeit zu scrollen -- "Los"/"Zurück"
+  standen unten drunter, nicht anklickbar.
+
+## 0.0.71
+
+- ✨ **Automatischer Helfer bei Meldungen** (`game/helper.js`), optional,
+  Standard AN (Häkchen im Startbildschirm, "Automatische Störungshilfe").
+  Ein Klick auf eine Meldetafel-Kachel öffnet wie bisher die Hilfe -- jetzt
+  mit einem zusätzlichen Knopf "Problem beheben", der Bedienhandlungen aus
+  dem "Konkret tun"-Text selbst ausführt: Blockventil zu, ausgefallene Pumpe
+  zuschalten, Regler auf Automatik, Turbine wieder zuschalten, je nachdem was
+  die Meldung verlangt. Jede ausgeführte Handlung erscheint einzeln im Dialog
+  UND im Ereignisprotokoll ("Blockventil geschlossen — Leck am Abblaseventil
+  gestoppt." statt nur "behoben").
+  Eine Handlung fasst der Helfer NIE an, bei keinem der drei Typen: die
+  Schnellabschaltung selbst (SCRAM/RESA/AZ-5, siehe `sim/trips.js` -- "Die
+  Schnellabschaltung bleibt allein Sache des Bedieners"). Verlangt eine
+  Meldung nur diesen einen Handgriff (Leistungsauslösung, kurze Periode, ...),
+  bleibt sie deshalb "lässt sich nicht automatisch beheben" -- der Hilfetext
+  daneben sagt, was zu tun ist, aber drücken muss der Spieler selbst.
+  Beim RBMK ist das zugleich sicherheitsrelevant: bei niedriger Abschalt-
+  reserve (ORM) führt AZ-5 in den ersten Sekunden POSITIVE Reaktivität ein
+  (Graphitspitzen, siehe `plants/rbmk.js`, 26. April 1986) -- der Helfer fährt
+  die Stäbe stattdessen von Hand ein, genau wie es `alarm_orm_critical_help`
+  selbst vorschreibt.
+  Zweite Ausnahme unabhängig von der SCRAM-Regel: **SWR, Wasserstoff
+  kritisch** bleibt absichtlich unbehebbar. Bei der Auslöseschwelle dieser
+  Meldung (40 kg) steht die Wasserstoffmenge längst über den 25 kg, ab denen
+  Venten in `bwr.js` die Explosion selbst auslöst -- eine Abwägung mit
+  Ermessen, kein Knopf, der sie blind trifft.
+  Nicht jede Meldung ist sonst automatisierbar (ein klemmender Stab, axiale
+  Xenon-Schieflage) -- auch dort sagt der Dialog "lässt sich nicht automatisch
+  beheben" statt gar nichts zu tun.
+
+## 0.0.70
+
+- 🐛 **Turbine wieder zuschalten konnte den Kern zerstören (DWR).** Gefunden
+  beim headless Durchspielen aller neun Szenarien (echte Engine, kein Mock).
+  Nach einem Turbinenschnellschluss pendelt sich die Anlage oft deutlich
+  unter Volllast ein (Umleitstation faengt den Dampf auf) -- schaltete man
+  die Turbine dann wieder zu ("Turbine zuschalten"), sprang die Vorsteuerung
+  des Regelventils sofort auf den vollen Anforderungswert, egal wie weit die
+  Ist-Leistung davon entfernt war. Das riss mehr Dampf ab, als der Kern
+  gerade machte, kühlte ihn schlagartig -- und über den negativen
+  Moderatorkoeffizienten wurde daraus ein echter Leistungsausflug bis zur
+  Kernzerstörung, oft nur Sekunden nach dem Zuschalten.
+  `GovernorController.resume()` faehrt die Vorsteuerung jetzt ueber 180s von
+  der Stellung aus hoch, die zur Ist-Leistung beim Zuschalten passt, statt in
+  einem Schritt zu springen -- betrifft nur den Lastbetrieb (DWR), Druck-
+  betrieb (SWR/RBMK) unveraendert. Kein Regressionsschaden in den anderen
+  acht Szenarien (per erneutem Durchlauf bestaetigt).
+
+## 0.0.69
+
+- 🐛 **"Netzanforderung zu lange verfehlt" schlug ohne jede Vorwarnung zu.**
+  Betrifft 6 von 9 Szenarien (bwr_flow_control, bwr_instability,
+  pwr_load_follow, pwr_turbine_trip, rbmk_cold_start, rbmk_night_shift).
+  Die Abweichung stand zwar staendig sichtbar in der Statuszeile
+  ("Abweichung"), aber ohne Warnfarbe, Meldetafel-Eintrag oder Hupe -- die
+  interne Frist (600s bei den meisten, teils 150-300s) lief unsichtbar mit,
+  bis die Schicht ohne Ankuendigung abgebrochen war.
+  - Neue Szenario-eigene Meldetafel-Kacheln (`game/scenario.js`,
+    `gridDeviationTrips()`): WARN sobald die Abweichung das Fail-Limit
+    ueberhaupt reisst, TRIP als letzte Warnung rund 90s vor der harten
+    Frist (bzw. die Haelfte der Frist bei kurzen Fenstern) -- inklusive
+    Hupe, Protokolleintrag und Hilfetext, genau wie jede andere Meldung.
+    Nimmt dieselbe SCRAM-Ausnahme wie die Fail-Bedingung selbst (`RunState.
+    checkFail()`): eine bewusste Abschaltung zaehlt nicht als Verfehlen.
+  - Engine kennt dafuer `opts.extraTrips` (`sim/engine.js`) -- Meldungen, die
+    am Szenario haengen statt am Reaktortyp, ohne `spec.trips` (Modul-weit,
+    nicht pro Runde) dafuer anzufassen.
+  - "Abweichung" im Netz-Panel faerbt sich jetzt mit derselben Kachel-Schwere.
+  - Kleinere Optimierung nebenbei: `engine.trips.tiles()` lief im Renderlauf
+    bisher dreimal je Bild, jetzt einmal und wiederverwendet.
+  - Per Smoke-Test durchgespielt: Warn-/Trip-Zeitpunkt, SCRAM-Ausnahme,
+    Clear-Uebergang -- alle drei bestaetigt korrekt.
+
+## 0.0.68
+
+- ✨ **Auswertung zeigt jetzt Minimum DNBR/CPR und Abschaltreserve.** Beide
+  wurden schon laenger mitgezaehlt (`RunState.summary()`), standen aber
+  nirgends in der Auswertung -- eine Einweisung, die "Ziel: ... ohne die
+  Reserve unter 30 zu sehen" verspricht, muss hinterher auch zeigen, wie nah
+  man dran war. Je Reaktortyp nur, wenn er den Wert kennt (DNBR beim DWR,
+  CPR bei SWR/RBMK, Abschaltreserve nur beim RBMK).
+- 🐛 **Einweisung "Kaltstart nach Revision" (RBMK) irrefuehrend.** Text
+  schickte direkt in den Leistungsanstieg durch die 200-MW-Zone, ohne zu
+  erwaehnen, dass die Netzanforderung die ersten 30 Minuten bei 0 MW steht
+  UND das Regelventil in Automatik nur den Trommeldruck haelt, nicht die
+  Last -- jedes Megawatt, das der Kern macht, ging bisher unbemerkt durch
+  und riss binnen Minuten die Fehlbedingung "Netzanforderung zu lange
+  verfehlt". Hinweis ergaenzt: Kernleistung zurückhalten, bis die
+  Anforderung selbst zu klettern beginnt.
+
+## 0.0.67
+
+- 🐛 **Einweisung liess sich nach "Fortsetzen" nicht mehr oeffnen.** Der
+  Knopf braucht `app.briefDef` -- das setzte bisher nur der Weg ueber "Los"
+  (frischer Szenariostart, `loadScenario()`). Der Fortsetzen-Knopf in der
+  Start-Liste holte die Szenariodefinition zum Booten zwar auch nach, schrieb
+  sie aber nie in `app.briefDef`: kein Fehler, der Knopf tat einfach nichts.
+  Betraf jeden Szenario-Spielstand nach Speichern+Fortsetzen.
+
+## 0.0.66
+
+- 🐛 **CPR fehlte in der Kopfzeilen-Auswahl beim RBMK/SWR.** Der Katalog
+  (`statusStats.js`) beschriftete den Abstand-zur-Siedekrise-Wert immer mit
+  dem generischen "Marge" -- die Panels selbst zeigen dort schon laenger
+  DNBR bzw. CPR je nach Kerntyp (`sp.marginKey`), die Kopfzeile und ihr
+  Einstellungen-Dialog taten das nicht. Beide zeigen den Namen jetzt passend
+  zum aktuell geladenen Reaktortyp; beim RBMK/SWR taucht "CPR" jetzt in der
+  Auswahlliste auf.
+
+## 0.0.65
+
+- ✨ **Statuskacheln in der Kopfzeile per Ziehen umsortieren.** Kurz halten
+  (Long-Press, gegen Kollision mit dem seitlichen Wischen zum Scrollen),
+  dann verschieben -- Maus, Touch und Stift gleich (`ui/dragReorder.js`,
+  kein HTML5-Drag&Drop, das kennt keine Touch-Geraete). Reihenfolge wird wie
+  die Auswahl selbst je Reaktortyp gespeichert, unabhaengig von Szenario
+  oder freiem Spiel. Der Einstellungen-Dialog ueberschreibt eine gezogene
+  Reihenfolge nicht mehr -- neu angehakte Werte kommen ans Ende, bereits
+  gezeigte behalten ihren Platz.
+
+## 0.0.64
+
+- ✨ **Klick-Geraeusch fuer Schalter** (`game_switch.mp3`). Automatik/Hand-
+  Umschalter, Tastengruppen (Bor, PORV-Sperre, MSIV, IC, Notinjektion,
+  Behaelterentlueftung, ...) und Pumpenknoepfe geben jetzt hoerbares
+  Feedback -- zentral in `controls.js`, damit kein Reaktortyp seinen eigenen
+  Aufruf braucht und vergisst. Schieber/Stellraeder bleiben stumm, die
+  laufen stufenlos.
+
+## 0.0.63
+
+- 🐛 **Bedienung griff auch bei angehaltener Simulation durch.** Leertaste
+  (`loop.speed = 0`) stoppte nur `engine.step()` -- Stabfahrt, Pumpen, Bor,
+  Regelstationen (Turbinenventil, Speisewasser, Druckhalter, Umwaelzstrom,
+  MSIV, ...) liessen sich trotzdem bedienen, ohne dass sich etwas rechnete.
+  Alle Bedienelemente aus `controls.js` sperren jetzt zentral, solange
+  angehalten ist (`setControlsPaused()`); die betroffenen Panels blenden
+  dazu ab.
+- ✨ **Strg+Pfeil hoch/runter fährt die Stäbe.** Bisher nur per Maus/Touch
+  ueber die Halteknoepfe. Pfeiltasten ohne Strg blieben bewusst frei --
+  sie scrollen sonst die Seite.
+- ✨ **Motorengeraeusch bei der Stabfahrt** (`game_rods_move.mp3`). Laeuft,
+  solange gefahren wird (Knopf gehalten oder Strg+Pfeil wiederholt), und
+  stoppt von selbst kurz nach dem Loslassen -- kein eigener Schalter im
+  Ton-Dialog, nur der Hauptschalter (Stummschaltung) sticht, wie bei
+  SCRAM/Kernschmelze auch.
+
 ## 0.0.62
 
 - ✨ **Startbanner vor dem Startbildschirm.** Grosses Logo, Klick/Enter/

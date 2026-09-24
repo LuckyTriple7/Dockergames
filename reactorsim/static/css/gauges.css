@@ -15,6 +15,12 @@
   flex-direction: column;
   gap: 3px;
 }
+/* Klickbar heisst: es gibt eine Erklaerung dazu (panels.js showGaugeHelp) --
+   dieselbe Zustandsmarkierung wie eine Meldetafel-Kachel (siehe
+   annunciator.css .rs-tile[role="button"]), nicht jedes Instrument hat das. */
+.rs-gauge[role="button"] { cursor: pointer; border-radius: 6px; }
+.rs-gauge[role="button"]:hover .rs-gauge-dial,
+.rs-gauge[role="button"]:focus-visible .rs-gauge-dial { border-color: var(--rs-value); outline: none; }
 
 .rs-gauge-label {
   /* Zwei Zeilen Platz, damit alle Instrumente einer Reihe gleich hoch
@@ -73,11 +79,30 @@
 
 /* ── Balken (Stabstellung, Füllstände) ────────────────────────────────────── */
 
-.rs-bars { display: flex; gap: 6px; align-items: flex-end; width: 100%; }
+/* Raster statt Flexbox, und zwar mit GETEILTEN Zeilen (subgrid): Schiene,
+   Beschriftung und Wert stehen bei allen Balken auf derselben Hoehe, auch
+   wenn eine Beschriftung zwei Zeilen braucht und die anderen eine. Vorher
+   waren die Balken unten buendig -- eine laengere Beschriftung schob die
+   Schiene darueber nach oben, und zwei Balken, die man vergleichen soll,
+   standen auf zwei verschiedenen Nulllinien.
+
+   Ohne subgrid-Unterstuetzung faellt nur die Ausrichtung von Beschriftung
+   und Wert weg: die Schienen bleiben durch `align-items: start` und ihre
+   feste Hoehe trotzdem buendig, und genau darauf kommt es an. */
+.rs-bars {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  grid-template-rows: auto auto auto;
+  gap: 6px;
+  width: 100%;
+  align-items: start;
+}
 
 .rs-bar {
-  flex: 1 1 0;
   display: grid;
+  grid-row: 1 / -1;
+  grid-template-rows: subgrid;
   gap: 4px;
   justify-items: center;
 }
@@ -104,7 +129,31 @@
   top: calc(var(--rs-d, 0) * 100%);
   border-top: 1px dashed var(--rs-warn);
 }
-.rs-bar-k { font-size: 10px; color: var(--rs-fg-mute); }
+
+/* Die verkuerzten RBMK-Staebe (USP) fahren von UNTEN ein -- siehe
+   plants/rbmk.js: rodBanks, fromBelow. Fuellung und Sollwertmarke muessen
+   deshalb am unteren Rand haengen: bei 43 % Einfahrtiefe sitzt der Absorber
+   im unteren Drittel des Kerns, nicht im oberen. */
+.rs-bar-track.rs-bar-up .rs-bar-fill {
+  inset: auto 0 0 0;
+  background: linear-gradient(#2b3d4d, #4a6377);
+}
+.rs-bar-track.rs-bar-up .rs-bar-demand {
+  top: auto;
+  bottom: calc(var(--rs-d, 0) * 100%);
+  border-top: 0;
+  border-bottom: 1px dashed var(--rs-warn);
+}
+
+/* Zwei Zeilen duerfen sein, drei nicht: die Beschriftung steht unter einer
+   Schiene von rund fuenfzig Pixeln Breite. Was laenger ist, gehoert in den
+   Titel (siehe bar() in gauges.js). */
+.rs-bar-k {
+  font-size: 10px;
+  color: var(--rs-fg-mute);
+  text-align: center;
+  hyphens: auto;
+}
 .rs-bar-v { font: 600 11px/1 var(--rs-font-num); color: var(--rs-fg); }
 
 /* ── Reaktivitätsbilanz ───────────────────────────────────────────────────── */

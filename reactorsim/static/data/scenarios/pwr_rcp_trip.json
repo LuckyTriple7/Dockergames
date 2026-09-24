@@ -1,0 +1,25 @@
+{
+  "id": "pwr_rcp_trip",
+  "reactor": "pwr",
+  "difficulty": 2,
+  "title_key": "scn_pwr_rcp_trip_title",
+  "brief_key": "scn_pwr_rcp_trip_brief",
+  "guidance": {
+    "hint_key": "scn_pwr_rcp_trip_hint",
+    "event_alerts": false,
+    "auto_helper": false
+  },
+  "duration_s": 1200,
+  "seed": 20260923,
+  "demand": [{ "t": 0, "mw": 1400 }, { "t": 1200, "mw": 1400 }],
+  "grid": { "tolerance_mw": 60 },
+  "events": [
+    { "t": 240, "id": "rcp_trip", "args": { "loop": 0 } },
+    { "t": "rand(600,840)", "id": "rcp_trip", "args": { "loop": 1 } }
+  ],
+  "fail": [
+    { "type": "fuel_damage" },
+    { "type": "trip_ignored", "for_s": 300 },
+    { "type": "grid_deviation", "mw": 300, "for_s": 600 }
+  ]
+}

@@ -33,7 +33,22 @@ export const RANGES = {
   T_co: [250, 4000],
   T_mod: [250, 4000],
   T_gr: [250, 2000],
+  // Kuehlwasser: von arktisch bis "der Fluss steht fast" -- weit genug, um
+  // jede denkbare Jahreszeit zu fassen, eng genug, um einen Rechenfehler zu
+  // fangen, bevor er als Kondensatordruck in der Anzeige landet.
+  T_cw: [250, 340],
   W_core: [0, 1e6],
+  W_fwDemand: [0, 1e6],
+  W_fwMain: [0, 1e6],
+  W_fwAux: [0, 1e6],
+  fwSupplyMax: [0, 1e6],
+  auxFeedDmd: [0, 1],
+  auxWaterKg: [0, 1e9],
+  coolantHeatMW: [-1e12, 1e12],
+  // Drehzahl des Turbogenerators als Bruchteil der Nenndrehzahl (nur RBMK,
+  // siehe rbmk.js sp.turbogen). Ueber 1 kann sie nicht: am Netz haelt die
+  // Frequenz sie fest, davon geloest bremst sie nur.
+  tgSpeed: [0, 1],
   p_prim: [0.01, 300],
   I: [0, 100],
   X: [0, 100],
@@ -82,6 +97,14 @@ export function createState(spec, opts = {}) {
     T_co: 599,
     T_mod: 578,
     T_gr: 800,
+    // Kuehlwasser am Kondensatoreintritt. Steht hier im Zustand und nicht
+    // mehr nur als Konstante in der Anlagendatei (sp.condenser.T_cw), weil
+    // das freie Spiel eine Jahreszeit waehlen kann und die Wahl einen ganzen
+    // Lauf lang gilt -- also in den Spielstand muss. Der Auslegungspunkt der
+    // Anlage bleibt der Anfangswert: ein Szenario, das nichts dazu sagt,
+    // rechnet weiter mit genau derselben Zahl wie bisher.
+    T_cw: opts.T_cw !== undefined ? opts.T_cw
+      : (spec.condenser ? spec.condenser.T_cw : 288.15),
 
     // Hydraulik
     W_core: spec.coolant ? spec.coolant.W0 : 0,
@@ -102,6 +125,8 @@ export function createState(spec, opts = {}) {
 
     // Leistung und Netz
     P_th: 0,
+    coolantHeatKJ: 0,
+    pressureClipKJ: 0,
     P_e: 0,
     P_demand: spec.P0_e || 0,
     f_grid: 50.0,
@@ -158,17 +183,46 @@ export function sanitize(s) {
   return true;
 }
 
+// Die feste Mitte der Zahlenliste -- einmal hier, damit numbers() und
+// numberLabels() nicht auseinanderlaufen koennen (siehe den Test dazu).
+const SCALARS = ['T_f', 'T_cl', 'T_ci', 'T_co', 'T_mod', 'T_gr',
+  'W_core', 'p_prim', 'alphaBar',
+  'I', 'X', 'Pm', 'Sm', 'C_B', 'burnup',
+  'P_th', 'P_e', 'P_demand', 'f_grid', 'rho_ext', 'enthalpy', 'enthalpyBase'];
+// Felder, die es nur bei manchen Typen gibt -- sie haengen hinten an, damit
+// die Reihenfolge der uebrigen sich nie verschiebt.
+const OPTIONAL = ['W_fwDemand', 'W_fwMain', 'W_fwAux', 'fwSupplyMax',
+  'auxFeedDmd', 'auxWaterKg', 'coolantHeatMW', 'tgSpeed'];
+
 /** Alle Zahlen in fester Reihenfolge -- Grundlage von Hash und Spielstand. */
 export function numbers(s) {
   const out = [s.t_sim, s.n];
   for (let i = 0; i < s.c.length; i++) out.push(s.c[i]);
   for (let i = 0; i < s.D.length; i++) out.push(s.D[i]);
-  out.push(s.T_f, s.T_cl, s.T_ci, s.T_co, s.T_mod, s.T_gr,
-           s.W_core, s.p_prim, s.alphaBar,
-           s.I, s.X, s.Pm, s.Sm, s.C_B, s.burnup,
-           s.P_th, s.P_e, s.P_demand, s.f_grid, s.rho_ext, s.enthalpy, s.enthalpyBase);
+  for (const key of SCALARS) out.push(s[key]);
   for (let i = 0; i < s.rod.length; i++) out.push(s.rod[i]);
   for (let i = 0; i < s.rodDmd.length; i++) out.push(s.rodDmd[i]);
+  for (const key of OPTIONAL) if (s[key] !== undefined) out.push(s[key]);
+  return out;
+}
+
+/**
+ * Die Namen zu numbers(), in derselben Reihenfolge.
+ *
+ * Gebraucht vom Debug-Protokoll (game/debugTape.js): dort steht die
+ * Zahlenliste als nackte Reihe je Abtastung, und ohne diese Kopfzeile waere
+ * sie nur mit dem Quelltext daneben zu lesen. Beide Funktionen bauen aus
+ * denselben Listen oben; ein Test vergleicht trotzdem die Laengen, weil
+ * genau hier eine Aenderung an einer Stelle still danebengehen koennte.
+ */
+export function numberLabels(s) {
+  const out = ['t_sim', 'n'];
+  for (let i = 0; i < s.c.length; i++) out.push('c' + i);
+  for (let i = 0; i < s.D.length; i++) out.push('D' + i);
+  out.push(...SCALARS);
+  for (let i = 0; i < s.rod.length; i++) out.push('rod' + i);
+  for (let i = 0; i < s.rodDmd.length; i++) out.push('rodDmd' + i);
+  for (const key of OPTIONAL) if (s[key] !== undefined) out.push(key);
   return out;
 }
 

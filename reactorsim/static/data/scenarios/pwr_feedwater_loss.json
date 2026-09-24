@@ -1,0 +1,23 @@
+{
+  "id": "pwr_feedwater_loss",
+  "reactor": "pwr",
+  "difficulty": 1,
+  "title_key": "scn_pwr_feedwater_loss_title",
+  "brief_key": "scn_pwr_feedwater_loss_brief",
+  "guidance": {
+    "hint_key": "scn_pwr_feedwater_loss_hint",
+    "event_alerts": true,
+    "auto_helper": true
+  },
+  "duration_s": 900,
+  "score_mode": "incident_v1",
+  "objectives": [
+    { "id": "supply", "type": "pwr_feedwater", "after_events": ["feedwater_loss"], "hold_s": 15 },
+    { "id": "stable", "type": "pwr_heat_removal", "after_events": ["feedwater_loss"], "hold_s": 120 }
+  ],
+  "seed": 20260914,
+  "demand": [{ "t": 0, "mw": 1400 }, { "t": 900, "mw": 1400 }],
+  "grid": { "tolerance_mw": 60 },
+  "events": [{ "t": 180, "id": "feedwater_loss" }],
+  "fail": [{ "type": "fuel_damage" }, { "type": "trip_ignored", "for_s": 180 }]
+}

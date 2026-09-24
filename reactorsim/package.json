@@ -1,0 +1,13 @@
+{
+  "name": "reactorsim-dev",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Nur Entwicklungswerkzeug: die Browsertests unter tests/browser-*.mjs. Weder das Spiel noch das Image brauchen npm -- das Dockerfile installiert nichts davon, und verify_run.mjs laeuft mit dem blanken nodejs aus dem Image.",
+  "type": "module",
+  "scripts": {
+    "test:browser": "node --test tests/browser-*.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.60.0"
+  }
+}

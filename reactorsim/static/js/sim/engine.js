@@ -24,11 +24,16 @@ import { makeReactivity } from './reactivity.js';
 import { stepDecay, decaySum } from './decayheat.js';
 import { stepPoisons } from './poisons.js';
 import { TripSystem } from './trips.js';
-import { tsat } from './steam.js';
+import { tsat, hfg } from './steam.js';
 import { Rng } from '../rng.js';
 
 /** Regler laufen nicht in jedem Rechenschritt, sondern alle 0,2 s. */
 const CONTROL_PERIOD = 0.2;
+
+/** Obergrenze fuer ctx.history (siehe dort) -- dieselbe wie die Anzeige
+ *  selbst (Annunciator.log() in annunciator.js), mehr wuerde dort ohnehin
+ *  sofort wieder abgeschnitten. */
+const HISTORY_CAP = 120;
 
 /**
  * Zwei Abbruchkriterien für den Brennstoff.
@@ -47,6 +52,9 @@ const CONTROL_PERIOD = 0.2;
 const ENTHALPY_LIMIT_JPG = 963;
 const ENTHALPY_RISE_LIMIT_JPG = 250;
 const PEAK_FACTOR = 2.6;
+
+/** Erdbeschleunigung -- gebraucht fuer den Nachlauf (siehe startAftermath). */
+const G = 9.81;
 
 /**
  * Wie lange eine Bedingung anstehen muss, bevor die Anlage verloren ist.
@@ -77,7 +85,12 @@ export function createEngine(plant, opts = {}) {
   const kin = makeKinetics(betaEff, spec.Lambda);
   const s = createState(spec, { ...opts, kin, burnup });
   const rx = makeReactivity(spec, hooks);
-  const trips = new TripSystem(spec.trips || []);
+  // opts.extraTrips: Meldungen, die nicht am Reaktortyp haengen, sondern am
+  // laufenden Szenario (siehe game/scenario.js, gridDeviationTrips()) --
+  // spec.trips bleibt dafuer unangetastet, sonst wuerden sie sich beim
+  // naechsten Rundenstart am selben Typ ansammeln (spec ist ein Modul-
+  // weites Objekt, keine Kopie je Runde).
+  const trips = new TripSystem([...(spec.trips || []), ...(opts.extraTrips || [])]);
 
   // Wärmekapazitäten und Durchgänge aus den Zeitkonstanten zurückgerechnet --
   // die Literatur nennt Zeitkonstanten, nicht kW/K.
@@ -106,6 +119,13 @@ export function createEngine(plant, opts = {}) {
     period: Infinity,
     substeps: 1,
     log: [],
+    // Rollendes Protokoll-Gedaechtnis (siehe HISTORY_CAP oben), unabhaengig
+    // vom DOM des Log-Panels (das haelt seine Eintraege nur als <li>-Knoten,
+    // siehe annunciator.js) -- drainLog() unten fuellt es bei jedem Abholen
+    // nach, persist.js nimmt es 1:1 in den Spielstand mit. Ohne das startete
+    // das Protokoll nach jedem Laden leer, obwohl vorher Stunden gespielt
+    // wurden.
+    history: [],
   };
 
   // Startwerte des Typs: Bor, Druckhalter, Dampferzeuger, Turbine ...
@@ -135,19 +155,26 @@ export function createEngine(plant, opts = {}) {
 
     // Brennstoff: Quelle ist die Spaltleistung, Senke das Hüllrohr.
     const qFuel = P_th * 1000 * (spec.fuel.depositFraction || 0.974);
+    const fuelBefore = s.T_f;
     s.T_f = relax(s.T_f, s.T_cl + qFuel / UA_fc, h, C_f / UA_fc);
 
     // Hüllrohr zwischen Brennstoff und Kühlmittel.
-    const qClad = UA_fc * (s.T_f - s.T_cl);
-    s.T_cl = relax(s.T_cl, T_cool + qClad / UA_cc, h, C_cl / UA_cc);
+    // Integrated fluxes conserve energy even during a fast transient.
+    const qClad = qFuel - C_f * (s.T_f - fuelBefore) / h;
+    const cladBefore = s.T_cl;
+    const transfer = hooks.heatTransfer ? hooks.heatTransfer(s, spec, ctx) : 1;
+    const UA = UA_cc * clamp(transfer, 0.0001, 1);
+    s.T_cl = relax(s.T_cl, T_cool + qClad / UA, h, C_cl / UA);
 
     // Kühlmittel: Wärme vom Hüllrohr, plus der Teil der Spaltenergie, der gar
     // nicht erst im Brennstoff landet -- Gammastrahlung und Neutronen geben
     // rund 2,6 % direkt an Moderator und Einbauten ab. Ohne diesen Anteil
     // verschwänden 100 MW aus der Bilanz, und der Kern liefe auf 104,6 %,
     // um die Turbine trotzdem zu bedienen.
-    const qDirect = P_th * 1000 * (1 - (spec.fuel.depositFraction || 0.974));
-    const qCool = UA_cc * (s.T_cl - T_cool) + qDirect;
+    const deposited = P_th * 1000 * (1 - (spec.fuel.depositFraction || 0.974));
+    const qDirect = hooks.directHeat ? hooks.directHeat(s, spec, ctx, deposited, h) : deposited;
+    const qCool = qClad - C_cl * (s.T_cl - cladBefore) / h + qDirect;
+    s.coolantHeatKJ = (s.coolantHeatKJ || 0) + qCool * h;
 
     if (hooks.coreCoolant) {
       // Siedende Kerne rechnen hier anders: die Austrittstemperatur ist die
@@ -209,8 +236,14 @@ export function createEngine(plant, opts = {}) {
     s.enthalpyBase = relax(s.enthalpyBase, s.enthalpy, h, 120);
     s.enthalpyRise = s.enthalpy - s.enthalpyBase;
     const peakRise = PEAK_FACTOR * s.enthalpyRise;
+    // WELCHE der beiden Grenzen zuerst faellt, gehoert in die Meldung: die
+    // 963 J/g sind die Zerlegung des Brennstoffs selbst, der Zuwachs von
+    // 250 J/g ist das Versagen der Huellrohre im heissesten Kanal. Bis 0.6.4
+    // sagte der Endbildschirm in beiden Faellen "der Brennstoff ist zerlegt"
+    // -- bei einer Exkursion faellt aber fast immer die zweite Grenze zuerst,
+    // und die sagt weniger.
     if (!s.destroyed && (s.enthalpy > ENTHALPY_LIMIT_JPG || peakRise > ENTHALPY_RISE_LIMIT_JPG)) {
-      lose('event_fuel_dispersal');
+      lose(s.enthalpy > ENTHALPY_LIMIT_JPG ? 'event_fuel_dispersal' : 'event_fuel_failure');
     }
   }
 
@@ -227,6 +260,75 @@ export function createEngine(plant, opts = {}) {
     s.destroyed = true;
     s.destroyedKey = key;
     ctx.log.push({ t: s.t_sim, key, severity: 3 });
+    ctx.trends?.mark({ t: s.t_sim, kind: 'event', key, severity: 3 });
+    startAftermath(key);
+  }
+
+  /**
+   * Der Nachlauf: was nach dem Brennstoffversagen noch RECHENBAR ist.
+   *
+   * Bis 0.6.4 endete das Modell mit `destroyed` -- der Endbildschirm sagte
+   * "Brennstoff zerstoert", und was in einer solchen Anlage danach wirklich
+   * geschieht, kam gar nicht vor. Fuer den RBMK ist das zu wenig: die Nacht
+   * des 26. April endete nicht mit zerlegtem Brennstoff, sondern mit einem
+   * abgehobenen Deckel.
+   *
+   * Gerechnet wird deshalb genau der eine Schritt, den der eigene Zustand
+   * hergibt -- eine Energiebilanz, keine Explosionsmechanik:
+   *
+   *   E_ueber  die im Brennstoffknoten gespeicherte Energie OBERHALB der
+   *            Saettigungstemperatur des Kuehlmittels. Nur sie kann beim
+   *            Zerlegen an das Wasser uebergehen.
+   *   m_Dampf  was davon verdampfen kann, begrenzt durch das Wasser im Kern.
+   *   W_Deckel die Hubarbeit des oberen Schilds: Masse mal g mal Hubhoehe.
+   *   p_Hub    der statische Ueberdruck, ab dem er ueberhaupt abhebt --
+   *            Gewicht durch Flaeche, zwei nachschlagbare Zahlen und eine
+   *            Division.
+   *
+   * Die EINZIGE Annahme ist der Umsetzungsgrad: welcher Anteil der
+   * thermischen Energie in einer Dampfexplosion mechanisch wird. Versuche
+   * nennen wenige Prozent; spec.aftermath.conversion haelt den Wert fest,
+   * und `share` sagt, welcher Anteil hier noetig WAERE. Ist er kleiner,
+   * hebt der Deckel ab. Alles Weitere -- zweite Explosion, Graphitbrand,
+   * Freisetzung -- rechnet dieses Modell nicht und behauptet es auch nicht.
+   */
+  function startAftermath(cause) {
+    const cfg = spec.aftermath;
+    if (!cfg || s.aftermath) return;
+    const p = s.p_drum || spec.coolant.p0;
+    const Tsat = tsat(p);
+    const mFuel = (spec.fuel.mass_t || 0) * 1000;
+    const mWater = spec.coolant.mass || 0;
+    const h = hfg(p) * 1000;
+    const energy = Math.max(0, mFuel * (spec.fuel.cp || 300) * (s.T_f - Tsat));
+    const mLid = (cfg.lid.mass_t || 0) * 1000;
+    const area = Math.PI * (cfg.lid.diameter_m / 2) ** 2;
+    const work = mLid * G * cfg.lid.lift_m;
+    s.aftermath = {
+      cause,
+      t0: s.t_sim,
+      energy_J: energy,
+      steam_kg: h > 0 ? Math.min(mWater, energy / h) : 0,
+      water_kg: mWater,
+      work_J: work,
+      lift_bar: area > 0 ? (mLid * G) / area / 1e5 : 0,
+      share: energy > 0 ? work / energy : Infinity,
+      lid: null,
+      done: false,
+    };
+  }
+
+  /** Eine Stufe, nach cfg.lid_delay_s -- lange genug, dass die Anzeigen den
+   *  Ausschlag noch zeigen, kurz genug, dass es derselbe Vorgang bleibt. */
+  function stepAftermath() {
+    const a = s.aftermath;
+    const cfg = spec.aftermath;
+    if (!a || a.done || s.t_sim - a.t0 < cfg.lid_delay_s) return;
+    a.lid = a.share <= cfg.conversion;
+    a.done = true;
+    const key = a.lid ? 'event_lid_lifted' : 'event_lid_held';
+    ctx.log.push({ t: s.t_sim, key, severity: 3 });
+    ctx.trends?.mark({ t: s.t_sim, kind: 'event', key, severity: 3 });
   }
 
   /**
@@ -292,6 +394,7 @@ export function createEngine(plant, opts = {}) {
     if (s.scram.active) return;
     s.scram = { active: true, t: s.t_sim, cause };
     ctx.log.push({ t: s.t_sim, key: 'event_scram', severity: 3, cause });
+    ctx.trends?.mark({ t: s.t_sim, kind: 'scram', key: 'event_scram', severity: 3 });
     if (hooks.onScram) hooks.onScram(s, spec, ctx);
   }
 
@@ -314,6 +417,7 @@ export function createEngine(plant, opts = {}) {
     }
     s.scram = { active: false, t: 0, cause: null };
     ctx.log.push({ t: s.t_sim, key: 'event_scram_reset', severity: 1 });
+    ctx.trends?.mark({ t: s.t_sim, kind: 'event', key: 'event_scram_reset', severity: 1 });
     return true;
   }
 
@@ -330,20 +434,36 @@ export function createEngine(plant, opts = {}) {
    * gerade abgeschalteten Reaktor zu koppeln, hat keinen Sinn und keinen
    * Dampf dafür.
    *
+   * Zwei verschiedene Zustände führen hierher, und bis 0.6.26 kannte diese
+   * Funktion nur einen davon:
+   *   - s.turbineTripped -- die Turbine ist abgeworfen, das Ventil gesperrt.
+   *   - !s.breaker -- die Turbine läuft, aber der Generatorschalter ist
+   *     offen. Genau das macht `loss_of_load` (Netzabwurf, siehe
+   *     game/events.js): es setzt NUR breaker, nicht turbineTripped.
+   * Die alte Bedingung `if (!s.turbineTripped) return false` fiel im zweiten
+   * Fall sofort heraus. Damit war ein Netzabwurf im freien Spiel eine
+   * Sackgasse: P_e bleibt null (siehe die P_e-Zeile jeder Typdatei), keine
+   * Bedienhandlung gibt den Schalter wieder frei, und der
+   * Instandhaltungstrupp sagt zu Recht, es gebe nichts zu reparieren -- eine
+   * offene Schaltanlage ist kein Defekt. Nachgemessen blieb die Anlage dabei
+   * heil und lieferte trotzdem für den Rest des Laufs null MW.
+   *
    * @returns {boolean} true, wenn wieder zugeschaltet wurde
    */
   function resumeTurbine() {
-    if (!s.turbineTripped) return false;
+    if (!s.turbineTripped && s.breaker) return false;
     if (s.scram.active) return false;
     s.turbineTripped = false;
     s.breaker = true;
-    if (ctx.govCtl) ctx.govCtl.resume();
+    if (ctx.govCtl) ctx.govCtl.resume(s.P_e);
     ctx.log.push({ t: s.t_sim, key: 'event_turbine_resume', severity: 1 });
+    ctx.trends?.mark({ t: s.t_sim, kind: 'event', key: 'event_turbine_resume', severity: 1 });
     return true;
   }
 
   function step(dt) {
     if (s.fault) return;
+    s.coolantHeatKJ = 0;
 
     // 1 + 2: Reaktivität und Kinetik, Kernthermik in den Untertakten.
     const rho0 = rx.compute(s, spec);
@@ -385,6 +505,8 @@ export function createEngine(plant, opts = {}) {
 
     // Die uebrigen Verlustwege neben der Enthalpiegrenze -- siehe checkLoss().
     checkLoss(d, dt);
+    // Und was danach noch rechenbar ist -- siehe startAftermath().
+    if (s.aftermath) stepAftermath();
 
     s.t_sim += dt;
 
@@ -442,6 +564,14 @@ export function createEngine(plant, opts = {}) {
       // Spieler keinerlei Anhaltspunkt: der Sollwert liess sich verstellen,
       // die Stellung folgte nicht, und nichts sagte warum.
       rodStuck: !!(ctx.stuckRods && Object.keys(ctx.stuckRods).length),
+      // Dieselbe Frage fuer eine ausgefallene Pumpe (rcp_trip/mcp_trip,
+      // siehe game/events.js): ctx.pumpsStuck/ctx.recircPumpStuck haelt
+      // fest, WELCHE das sind, stepEvents() haelt sie jeden Schritt
+      // gestoppt -- auch gegen einen Klick auf den Ein-Knopf. Ohne diesen
+      // Wert stand nirgends eine Meldung, dass ueberhaupt etwas ausgefallen
+      // ist, und der Spieler konnte die "ausgefallene" Pumpe einfach wieder
+      // anklicken.
+      pumpStuck: !!((ctx.pumpsStuck && ctx.pumpsStuck.size) || ctx.recircPumpStuck),
     };
     return hooks.derived ? Object.assign(base, hooks.derived(s, spec, ctx, base)) : base;
   }
@@ -459,8 +589,17 @@ export function createEngine(plant, opts = {}) {
     scram,
     resetScram,
     resumeTurbine,
-    /** Protokolleinträge abholen und Puffer leeren. */
-    drainLog() { const l = ctx.log.concat(trips.drainEvents()); ctx.log = []; return l; },
+    /** Protokolleinträge abholen und Puffer leeren -- ctx.history (siehe
+     *  oben) wird dabei gleich mitgefuehrt, gedeckelt auf HISTORY_CAP. */
+    drainLog() {
+      const l = ctx.log.concat(trips.drainEvents());
+      ctx.log = [];
+      if (l.length) {
+        ctx.history.push(...l);
+        if (ctx.history.length > HISTORY_CAP) ctx.history.splice(0, ctx.history.length - HISTORY_CAP);
+      }
+      return l;
+    },
     toC,
   };
 }

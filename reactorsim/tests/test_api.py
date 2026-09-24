@@ -6,6 +6,7 @@ Ausgeführt mit: python3 -m pytest reactorsim/tests/test_api.py
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 
@@ -16,27 +17,34 @@ _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
 
 
-TEST_USER = 'tester'
+ADMIN_USER = 'admin-tester'
+ADMIN_PASSWORD = 'admin-passwort-123'
+# Spieler melden sich mit ihrer E-Mail-Adresse an (Phase 1, siehe users.py).
+TEST_USER = 'tester@example.test'
 TEST_PASSWORD = 'test-passwort-123'
 
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    """Angemeldeter Client.
+    """Angemeldeter Spieler-Client.
 
     Seit 0.0.13 liegt alles ausser /health und /login hinter der Anmeldung.
     Diese Tests pruefen die Schnittstelle selbst, nicht den Zugang -- der hat
-    seine eigene Datei (test_auth.py). Also hier einmal anmelden und fertig.
+    seine eigene Datei (test_auth.py). Das Admin-Konto spielt nicht mehr
+    (siehe users.py) -- das Spielerkonto fuer diese Tests legt der "Admin"
+    direkt ueber UserStore an, ohne den Umweg ueber das Admin-Panel-Formular.
     """
     import re
     monkeypatch.setenv('REACTORSIM_BASE', _ROOT)
     monkeypatch.setenv('REACTORSIM_DATA', str(tmp_path))
-    monkeypatch.setenv('REACTORSIM_USER', TEST_USER)
-    monkeypatch.setenv('REACTORSIM_PASSWORD', TEST_PASSWORD)
-    for mod in ('app', 'auth', 'persist', 'scoring', 'atomic_io'):
+    monkeypatch.setenv('REACTORSIM_USER', ADMIN_USER)
+    monkeypatch.setenv('REACTORSIM_PASSWORD', ADMIN_PASSWORD)
+    for mod in ('app', 'auth', 'persist', 'scoring', 'atomic_io', 'users'):
         sys.modules.pop(mod, None)
     import app as appmod
     appmod.app.config['TESTING'] = True
+    _, err = appmod.USERS.create_user(TEST_USER, TEST_PASSWORD, created_by=ADMIN_USER)
+    assert err is None, err
     c = appmod.app.test_client()
     html = c.get('/login').get_data(as_text=True)
     csrf = re.search(r'name="csrf" value="([^"]+)"', html).group(1)
@@ -72,6 +80,20 @@ def test_health_and_meta(client):
     assert all(s['reactor'] in ('pwr', 'bwr', 'rbmk') for s in meta['scenarios'])
 
 
+def test_progression_scenarios_and_guidance_are_discoverable(client):
+    scenarios = {s['id']: s for s in client.get('/api/meta').get_json()['scenarios']}
+    ids = ['pwr_feedwater_loss', 'pwr_sg_tube_leak', 'pwr_combined_faults']
+    for difficulty, scenario_id in enumerate(ids, 1):
+        scenario = scenarios[scenario_id]
+        assert scenario['difficulty'] == difficulty
+        assert not scenario['tutorial']
+        assert scenario['guidance']['auto_helper'] == (difficulty == 1)
+        assert scenario['guidance']['event_alerts'] == (difficulty == 1)
+        assert scenario['guidance']['hint_key'] == f'scn_{scenario_id}_hint'
+    page = client.get('/').get_data(as_text=True)
+    assert 'id="rs-brief-guidance"' in page
+
+
 @pytest.mark.parametrize('slot', ['UPPER', 'mit punkt.', 'a' * 33, 'mit leer zeichen'])
 def test_bad_slot_names_rejected(client, slot):
     r = client.put(f'/api/saves/{slot}', json={'v': 1})
@@ -96,12 +118,145 @@ def test_save_roundtrip_and_size_limit(client):
     listed = client.get('/api/saves').get_json()['saves']
     assert listed[0]['slot'] == 'slot1'
 
-    big = {'v': 1, 'reactor': 'pwr', 'pad': 'x' * 200_000}
+    big = {'v': 1, 'reactor': 'pwr', 'pad': 'x' * (4 * 1024 * 1024)}
     r = client.put('/api/saves/big', json=big)
-    assert r.status_code in (413, 400)
+    assert r.status_code == 413
 
     assert client.delete('/api/saves/slot1').get_json()['ok'] is True
     assert client.get('/api/saves/slot1').status_code == 404
+
+
+def test_monitor_relay_roundtrip_and_seq(client):
+    """Zweitbildschirm: ablegen, abholen, und bei stehendem Bild nichts
+    zurueckschicken (siehe MonitorRelay, net/monitorLink.js)."""
+    # Ohne angemeldeten Leitstand ist das eine Aussage, kein Fehler.
+    assert client.get('/api/monitor').get_json() == {'ok': True, 'none': True}
+
+    frame = {'v': 1, 'seq': 1, 'reactor': 'pwr', 't_sim': 12.5, 'state': {'n': 1.0}}
+    assert client.post('/api/monitor', json=frame).status_code == 200
+
+    got = client.get('/api/monitor').get_json()
+    assert got['ok'] is True and got['frame'] == frame
+    assert 0 <= got['age'] < 5
+
+    # Derselbe Stand: nur das Alter, keine Nutzlast. Genau davon lebt der
+    # Abholtakt bei angehaltenem oder minimiertem Leitstand.
+    same = client.get('/api/monitor?seq=1').get_json()
+    assert same['same'] is True and 'frame' not in same
+
+    frame2 = dict(frame, seq=2, t_sim=13.0)
+    assert client.post('/api/monitor', json=frame2).status_code == 200
+    assert client.get('/api/monitor?seq=1').get_json()['frame'] == frame2
+
+    # Ein kaputtes seq darf nicht zum Fehler werden -- es waehlt nichts aus,
+    # es vergleicht nur.
+    assert client.get('/api/monitor?seq=nonsense').get_json()['frame'] == frame2
+
+
+def test_monitor_rejects_shapeless_frames_and_oversize(client):
+    for bad in (None, [], {'seq': 'x'}, {'v': 1}):
+        r = client.post('/api/monitor', json=bad)
+        assert r.status_code == 400, bad
+    # Der Deckel liegt deutlich unter dem eines Spielstands: ein Monitorbild
+    # ist kein Ablageplatz.
+    import app as appmod
+    assert appmod.MonitorRelay.MAX_BYTES == 64 * 1024
+    big = {'v': 1, 'seq': 1, 'pad': 'x' * (128 * 1024)}
+    assert client.post('/api/monitor', json=big).status_code == 413
+
+
+def test_monitor_frames_never_leave_their_account(client, tmp_path):
+    """Das Bild gehoert dem Konto, nicht dem Server. Ein zweites Konto darf
+    es nicht sehen -- sonst waere die Mitschau eine Ueberwachung."""
+    import app as appmod
+    assert client.post('/api/monitor', json={'v': 1, 'seq': 1, 'secret': 'meins'}).status_code == 200
+
+    other_mail = 'zweiter@example.test'
+    _, err = appmod.USERS.create_user(other_mail, TEST_PASSWORD, created_by=ADMIN_USER)
+    assert err is None, err
+    import re
+    other = appmod.app.test_client()
+    html = other.get('/login').get_data(as_text=True)
+    csrf = re.search(r'name="csrf" value="([^"]+)"', html).group(1)
+    assert other.post('/login', data={'user': other_mail, 'password': TEST_PASSWORD,
+                                      'csrf': csrf, 'next': '/'}).status_code == 302
+    assert other.get('/api/monitor').get_json() == {'ok': True, 'none': True}
+
+
+def test_monitor_page_is_the_control_room_page_with_another_entry_module(client):
+    """Eine Vorlage, zwei Einstiege. Waere /monitor eine eigene Seite, stuende
+    jede Kachel zweimal im Quelltext -- und beim naechsten Messwert waere eine
+    davon vergessen."""
+    html = client.get('/monitor').get_data(as_text=True)
+    assert 'js/monitor.js' in html and 'js/main.js' not in html
+    assert 'monitor: true' in html
+    assert 'rs-core-gauges' in html and 'rs-monitor-bar' in html
+
+    room = client.get('/').get_data(as_text=True)
+    assert 'js/main.js' in room and 'js/monitor.js' not in room
+
+
+def test_save_exact_request_and_storage_limits(client):
+    import app as appmod
+    import persist
+    cap = persist.MAX_SAVE_BYTES
+    assert cap == 4 * 1024 * 1024
+    assert appmod.app.config['MAX_CONTENT_LENGTH'] == 256 * 1024
+    blob = {'pad': 'x' * (cap - len('{"pad":""}'))}
+    raw = json.dumps(blob, separators=(',', ':'))
+    assert len(raw.encode()) == cap
+    assert client.put('/api/saves/exact', data=raw, content_type='application/json').status_code == 200
+    assert client.get('/api/saves/exact').get_json() == blob
+    # Whitespace changes transport size, not compact storage size.
+    assert client.put('/api/saves/over', data=raw + ' ', content_type='application/json').status_code == 413
+    pid = appmod.STORE.account_key(TEST_USER)
+    assert appmod.STORE.write_save(pid, 'store_exact', blob) is None
+    blob['pad'] += 'x'
+    assert appmod.STORE.write_save(pid, 'store_over', blob) == 'too_large'
+    # ASCII escaping may make storage exceed its cap even if the request fits.
+    unicode_raw = json.dumps({'pad': '\u00e4' * (cap // 6)}, ensure_ascii=False)
+    r = client.put('/api/saves/expanded', data=unicode_raw.encode(), content_type='application/json')
+    assert r.status_code == 413
+    assert r.get_json()['error'] == 'too_large'
+
+
+def test_other_routes_keep_256k_and_preferences_keep_8k(client, monkeypatch):
+    import app as appmod
+    import persist
+    assert persist.MAX_PREFS_BYTES == 8 * 1024
+    raw = '{"pad":"' + 'x' * (256 * 1024) + '"}'
+    assert client.post('/api/highscores', data=raw, content_type='application/json').status_code == 413
+    assert client.put('/api/prefs', data=raw, content_type='application/json').status_code == 413
+    blob = {'pad': 'x' * (persist.MAX_PREFS_BYTES - len('{"pad":""}'))}
+    assert client.put('/api/prefs', json=blob).status_code == 200
+    blob['pad'] += 'x'
+    assert client.put('/api/prefs', json=blob).status_code == 413
+    called = {}
+    monkeypatch.setattr(appmod, 'serve', lambda app, **kwargs: called.update(kwargs))
+    appmod._serve()
+    assert called['max_request_body_size'] == persist.MAX_SAVE_BYTES
+
+
+def test_real_eight_hour_js_snapshot_with_600_markers_fits_and_roundtrips(client):
+    import persist
+    # The fixture is generated by the same implementation tested in Node.
+    script = "import { fullTrendSave } from './tests/test-trend-history.mjs'; console.log('SAVE:' + JSON.stringify(fullTrendSave()));"
+    node = os.environ.get('REACTORSIM_TEST_NODE', 'node')
+    proc = subprocess.run([node, '--input-type=module', '-e', script], cwd=_ROOT,
+                          capture_output=True, text=True, timeout=120, check=True)
+    raw = next(line[5:] for line in proc.stdout.splitlines() if line.startswith('SAVE:'))
+    blob = json.loads(raw)
+    assert blob['trends']['count'] == 28800
+    assert len(blob['trends']['markers']) == 600
+    assert len(blob['learning']['entries']) == 600
+    size = len(raw.encode())
+    assert 2611200 < size < persist.MAX_SAVE_BYTES
+    r = client.put('/api/saves/full_history', data=raw, content_type='application/json')
+    assert r.status_code == 200, r.get_json()
+    assert client.get('/api/saves/full_history').get_json() == blob
+    listing = client.get('/api/saves').get_json()['saves']
+    assert listing[0]['size'] == size
+    print(f'Full JS save request and storage: {size} bytes')
 
 
 def test_score_is_recomputed_not_trusted(client):
@@ -146,6 +301,50 @@ def test_difficulty_is_filled_in_when_missing(client):
     r = client.post('/api/highscores', json={'name': 'X', 'summary': summary})
     assert r.status_code == 200
     assert r.get_json()['score'] == scoring.score({**summary, 'difficulty': 2})['score']
+
+
+def test_score_with_log_is_verified_server_side_not_trusted(client):
+    """Wird ein Protokoll mitgeschickt (siehe game/recorder.js), rechnet der
+    Server den Lauf selbst nach (verify_run.mjs, Node) und ERSETZT die
+    gemeldeten Kennzahlen komplett -- ein Client, der ein leeres Protokoll
+    (keine Bedienhandlung) mit einer erfundenen Zusammenfassung kombiniert,
+    bekommt trotzdem die ehrliche Wertung fuer "eine Stunde lang nichts
+    getan", nicht seine erfundenen Zahlen.
+
+    pwr_turbine_trip ohne jeden Eingriff: Turbine faellt ab, niemand fuehrt
+    Speisewasser oder Turbine nach, die Netzabweichung reisst irgendwann die
+    Frist -- deterministisch, siehe tests/test-replay.mjs fuer denselben Lauf
+    unter Node."""
+    import scoring
+    real_summary = _summary(
+        scenario='pwr_turbine_trip', duration_s=1200.0,
+        energy_mwh_delivered=233.34, energy_mwh_demanded=466.67,
+        deviation_mwh=223.333, violation_seconds={'1': 0, '2': 510, '3': 90},
+        alarm_seconds_unacked=1347, completed=False, difficulty=2)
+    fake_summary = _summary(scenario='pwr_turbine_trip', duration_s=3600.0,
+                            energy_mwh_delivered=999999.0, energy_mwh_demanded=1.0,
+                            completed=True, deviation_mwh=0.0)
+    r = client.post('/api/highscores', json={'name': 'Schummler', 'summary': fake_summary, 'log': []})
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    # completed steht in STORE.add_score()'s entry direkt, aus der
+    # tatsaechlich verwendeten Zusammenfassung -- False beweist, dass nicht
+    # die erfundene ("completed": True) durchging.
+    assert data['entry']['completed'] is False
+    assert data['score'] == scoring.score(real_summary)['score']
+    assert data['score'] != scoring.score(fake_summary)['score']
+
+
+def test_score_verification_failure_is_rejected_not_trusted(client, monkeypatch):
+    """Schlaegt die Nachrechnung selbst fehl (hier erzwungen: Skript fehlt),
+    darf das NICHT auf die Klientenangabe zurueckfallen -- wer ein Protokoll
+    mitschickt, verspricht damit, dass es sich nachrechnen laesst."""
+    import app as appmod
+    monkeypatch.setattr(appmod, 'VERIFY_SCRIPT', str(_HERE) + '/does-not-exist.mjs')
+    r = client.post('/api/highscores',
+                    json={'name': 'X', 'summary': _summary(), 'log': []})
+    assert r.status_code == 400
+    assert r.get_json()['error'] == 'verification_failed'
 
 
 def test_security_headers_are_set(client):
@@ -285,6 +484,61 @@ def test_save_slot_limit_without_parsing_every_slot(tmp_path, monkeypatch):
     assert len(store.list_saves(pid)) == persist.MAX_SLOTS
 
 
+def test_migrate_legacy_copies_once_and_never_overwrites(tmp_path):
+    """Alte, anonyme Geraete-Speicherstaende wandern einmalig in den Account
+    -- ein zweiter Aufruf (z.B. ein zweites Geraet mit noch altem Cookie)
+    darf nicht ueberschreiben, was der Account inzwischen selbst hat."""
+    import persist
+    store = persist.Store(str(tmp_path))
+    legacy = store.new_player_id()
+    store.write_save(legacy, 'slot1', {'v': 1, 'reactor': 'pwr'})
+    store.write_prefs(legacy, {'x': 1})
+
+    account = persist.Store.account_key('alice')
+    store.migrate_legacy(account, legacy)
+    assert store.read_save(account, 'slot1') == {'v': 1, 'reactor': 'pwr'}
+    assert store.read_prefs(account) == {'x': 1}
+
+    store.write_save(account, 'slot1', {'v': 2, 'reactor': 'pwr'})
+    store.migrate_legacy(account, legacy)
+    assert store.read_save(account, 'slot1') == {'v': 2, 'reactor': 'pwr'}
+
+
+def test_legacy_cookie_save_migrates_to_account_on_first_login(tmp_path, monkeypatch):
+    """Wer schon vor der Kontenpflicht gespielt hat, traegt den alten
+    rs_player-Cookie noch im Browser -- beim ersten Login damit muss der
+    alte Stand im neuen Konto auftauchen."""
+    import re
+
+    import persist
+
+    monkeypatch.setenv('REACTORSIM_BASE', _ROOT)
+    monkeypatch.setenv('REACTORSIM_DATA', str(tmp_path))
+    monkeypatch.setenv('REACTORSIM_USER', ADMIN_USER)
+    monkeypatch.setenv('REACTORSIM_PASSWORD', ADMIN_PASSWORD)
+    for mod in ('app', 'auth', 'persist', 'scoring', 'atomic_io', 'users'):
+        sys.modules.pop(mod, None)
+    import app as appmod
+    appmod.app.config['TESTING'] = True
+    _, err = appmod.USERS.create_user(TEST_USER, TEST_PASSWORD, created_by=ADMIN_USER)
+    assert err is None, err
+
+    legacy_store = persist.Store(str(tmp_path))
+    legacy_pid = legacy_store.new_player_id()
+    legacy_store.write_save(legacy_pid, 'altstand', {'v': 1, 'reactor': 'pwr'})
+
+    c = appmod.app.test_client()
+    c.set_cookie('rs_player', legacy_pid)
+    html = c.get('/login').get_data(as_text=True)
+    csrf = re.search(r'name="csrf" value="([^"]+)"', html).group(1)
+    r = c.post('/login', data={'user': TEST_USER, 'password': TEST_PASSWORD,
+                               'csrf': csrf, 'next': '/'})
+    assert r.status_code == 302
+
+    saves = c.get('/api/saves').get_json()['saves']
+    assert any(s['slot'] == 'altstand' for s in saves)
+
+
 def test_atomic_write_survives_partial_failure(tmp_path):
     import atomic_io
     path = os.path.join(tmp_path, 'x.json')
@@ -297,3 +551,546 @@ def test_atomic_write_survives_partial_failure(tmp_path):
         assert json.load(f) == {'a': 1}
     leftovers = [n for n in os.listdir(tmp_path) if n.startswith('.tmp-')]
     assert leftovers == []
+
+
+@pytest.mark.parametrize('reactor', ['pwr', 'rbmk', 'bwr'])
+def test_startup_tutorial_is_discoverable_and_unranked(client, reactor):
+    scenarios = client.get('/api/meta').get_json()['scenarios']
+    scenario_id = f'{reactor}_startup_tutorial'
+    tutorial = next(s for s in scenarios if s['id'] == scenario_id)
+    assert tutorial['tutorial'] == f'{reactor}_startup'
+    response = client.post('/api/highscores', json={
+        'name': 'Learner', 'summary': _summary(scenario=scenario_id, reactor=reactor),
+    })
+    assert response.status_code == 400
+    assert response.get_json()['error'] == 'tutorial_unranked'
+
+
+INCIDENT_IDS = ['pwr_feedwater_loss', 'pwr_sg_tube_leak', 'pwr_combined_faults']
+
+
+def _incident_summary(scn, **over):
+    return _summary(
+        **dict({'scenario': scn['id'], 'score_mode': 'incident_v1',
+                'difficulty': scn['difficulty'], 'duration_s': scn['duration_s'],
+                'energy_mwh_delivered': 0, 'energy_mwh_demanded': 0,
+                'deviation_mwh': 0, 'alarm_seconds_unacked': 0,
+                'violation_seconds': {'1': 0, '2': 0, '3': 0}, 'failed': None,
+                'objectives': [{'id': o['id'], 'met': True} for o in scn['objectives']]}, **over))
+
+
+@pytest.mark.parametrize('scenario_id', INCIDENT_IDS)
+def test_incident_catalog_contract(client, scenario_id):
+    import app as appmod
+    scn = appmod.SCENARIO_BY_ID[scenario_id]
+    assert scn['score_mode'] == 'incident_v1'
+    expected = ['power', 'stable'] if scenario_id == 'pwr_sg_tube_leak' else ['supply', 'stable']
+    assert [o['id'] for o in scn['objectives']] == expected
+    for objective in scn['objectives']:
+        assert {'id', 'type', 'after_events', 'hold_s'} <= set(objective)
+        assert set(objective) <= {'id', 'type', 'after_events', 'hold_s', 'max_power_fraction'}
+    meta = client.get('/api/meta').get_json()['scenarios']
+    assert next(s for s in meta if s['id'] == scenario_id)['objectives'] == scn['objectives']
+
+
+@pytest.mark.parametrize('log_body', [{}, {'log': None}, {'log': {}}, {'log': ''}, {'log': False}, {'log': 1}])
+def test_incident_requires_list_log(client, monkeypatch, log_body):
+    import app as appmod
+    def unexpected(*args):
+        pytest.fail('invalid log must not invoke replay')
+    monkeypatch.setattr(appmod, '_verify_run', unexpected)
+    r = client.post('/api/highscores', json={
+        'name': 'X', 'summary': _summary(scenario=INCIDENT_IDS[0]), **log_body})
+    assert r.status_code == 400
+    assert r.get_json()['error'] == 'replay_required'
+    assert appmod.STORE.list_scores() == []
+
+
+@pytest.mark.parametrize('scenario_id', INCIDENT_IDS)
+def test_incident_empty_log_replayed_and_client_targets_ignored(client, monkeypatch, scenario_id):
+    import app as appmod
+    scn = appmod.SCENARIO_BY_ID[scenario_id]
+    verified = _incident_summary(scn, difficulty=999999)
+    calls = []
+    def verify(reactor, file, action_log):
+        calls.append((reactor, file, action_log))
+        return verified
+    monkeypatch.setattr(appmod, '_verify_run', verify)
+    r = client.post('/api/highscores', json={
+        'name': 'X', 'log': [], 'score_mode': 'legacy',
+        'objectives': [{'id': 'invented', 'met': True}],
+        'summary': _summary(scenario=scenario_id, score_mode='invented', difficulty=1e9,
+                            objectives=[{'id': 'free_points', 'met': True}])})
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    assert calls == [('pwr', scn['file'], [])]
+    assert data['score'] == 3000 + 250 * scn['difficulty']
+    assert data['summary'] == dict(verified, difficulty=scn['difficulty'])
+    assert data['entry']['score_mode'] == 'incident_v1'
+    assert data['parts']['objectives'] == 2000
+
+
+@pytest.mark.parametrize('over,detail', [
+    ({'score_mode': None}, 'score_mode_invalid'),
+    ({'score_mode': 'legacy'}, 'score_mode_invalid'),
+    ({'reactor': 'bwr'}, 'identity_mismatch'),
+    ({'scenario': 'pwr_load_follow'}, 'identity_mismatch'),
+    ({'objectives': None}, 'objectives_invalid'),
+    ({'objectives': []}, 'objectives_invalid'),
+    ({'objectives': [{'id': 'supply', 'met': True}] * 2}, 'objectives_invalid'),
+    ({'objectives': [{'id': 'invented', 'met': True}, {'id': 'stable', 'met': True}]}, 'objectives_invalid'),
+    ({'objectives': [{'id': [], 'met': True}, {'id': 'stable', 'met': True}]}, 'objectives_invalid'),
+    ({'objectives': [{'id': 'supply', 'met': 1}, {'id': 'stable', 'met': True}]}, 'objectives_invalid'),
+    ({'objectives': [{'id': 'supply', 'met': True, 'hold_s': 0}, {'id': 'stable', 'met': True}]}, 'objectives_invalid'),
+    ({'objectives': [{'id': 'supply', 'met': False}, {'id': 'stable', 'met': True}]}, 'completion_invalid'),
+    ({'duration_s': 899.9}, 'completion_early'),
+    ({'completed': 1}, 'completed_invalid'),
+    ({'fuel_damage': 'false'}, 'fuel_damage_invalid'),
+    ({'fuel_damage': True}, 'completion_invalid'),
+    ({'failed': 'fail_objectives_unmet'}, 'completion_invalid'),
+])
+def test_incident_replay_summary_contract_rejected(client, monkeypatch, over, detail):
+    import app as appmod
+    scn = appmod.SCENARIO_BY_ID[INCIDENT_IDS[0]]
+    verified = _incident_summary(scn, **over)
+    monkeypatch.setattr(appmod, '_verify_run', lambda *args: verified)
+    r = client.post('/api/highscores', json={'name': 'X', 'log': [], 'summary': _incident_summary(scn)})
+    assert r.status_code == 400
+    assert r.get_json() == {'error': 'implausible', 'detail': detail}
+    assert appmod.STORE.list_scores() == []
+
+
+@pytest.mark.parametrize('objectives', [None, [], [{'id': 'supply'}] * 2,
+                                      [{'id': []}, {'id': 'stable'}], [{'id': ''}, {'id': 'stable'}]])
+def test_incident_invalid_config_ids_rejected(client, monkeypatch, objectives):
+    import app as appmod
+    scn = appmod.SCENARIO_BY_ID[INCIDENT_IDS[0]]
+    verified = _incident_summary(scn)
+    monkeypatch.setattr(appmod, '_verify_run', lambda *args: verified)
+    monkeypatch.setitem(scn, 'objectives', objectives)
+    r = client.post('/api/highscores', json={'name': 'X', 'log': [], 'summary': verified})
+    assert r.status_code == 400
+    assert r.get_json()['detail'] == 'objective_config_invalid'
+
+
+def test_incident_verify_error_never_falls_back(client, monkeypatch):
+    import app as appmod
+    monkeypatch.setattr(appmod, '_verify_run', lambda *args: None)
+    r = client.post('/api/highscores', json={
+        'name': 'X', 'log': [], 'summary': _incident_summary(appmod.SCENARIO_BY_ID[INCIDENT_IDS[0]])})
+    assert r.status_code == 400
+    assert r.get_json()['error'] == 'verification_failed'
+
+
+@pytest.mark.parametrize('scenario_id', INCIDENT_IDS)
+def test_incident_real_idle_replay(client, scenario_id):
+    import app as appmod
+    import scoring
+    scn = appmod.SCENARIO_BY_ID[scenario_id]
+    r = client.post('/api/highscores', json={'name': 'Idle', 'log': [], 'summary': _incident_summary(scn)})
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    assert data['summary']['score_mode'] == 'incident_v1'
+    assert data['summary']['completed'] is False
+    assert scoring.validate_summary(data['summary'], scn, 1400) is None
+    assert scoring.score(data['summary']) == {'score': data['score'], 'parts': data['parts']}
+
+
+def test_incident_guided_helper_log_is_verified_and_ranked(client):
+    import app as appmod
+    import scoring
+    scn = appmod.SCENARIO_BY_ID['pwr_feedwater_loss']
+    action_log = [{'n': 3820, 'id': 'scram'},
+                  {'n': 3900, 'id': 'helper', 'value': 'sg_level_low'}]
+    r = client.post('/api/highscores', json={
+        'name': 'Guided', 'log': action_log,
+        'summary': _incident_summary(scn, completed=False, objectives=[])})
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    verified = data['summary']
+    assert verified['completed'] is True
+    assert verified['failed'] is None
+    assert verified['duration_s'] == scn['duration_s']
+    assert verified['scram_count'] == 1
+    assert verified['objectives'] == [{'id': 'supply', 'met': True}, {'id': 'stable', 'met': True}]
+    assert data['parts']['objectives'] == 2000
+    assert data['parts']['mission'] == 1000
+    assert data['parts']['bonus'] == 250
+    assert scoring.score(verified) == {'score': data['score'], 'parts': data['parts']}
+    assert 3150 <= data['score'] <= 3250
+    assert client.get('/api/highscores?scenario=pwr_feedwater_loss').get_json()['scores'] == [data['entry']]
+
+
+@pytest.mark.parametrize('scenario_id,trip_id', [
+    ('pwr_sg_tube_leak', 'sg_level_low'),
+    ('pwr_combined_faults', 'sg_level_low'),
+    *[('pwr_feedwater_loss', value) for value in
+      ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'unknown', None, [], {}]],
+])
+def test_incident_denied_or_invalid_helper_log_rejected(client, scenario_id, trip_id):
+    import app as appmod
+    r = client.post('/api/highscores', json={
+        'name': 'X', 'summary': _incident_summary(appmod.SCENARIO_BY_ID[scenario_id]),
+        'log': [{'n': 3900, 'id': 'helper', 'value': trip_id}]})
+    assert r.status_code == 400
+    assert r.get_json()['error'] == 'verification_failed'
+    assert appmod.STORE.list_scores() == []
+
+
+@pytest.mark.parametrize('with_log', [False, True])
+def test_legacy_injected_incident_fields_do_not_change_score(client, monkeypatch, with_log):
+    import app as appmod
+    import scoring
+    fake = _summary(score_mode='incident_v1', objectives=[{'id': 'free', 'met': True}] * 2)
+    monkeypatch.setattr(appmod, '_verify_run', lambda *args: fake)
+    r = client.post('/api/highscores', json={
+        'name': 'Legacy', 'summary': fake, **({'log': []} if with_log else {})})
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['score'] == scoring.score(_summary())['score']
+    assert data['summary'] == _summary()
+    assert 'objectives' not in data['parts']
+    assert 'score_mode' not in data['entry']
+
+
+@pytest.mark.parametrize('field', ['reactor', 'scenario'])
+@pytest.mark.parametrize('value', [[], {}, ['pwr'], {'id': 'pwr'}])
+def test_json_unhashable_score_identity_returns_400(client, field, value):
+    r = client.post('/api/highscores', json={'name': 'X', 'summary': _summary(**{field: value})})
+    assert r.status_code == 400
+    assert r.get_json()['error'] == f'bad_{field}'
+
+
+def test_score_versions_have_independent_caps_and_filter_before_limit(client):
+    import app as appmod
+    import persist
+    store = appmod.STORE
+    scenario = INCIDENT_IDS[0]
+    for i in range(60):
+        store.add_score('pwr', scenario, f'old{i}', 10000 + i, {})
+    old = store._read_scores()[f'pwr/{scenario}']
+    for i in range(60):
+        store.add_score('pwr', scenario, f'new{i}', i, {}, score_mode='incident_v1')
+    data = store._read_scores()
+    assert data[f'pwr/{scenario}'] == old
+    assert len(data[f'pwr/{scenario}/incident_v1']) == persist.MAX_SCORES_PER_LIST
+    assert len(old) == persist.MAX_SCORES_PER_LIST
+    assert all('score_mode' not in e for e in old)
+    assert store.list_scores('pwr', scenario, 1, score_mode='legacy')[0]['score'] == 10059
+    assert store.list_scores('pwr', scenario, 1, score_mode='incident_v1')[0]['score'] == 59
+    store.add_score('pwr', 'pwr_load_follow', 'legacy-current', 100, {'score_mode': 'incident_v1'}, score_mode='legacy')
+    assert 'score_mode' not in store.list_scores('pwr', 'pwr_load_follow')[0]
+    selected = client.get(f'/api/highscores?scenario={scenario}&limit=1').get_json()['scores']
+    assert [e['score'] for e in selected] == [59]
+    global_scores = client.get('/api/highscores?limit=2').get_json()['scores']
+    assert [e['score'] for e in global_scores] == [100, 59]
+    reactor_scores = client.get('/api/highscores?reactor=pwr&limit=2').get_json()['scores']
+    assert reactor_scores == global_scores
+
+
+def _rbmk_post_az5_summary(**over):
+    return _summary(**dict({
+        'reactor': 'rbmk', 'scenario': 'rbmk_post_az5', 'difficulty': 3,
+        'duration_s': 1800, 'score_mode': 'incident_v1',
+        'energy_mwh_delivered': 0, 'energy_mwh_demanded': 0,
+        'deviation_mwh': 0, 'alarm_seconds_unacked': 0,
+        'violation_seconds': {'1': 0, '2': 0, '3': 0}, 'failed': None,
+        'objectives': [{'id': 'supply', 'met': True}, {'id': 'stable', 'met': True}],
+    }, **over))
+
+
+def _record_rbmk_post_az5(action_log):
+    """Fresh live Session, not replayRun or a saved/generated fixture file."""
+    script = """
+        import assert from 'node:assert/strict';
+        import { readFile } from 'node:fs/promises';
+        import rbmk from './static/js/plants/rbmk.js';
+        import { createEngine } from './static/js/sim/engine.js';
+        import { Session, PHASE } from './static/js/game/session.js';
+        import { attachRecorder } from './static/js/game/recorder.js';
+        import { captureKit, recordingKit } from './static/js/game/replayKit.js';
+        import { noteAction } from './static/js/game/learning.js';
+        const def = JSON.parse(await readFile('./static/data/scenarios/rbmk_post_az5.json', 'utf8'));
+        let input = '';
+        for await (const chunk of process.stdin) input += chunk;
+        const actions = JSON.parse(input);
+        const engine = createEngine(rbmk, { seed: def.seed });
+        attachRecorder(engine);
+        const map = {};
+        engine.hooks.uiControls(engine.state, engine.spec, engine.ctx,
+            recordingKit(captureKit(map), (id, value) => {
+                engine.recorder.record(id, value);
+                noteAction(engine, id, value);
+            }));
+        let scrams = 0;
+        const scram = engine.scram;
+        engine.scram = cause => {
+            scrams++;
+            assert.equal(cause, 'scenario');
+            assert.equal(engine.state.t_sim, 0);
+            return scram(cause);
+        };
+        const session = new Session(engine, def);
+        session.start();
+        assert.equal(scrams, 1);
+        assert.equal(engine.state.scram.active, true);
+        assert.equal(engine.state.scram.t, 0);
+        assert.equal(engine.state.P_demand, 0);
+        assert.deepEqual(engine.recorder.serialize(), []);
+        engine.drainLog();
+        for (let n = 0; session.phase === PHASE.RUNNING; n++) {
+            assert.ok(n < 36001, 'session must end at 1800 seconds');
+            for (const action of actions.filter(a => a.n === n)) map[action.id](action.value);
+            engine.step(0.05);
+            assert.equal(engine.state.fault, null);
+            session.step(0.05, engine.trips.tiles(), engine.trips.unacknowledgedSeconds());
+            engine.drainLog();
+        }
+        console.log(JSON.stringify({
+            log: engine.recorder.serialize(), ...session.result,
+            fwSupplyMax: engine.state.fwSupplyMax,
+            auxWaterKg: engine.state.auxWaterKg,
+        }));
+    """
+    node = os.environ.get('REACTORSIM_TEST_NODE', 'node')
+    proc = subprocess.run([node, '--input-type=module', '-e', script], cwd=_ROOT,
+                          input=json.dumps(action_log), capture_output=True,
+                          text=True, timeout=30, check=True)
+    return json.loads(proc.stdout)
+
+
+def test_rbmk_post_az5_catalog_contract(client):
+    import app as appmod
+    scenarios = client.get('/api/meta').get_json()['scenarios']
+    matches = [s for s in scenarios if s['id'] == 'rbmk_post_az5']
+    assert len(matches) == 1
+    scn = matches[0]
+    assert scn == appmod.SCENARIO_BY_ID['rbmk_post_az5']
+    assert scn['file'] == 'rbmk_post_az5.json'
+    assert scn['reactor'] == 'rbmk'
+    assert scn['difficulty'] == 3
+    assert scn['duration_s'] == 1800
+    assert scn['score_mode'] == 'incident_v1'
+    assert not scn['tutorial']
+    assert scn['guidance'] == {
+        'hint_key': 'scn_rbmk_post_az5_hint', 'auto_helper': False, 'event_alerts': False,
+    }
+    assert [(o['id'], o['type'], o['hold_s']) for o in scn['objectives']] == [
+        ('supply', 'rbmk_inventory', 30), ('stable', 'rbmk_heat_removal', 120),
+    ]
+    definition = client.get('/static/data/scenarios/' + scn['file']).get_json()
+    assert definition['objectives'] == scn['objectives']
+    assert definition['preparation'] == 'rbmk_post_az5_v1'
+    assert definition['demand'] == [{'t': 0, 'mw': 0}, {'t': 1800, 'mw': 0}]
+    assert 'start_overrides' not in definition
+
+
+@pytest.mark.parametrize('log_body', [{}, {'log': None}, {'log': {}},
+                                      {'log': ''}, {'log': False}, {'log': 1}])
+def test_rbmk_post_az5_requires_replay(client, log_body):
+    import app as appmod
+    r = client.post('/api/highscores', json={
+        'name': 'No replay', 'summary': _rbmk_post_az5_summary(), **log_body,
+    })
+    assert r.status_code == 400
+    assert r.get_json() == {'error': 'replay_required'}
+    assert appmod.STORE.list_scores() == []
+
+
+def test_rbmk_post_az5_idle_overwrites_forged_goals_and_initial_state(client):
+    import app as appmod
+    import scoring
+    idle = _record_rbmk_post_az5([])
+    # Neither top-level nor summary fields may replace the server's scenario file.
+    injected = {
+        'seed': 1, 'preparation': None, 'cold': True,
+        'demand': [{'t': 0, 'mw': 1000}],
+        'start_overrides': {'fwSupplyMax': 999999, 'auxFeedOn': True},
+        'state': {'P_demand': 1000, 'fwSupplyMax': 999999, 'auxWaterKg': 999999},
+        'scenarioFile': 'rbmk_night_shift.json',
+    }
+    r = client.post('/api/highscores', json={
+        **injected, 'name': 'Forged', 'log': [], 'score': 999999,
+        'score_mode': 'legacy', 'objectives': [{'id': 'invented', 'met': True}],
+        'summary': _rbmk_post_az5_summary(
+            **injected, difficulty=999999, score_mode='legacy',
+            objectives=[{'id': 'supply', 'met': True}, {'id': 'stable', 'met': True},
+                        {'id': 'free_points', 'met': True}]),
+    })
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    verified = data['summary']
+    assert verified == idle['summary']
+    assert verified['reactor'] == 'rbmk'
+    assert verified['scenario'] == 'rbmk_post_az5'
+    assert verified['difficulty'] == 3
+    assert verified['score_mode'] == 'incident_v1'
+    assert verified['completed'] is False
+    assert verified['failed'] == 'fail_objectives_unmet'
+    assert verified['duration_s'] == 1800
+    assert verified['scram_count'] == 1
+    assert verified['energy_mwh_demanded'] == 0
+    assert verified['objectives'] == [
+        {'id': 'supply', 'met': False}, {'id': 'stable', 'met': False},
+    ]
+    assert data['entry']['completed'] is False
+    assert data['parts']['objectives'] == 0
+    assert data['score'] == idle['score'] != 999999
+    assert data['parts'] == idle['parts']
+    assert scoring.validate_summary(verified, appmod.SCENARIO_BY_ID['rbmk_post_az5'], 1000) is None
+    assert scoring.score(verified) == {'score': data['score'], 'parts': data['parts']}
+
+
+def test_rbmk_post_az5_recorded_good_run_is_ranked_in_current_rbmk_partition(client):
+    import app as appmod
+    import scoring
+    settings = [(240, 50), (360, 40), (600, 30), (900, 25), (1200, 22), (1500, 18)]
+    actions = [{'n': round(t / 0.05), 'id': 'write:ctl_rbmk_aux_flow', 'value': value}
+               for t, value in settings]
+    actions.insert(1, {'n': round(240 / 0.05), 'id': 'btn:ctl_rbmk_aux_feed', 'value': '1'})
+    live = _record_rbmk_post_az5(actions)
+    # The actual recording must preserve write-before-on at the same step;
+    # preparation's t=0 SCRAM is not a player action in this seven-entry log.
+    assert live['log'] == actions
+    assert live['fwSupplyMax'] == 15
+    assert live['auxWaterKg'] > 62000
+    store = appmod.STORE
+    legacy = store.add_score('rbmk', 'rbmk_post_az5', 'Old version', 999999, {})
+    pwr = store.add_score('pwr', 'pwr_load_follow', 'Other reactor', 999998, {})
+    r = client.post('/api/highscores', json={
+        'name': 'GOOD', 'log': live['log'],
+        'summary': _rbmk_post_az5_summary(completed=False, objectives=[]),
+    })
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    verified = data['summary']
+    assert verified == live['summary']
+    assert verified['reactor'] == 'rbmk'
+    assert verified['scenario'] == 'rbmk_post_az5'
+    assert verified['completed'] is True
+    assert verified['failed'] is None
+    assert verified['duration_s'] == 1800
+    assert verified['scram_count'] == 1
+    assert verified['energy_mwh_demanded'] == 0
+    assert verified['objectives'] == [{'id': 'supply', 'met': True}, {'id': 'stable', 'met': True}]
+    assert data['parts']['objectives'] == 2000
+    assert data['parts']['energy'] == data['parts']['scram'] == 0
+    assert data['parts']['mission'] == 1000
+    assert data['parts']['bonus'] == 750
+    assert data['score'] == live['score'] == 3650
+    assert data['parts'] == live['parts']
+    assert scoring.score(verified) == {'score': data['score'], 'parts': data['parts']}
+    assert sum(data['parts'].values()) == pytest.approx(data['score'])
+    entry = data['entry']
+    assert entry['reactor'] == 'rbmk'
+    assert entry['scenario'] == 'rbmk_post_az5'
+    assert entry['completed'] is True
+    assert entry['score_mode'] == 'incident_v1'
+    stored = store._read_scores()
+    assert stored['rbmk/rbmk_post_az5'] == [legacy]
+    assert stored['rbmk/rbmk_post_az5/incident_v1'] == [entry]
+    for query in ('reactor=rbmk', 'scenario=rbmk_post_az5',
+                  'reactor=rbmk&scenario=rbmk_post_az5&limit=1'):
+        assert client.get('/api/highscores?' + query).get_json()['scores'] == [entry]
+    assert client.get('/api/highscores?reactor=pwr').get_json()['scores'] == [pwr]
+    assert client.get('/api/highscores?limit=2').get_json()['scores'] == [pwr, entry]
+
+
+@pytest.mark.parametrize('reactor', ['pwr', 'bwr'])
+def test_rbmk_post_az5_wrong_reactor_rejected(client, reactor):
+    import app as appmod
+    r = client.post('/api/highscores', json={
+        'name': 'Wrong reactor', 'log': [], 'summary': _rbmk_post_az5_summary(reactor=reactor),
+    })
+    assert r.status_code == 400
+    assert r.get_json() == {'error': 'reactor_mismatch'}
+    assert appmod.STORE.list_scores() == []
+
+
+@pytest.mark.parametrize('t', [240, 1801])
+def test_rbmk_post_az5_disabled_helper_rejected_even_after_end(client, t):
+    import app as appmod
+    r = client.post('/api/highscores', json={
+        'name': 'Helper', 'summary': _rbmk_post_az5_summary(),
+        'log': [{'n': round(t / 0.05), 'id': 'helper', 'value': 'drum_level_low'}],
+    })
+    assert r.status_code == 400
+    assert r.get_json() == {'error': 'verification_failed'}
+    assert appmod.STORE.list_scores() == []
+
+
+def test_rbmk_post_az5_nonsensical_controls_leave_idle_failure_and_supply_cap(client):
+    actions = [{'n': round(240 / 0.05), 'id': control, 'value': value}
+               for control in ('write:ctl_rbmk_aux_flow', 'btn:ctl_rbmk_aux_feed')
+               for value in (None, False, True, 'repair', '50', -1, 101, 1e9, [], {})]
+    live = _record_rbmk_post_az5(actions)
+    idle = _record_rbmk_post_az5([])
+    assert live['log'] == actions
+    assert live['fwSupplyMax'] == idle['fwSupplyMax'] == 15
+    assert live['auxWaterKg'] == idle['auxWaterKg'] == 160000
+    assert live['summary'] == idle['summary']
+    r = client.post('/api/highscores', json={
+        'name': 'Nonsense', 'log': live['log'], 'summary': _rbmk_post_az5_summary(),
+    })
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    assert data['summary'] == idle['summary']
+    assert data['summary']['completed'] is False
+    assert data['summary']['failed'] == 'fail_objectives_unmet'
+    assert data['entry']['completed'] is False
+    assert data['parts']['objectives'] == 0
+    assert data['score'] == idle['score']
+
+
+def test_verification_has_its_own_limit_before_the_node_process(client, monkeypatch):
+    """Die Nachrechnung ist die teuerste Stelle des Servers -- sie braucht
+    eine eigene Grenze VOR dem Start des Node-Prozesses.
+
+    Vorher stand davor nur die weite Flutgrenze (60/min) und dahinter die
+    enge Eintragsgrenze (1/min), die absichtlich erst kurz vor dem Schreiben
+    greift. Dazwischen lagen sechzig Nachrechnungen je Minute zu gemessen
+    rund zweieinhalb Sekunden -- zusammen mehr Rechenzeit, als die Minute
+    hat, und jede davon haelt einen der 24 waitress-Faeden.
+    """
+    import app as appmod
+    calls = []
+    monkeypatch.setattr(appmod, '_verify_run',
+                        lambda *args: calls.append(args) or _summary())
+    body = {'name': 'X', 'summary': _summary(), 'log': []}
+    for _ in range(appmod.VERIFY_PER_MINUTE):
+        assert client.post('/api/highscores', json=body).status_code in (200, 429)
+    r = client.post('/api/highscores', json=body)
+    assert r.status_code == 429
+    assert r.get_json() == {'error': 'rate_limited'}
+    # Entscheidend: der teure Aufruf ist gar nicht erst passiert.
+    assert len(calls) == appmod.VERIFY_PER_MINUTE
+
+
+def test_a_submission_without_a_log_does_not_spend_the_verify_budget(client):
+    """Die Grenze trifft nur Anfragen MIT Protokoll. Eine Einreichung ohne
+    rechnet nichts nach und darf deshalb auch nichts davon aufbrauchen --
+    sonst sperrte der Legacy-Weg den Wiedergabe-Weg aus."""
+    import app as appmod
+    body = {'name': 'X', 'summary': _summary()}
+    for _ in range(appmod.VERIFY_PER_MINUTE * 2):
+        r = client.post('/api/highscores', json=body)
+        assert r.status_code in (200, 429)
+        if r.status_code == 429:
+            # Die enge Eintragsgrenze (1/min) -- nicht die Wiedergabegrenze.
+            assert r.get_json() == {'error': 'rate_limited'}
+
+
+def test_the_open_run_directory_never_grows_past_its_cap():
+    """MAX_OPEN ist ein Deckel und kein Richtwert.
+
+    open() fegte frueher VOR dem Eintragen: der neue Lauf kam danach obendrauf,
+    und das Verzeichnis stand dauerhaft auf MAX_OPEN + 1. MonitorRelay.put()
+    macht es seit jeher andersherum und erklaert im Kommentar auch warum.
+    """
+    import app as appmod
+    runs = appmod.OpenRuns(None)
+    tokens = [runs.open('konto', 'pwr', None, 0.0)
+              for _ in range(appmod.OpenRuns.MAX_OPEN + 5)]
+    assert len(runs._runs) == appmod.OpenRuns.MAX_OPEN
+    # Der zuletzt eroeffnete Lauf ueberlebt: gefegt wird der aelteste.
+    assert runs.close('konto', tokens[-1]) is not None

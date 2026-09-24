@@ -7,17 +7,63 @@ import { Scenario, RunState } from './scenario.js';
 import { getEvent, eventKey, eventSeverity, stepEvents } from './events.js';
 import { score } from './scoring.js';
 import { Rng } from '../rng.js';
+import { StartupTutorial, STARTUP_TUTORIAL } from './tutorial.js';
+import { RbmkStartupTutorial, RBMK_STARTUP_TUTORIAL } from './rbmkTutorial.js';
+import { BwrStartupTutorial, BWR_STARTUP_TUTORIAL } from './bwrTutorial.js';
+import { RbmkChernobylTutorial, RBMK_CHERNOBYL_TUTORIAL } from './chernobylTutorial.js';
+import { noteEvent, observeAlarms, learningReport } from './learning.js';
+import { ScenarioObjectives } from './objectives.js';
+import { TrendHistory } from './trendHistory.js';
+import { FreeFaults } from './freeEvents.js';
+import { ShiftLog } from './shift.js';
+import { Dispatch } from './dispatch.js';
+import { Repairs } from './repairs.js';
 
 // Freies Spiel ohne Bedarfskurve hiesse: "folge der Netzanforderung" waere
 // nichts als "lass die Anforderung, wie sie ist" -- kein Unterschied zum
 // Nichtstun. Ein Szenario hat feste Kennpunkte in der JSON-Datei; das freie
-// Spiel bekommt stattdessen einen Zufallsspaziergang, neu gesät bei jedem
-// Start (kein fester Seed wie im Szenario -- hier zaehlt keine Wertung, die
-// Wiedergabe reproduzieren muesste).
-const FREE_DEMAND_MIN_FRAC = 0.5;   // Untergrenze der Anforderung, Anteil P0_e
-const FREE_DEMAND_MAX_FRAC = 1.0;   // Obergrenze
-const FREE_DEMAND_INTERVAL_S = [300, 900];   // Abstand zwischen neuen Zielwerten
+// Spiel bekam stattdessen lange einen reinen Zufallsspaziergang.
+//
+// Der war zwar nie in Ruhe, aber auch nie vorhersehbar: jeder neue Zielwert
+// kam aus dem Nichts, kein Punkt des Tages sagte etwas ueber den naechsten.
+// Damit liess sich nichts planen, und ohne Planung bleibt vom Lastfolgen nur
+// Hinterherfahren. Seit 0.6.6 fuehrt deshalb eine Tageslastkurve, wie sie
+// ein Netz wirklich hat -- Nachttal, Morgenrampe, Abendspitze. Erst das
+// macht die Xenon-Vergiftung zu einem Gegner, den man kommen sieht: wer
+// nachts weit heruntergefahren ist, muss die Morgenrampe gegen das
+// aufgebaute Xenon fahren.
+//
+// Anteile der elektrischen Nennleistung ueber der Tageszeit. Zwischen den
+// Kennpunkten wird linear interpoliert; 24:00 wiederholt 00:00, damit die
+// Kurve am Tageswechsel keinen Sprung hat.
+const FREE_DEMAND_CURVE = [
+  { h: 0, f: 0.62 }, { h: 3, f: 0.55 }, { h: 5, f: 0.58 }, { h: 7, f: 0.78 },
+  { h: 9, f: 0.92 }, { h: 12, f: 0.95 }, { h: 14, f: 0.88 }, { h: 17, f: 0.93 },
+  { h: 19, f: 1.00 }, { h: 21, f: 0.88 }, { h: 24, f: 0.62 },
+];
+// Die Schicht beginnt um 22:00 -- Nachtschicht. Das ist kein Schmuck: so
+// liegen Nachttal und Morgenrampe in den ersten Stunden, also genau dort,
+// wo der Spieler noch zuschaut. Bei 60x ist ein ganzer Tag 24 Minuten lang.
+const FREE_SHIFT_START_S = 22 * 3600;
+// Rauschen auf der Kurve: ein Netz ist nie genau die Prognose. Klein genug,
+// um die Form nicht zu verwischen, gross genug, damit zwei Naechte sich
+// nicht gleich anfuehlen.
+const FREE_DEMAND_NOISE_FRAC = 0.04;
+const FREE_DEMAND_NOISE_INTERVAL_S = [300, 900];
 const FREE_DEMAND_RAMP_FRAC_PER_S = 0.002;   // maximale Aenderung je Sekunde, Anteil P0_e
+
+/** Anteil der Nennleistung, den das Netz zur Tageszeit `sec` abruft.
+ *  Exportiert fuer den Test -- die Kurve ist die halbe Spielmechanik des
+ *  freien Spiels, sie soll nicht nur indirekt geprueft werden. */
+export function freeDemandFrac(sec) {
+  const h = (((sec % 86400) + 86400) % 86400) / 3600;
+  for (let i = 1; i < FREE_DEMAND_CURVE.length; i++) {
+    const a = FREE_DEMAND_CURVE[i - 1];
+    const b = FREE_DEMAND_CURVE[i];
+    if (h <= b.h) return a.f + (b.f - a.f) * ((h - a.h) / (b.h - a.h));
+  }
+  return FREE_DEMAND_CURVE[FREE_DEMAND_CURVE.length - 1].f;
+}
 
 export const PHASE = {
   BRIEFING: 'briefing',
@@ -29,64 +75,222 @@ export class Session {
   /**
    * @param {object} engine
    * @param {object} scenarioDef  geladene JSON-Definition, oder null für freies Spiel
+   * @param {object} [opts]  nur fürs freie Spiel: `faults` ist die Stufe der
+   *   Zufallsstörungen (siehe freeEvents.js FAULT_LEVELS). Vorgabe ist 'off',
+   *   damit ein Aufruf ohne Angabe -- Tests, Wiedergabe -- dieselbe
+   *   störungsfreie Runde bekommt wie vor 0.6.6. `faultSeed` setzt den
+   *   Würfel fest; im Spiel bleibt er ungesetzt (jede Runde soll anders
+   *   verlaufen), ein Test braucht dagegen eine Folge, die sich wiederholt.
+   *   `dispatch`/`dispatchSeed` sind dasselbe fuer die Netzleitstelle (siehe
+   *   game/dispatch.js DISPATCH_LEVELS); eigenes Auswahlfeld im Startdialog,
+   *   nicht an `faults` gekoppelt.
    */
-  constructor(engine, scenarioDef) {
+  constructor(engine, scenarioDef, opts = {}) {
     this.engine = engine;
+    new TrendHistory(engine);
     this.free = !scenarioDef;
     this.scenario = scenarioDef ? new Scenario(scenarioDef) : null;
-    this.run = this.scenario ? new RunState(this.scenario, engine.spec) : null;
+    // Auch ohne Szenario: die Kennzahlen entstehen im freien Spiel genauso,
+    // sie wurden bis 0.6.6 nur nirgends gesammelt (siehe RunState). Gewertet
+    // wird davon nichts -- eine Runde ohne Ende hat kein Ergebnis --, aber
+    // der Schichtbericht liest daraus alle acht Stunden seine Bilanz.
+    this.run = new RunState(this.scenario, engine.spec);
+    this.onShift = null;
+    this.objectives = scenarioDef?.score_mode === 'incident_v1'
+      ? new ScenarioObjectives(engine, this.scenario) : null;
     this.phase = this.scenario ? PHASE.BRIEFING : PHASE.RUNNING;
     this.onEnd = null;
     this.onAlert = null;
     this.result = null;
+    this.tutorial = scenarioDef?.tutorial === STARTUP_TUTORIAL && engine.spec.id === 'pwr'
+      ? new StartupTutorial(engine)
+      : scenarioDef?.tutorial === RBMK_STARTUP_TUTORIAL && engine.spec.id === 'rbmk'
+        ? new RbmkStartupTutorial(engine)
+        : scenarioDef?.tutorial === BWR_STARTUP_TUTORIAL && engine.spec.id === 'bwr'
+          ? new BwrStartupTutorial(engine)
+          : scenarioDef?.tutorial === RBMK_CHERNOBYL_TUTORIAL && engine.spec.id === 'rbmk'
+            ? new RbmkChernobylTutorial(engine) : null;
     this.demandRng = this.free ? new Rng(Date.now() >>> 0) : null;
-    this.demandTarget = null;
+    this.demandNoise = 0;
     this.demandNextChangeT = 0;
+    // Eigener Würfel, nicht derselbe wie fürs Rauschen: sonst haengt der
+    // Zeitpunkt der naechsten Stoerung davon ab, wie oft die Lastkurve
+    // zwischendurch gewuerfelt hat, und eine Aenderung an der einen Mechanik
+    // verschoebe lautlos die andere.
+    this.faults = this.free
+      ? new FreeFaults(engine, opts.faults || 'off', Number.isFinite(opts.faultSeed)
+        ? opts.faultSeed : ((Date.now() >>> 0) ^ 0x9e3779b9)) : null;
+    // Dritter eigener Wuerfel, gleiche Begruendung wie beim zweiten: haengen
+    // Auftraege am selben Wuerfel wie die Stoerungen, verschiebt eine
+    // Aenderung an der einen Mechanik lautlos die andere.
+    this.dispatch = this.free
+      ? new Dispatch(engine, opts.dispatch || 'off', Number.isFinite(opts.dispatchSeed)
+        ? opts.dispatchSeed : ((Date.now() >>> 0) ^ 0x85ebca6b), this.run) : null;
+    // Kein vierter Wuerfel: der Instandhaltungstrupp wuerfelt gar nicht,
+    // seine Dauern stehen fest (siehe game/repairs.js). Er haengt auch nicht
+    // an der Stoerungsstufe -- wer mit vielen Stoerungen und ohne Trupp
+    // spielen will, soll das koennen.
+    this.repairs = this.free ? new Repairs(engine, opts.repairs || 'off') : null;
+    // Erst hier, nach dem Trupp: der Bericht bilanziert dessen Zaehler und
+    // haelt dafuer einen Verweis auf ihn (siehe ShiftLog), also muss es ihn
+    // zu diesem Zeitpunkt schon geben.
+    this.shift = new ShiftLog(this.run, this.repairs);
+    this.shift.onReport = (report) => {
+      // Als Protokollzeile, nicht als Dialog: der Bericht stellt sich in
+      // dieselbe Zeitleiste wie Stoerungen und Meldungen und unterbricht
+      // niemanden. ui/panels.js holt ihn beim naechsten Renderlauf ab
+      // (engine.drainLog()), persist.js nimmt ihn im Verlauf mit.
+      engine.ctx.log.push(ShiftLog.logEntry(report));
+      // Direkt dahinter, damit beide Zeilen denselben Zeitpunkt tragen und
+      // die Zeitleiste sie nicht auseinanderreisst.
+      const repairLine = ShiftLog.repairLogEntry(report);
+      if (repairLine) engine.ctx.log.push(repairLine);
+      if (this.onShift) this.onShift(report);
+    };
   }
 
   start() {
+    const preparation = this.scenario?.def.preparation;
+    if (preparation !== undefined && (preparation !== 'rbmk_post_az5_v1'
+      || this.engine.spec.id !== 'rbmk' || this.scenario.reactor !== 'rbmk')) {
+      throw new Error('Invalid scenario preparation');
+    }
     this.phase = PHASE.RUNNING;
+    if (this.tutorial) this.tutorial.prepare();
     if (this.scenario) {
       const st = this.scenario.def.start_overrides || {};
       for (const [k, v] of Object.entries(st)) this.engine.state[k] = v;
       this.engine.state.P_demand = this.scenario.demandAt(0);
+      if (preparation === 'rbmk_post_az5_v1') {
+        this.engine.state.auxFeedInstalled = true;
+        this.engine.scram('scenario');
+      }
     } else {
-      // Erstes Ziel erst ein Stueck nach dem Start waehlen -- sonst zerrt die
-      // Anforderung schon in der ersten Minute an einer Anlage, die gerade
-      // erst in den Beharrungszustand gefahren ist.
-      this.demandTarget = this.engine.state.P_demand;
-      this.demandNextChangeT = this.demandRng.range(...FREE_DEMAND_INTERVAL_S);
+      // Die Uhr der Schicht. ctx.wallClock ist der Versatz zu t_sim, den die
+      // Statuskachel "Uhrzeit" schon fuer das Tschernobyl-Tutorial las
+      // (siehe ui/panels.js) -- das freie Spiel hatte bisher als einziges
+      // keine, und ohne sichtbare Uhrzeit waere eine Tageslastkurve nicht zu
+      // lesen, nur zu erleiden.
+      this.engine.ctx.wallClock = FREE_SHIFT_START_S;
+      const s = this.engine.state;
+      // Der Sollwert steht beim Uebernehmen dort, wo das Netz ihn gerade
+      // haben will -- ein Sprung ist das nicht, es gibt ja noch keinen
+      // vorherigen Wert, gegen den er springen koennte. Die Anlage selbst
+      // steht auf Volllast: dass die Nachtschicht mit einem Rueckfahrauftrag
+      // beginnt, ist die erste Aufgabe, nicht ein Fehler.
+      s.P_demand = freeDemandFrac(FREE_SHIFT_START_S) * this.engine.spec.P0_e;
+      this.demandNoise = 0;
+      this.demandNextChangeT = s.t_sim + this.demandRng.range(...FREE_DEMAND_NOISE_INTERVAL_S);
+      if (this.faults) {
+        this.faults.onAlert = () => { if (this.onAlert) this.onAlert(); };
+        this.faults.begin(s.t_sim);
+      }
+      if (this.dispatch) this.dispatch.begin(s.t_sim);
+      if (this.repairs) this.repairs.begin();
     }
+    this.engine.ctx.trends.sample();
   }
 
-  /** Freies Spiel: die Anforderung wandert langsam zu einem neuen Zufallsziel,
-   *  nie sprunghaft -- ein realer Netzbetreiber ruft auch keine Stufenfunktion
-   *  ab. */
+  snapshot() {
+    if (this.tutorial) return { tutorial: this.tutorial.snapshot() };
+    if (this.objectives) return { objectives: this.objectives.snapshot() };
+    return this.free ? { demandNoise: this.demandNoise,
+      demandNextChangeT: this.demandNextChangeT, rng: this.demandRng.snapshot(),
+      faults: this.faults ? this.faults.snapshot() : undefined,
+      dispatch: this.dispatch ? this.dispatch.snapshot() : undefined,
+      repairs: this.repairs ? this.repairs.snapshot() : undefined,
+      shift: this.shift.snapshot() } : {};
+  }
+
+  restore(data) {
+    if (this.tutorial) { this.tutorial.restore(data?.tutorial); return; }
+    if (this.objectives) { this.objectives.restore(data?.objectives); return; }
+    if (!this.free || !data) return;
+    // demandTarget aus Staenden vor 0.6.6 faellt weg: dort war es ein
+    // absoluter Zielwert des Zufallsspaziergangs, hier ist es ein Zuschlag
+    // auf die Tageskurve -- dieselbe Zahl haette eine andere Bedeutung.
+    if (Number.isFinite(data.demandNoise)) this.demandNoise = data.demandNoise;
+    if (Number.isFinite(data.demandNextChangeT)) this.demandNextChangeT = data.demandNextChangeT;
+    this.demandRng.restore(data.rng);
+    if (this.faults) this.faults.restore(data.faults);
+    if (this.dispatch) this.dispatch.restore(data.dispatch);
+    if (this.repairs) this.repairs.restore(data.repairs);
+    // Nach der RunState: persist.js spielt sie vor dieser Stelle ein (siehe
+    // apply() dort), und der Schichtbericht braucht ihren wiederhergestellten
+    // Stand als Bezugslinie, nicht den leeren vom Rundenbau.
+    this.shift.restore(data.shift);
+  }
+
+  /** Freies Spiel: die Anforderung folgt der Tageslastkurve, nie sprunghaft --
+   *  ein realer Netzbetreiber ruft auch keine Stufenfunktion ab. Die
+   *  Rampengrenze bleibt deshalb auch dann stehen, wenn die Kurve selbst
+   *  schneller waere (sie ist es nirgends) oder das Rauschen neu wuerfelt. */
   _stepFreeDemand(s, dt) {
     const p0 = this.engine.spec.P0_e;
     if (s.t_sim >= this.demandNextChangeT) {
-      this.demandTarget = this.demandRng.range(FREE_DEMAND_MIN_FRAC, FREE_DEMAND_MAX_FRAC) * p0;
-      this.demandNextChangeT = s.t_sim + this.demandRng.range(...FREE_DEMAND_INTERVAL_S);
+      this.demandNoise = this.demandRng.range(-FREE_DEMAND_NOISE_FRAC, FREE_DEMAND_NOISE_FRAC);
+      this.demandNextChangeT = s.t_sim + this.demandRng.range(...FREE_DEMAND_NOISE_INTERVAL_S);
     }
+    const frac = freeDemandFrac(FREE_SHIFT_START_S + s.t_sim) + this.demandNoise;
+    const schedule = Math.max(0, frac) * p0;
+    // Ein Auftrag der Netzleitstelle ist kein zweiter Schreiber, der gegen
+    // die Kurve antritt -- er ist dieselbe Quelle, die ihre Meinung aendert
+    // (siehe game/dispatch.js). Ohne Auftrag fuehrt der Fahrplan. Waehrend
+    // eines Auftrags gilt der Sollwert ohne Rauschen: ein
+    // Leitstellen-Sollwert ist sauber, und genau daran merkt man, dass gerade
+    // einer laeuft.
+    const ordered = this.dispatch ? this.dispatch.targetMw(schedule) : null;
+    const target = ordered === null ? schedule : ordered;
     const maxStep = FREE_DEMAND_RAMP_FRAC_PER_S * p0 * dt;
-    const diff = this.demandTarget - s.P_demand;
+    const diff = target - s.P_demand;
     s.P_demand += Math.max(-maxStep, Math.min(maxStep, diff));
   }
 
-  /** Ein Rechenschritt. Wird aus der Schleife gerufen, nach engine.step(). */
-  step(dt, worstSeverity, unackedSeconds) {
+  /** Ein Rechenschritt. Wird aus der Schleife gerufen, nach engine.step().
+   *  @param {Array} tiles engine.trips.tiles() dieses Takts -- worstSeverity
+   *  wird daraus abgeleitet (dieselbe Reduktion wie vorher in main.js), UND
+   *  die volle Liste geht an run.accumulate() weiter (Ursachen-Zeiten). */
+  step(dt, tiles, unackedSeconds) {
     if (this.phase !== PHASE.RUNNING) return;
+    let worstSeverity = 0;
+    for (const tile of tiles) {
+      if ((tile.tile === 'new' || tile.tile === 'ack') && tile.severity > worstSeverity) {
+        worstSeverity = tile.severity;
+      }
+    }
     const s = this.engine.state;
+    observeAlarms(this.engine, tiles);
     stepEvents(this.engine, dt);
 
     if (!this.scenario) {
+      // VOR _stepFreeDemand(): erst die Zustandswechsel dieses Takts, dann
+      // die Zielvorgabe, die sich daraus ergibt.
+      if (this.dispatch) this.dispatch.step();
       this._stepFreeDemand(s, dt);
+      // Nach stepEvents(): eine Stoerung soll in demselben Takt wirken, in
+      // dem sie ausgeloest wird, nicht erst im naechsten ueber die laufenden
+      // Merker.
+      if (this.faults) this.faults.step();
+      // NACH den Stoerungen: eine Stoerung, die in diesem Takt erst entsteht,
+      // soll nicht im selben Takt schon als offene Arbeit gelten -- und eine,
+      // die der Trupp gerade beendet hat, soll nicht von stepEvents() im
+      // selben Takt noch einmal verteidigt werden.
+      if (this.repairs) this.repairs.step();
+      // Derselbe abgeleitete Zustand fuer Kennzahlen UND Trendschreiber --
+      // sample() wuerde sich sonst seinen eigenen holen. Das freie Spiel
+      // zahlt damit ein derive() je Rechenschritt, genau wie ein Szenario
+      // es schon immer tut.
+      const d = this.engine.derive();
+      this.run.accumulate(s, d, worstSeverity, tiles, dt);
+      this.shift.step(s.t_sim);
+      this.unacked = unackedSeconds;
+      this.engine.ctx.trends.sample(s, d);
       if (s.destroyed) this._finish(false, 'fail_fuel_damage');
       return;
     }
 
     // Bedarfskurve führt die Lastanforderung.
-    s.P_demand = this.scenario.demandAt(s.t_sim);
+    s.P_demand = this.tutorial ? this.tutorial.demand : this.scenario.demandAt(s.t_sim);
 
     // Akustische Vorwarnung, 2-5 Minuten vor dem eigentlichen Ereignis --
     // main.js entscheidet, welcher Klang das ist.
@@ -96,30 +300,69 @@ export class Session {
       const def = getEvent(ev.id);
       if (def) {
         def.apply(this.engine, ev.args || {});
+        noteEvent(this.engine, eventKey(ev.id));
         this.engine.ctx.log.push({
           t: s.t_sim, key: eventKey(ev.id), severity: eventSeverity(ev.id), kind: 'on',
         });
       }
     }
 
+    if (this.objectives) this.objectives.step(dt);
     const d = this.engine.derive();
-    this.run.accumulate(s, d, worstSeverity, dt);
+    this.run.accumulate(s, d, worstSeverity, tiles, dt);
+    this.shift.step(s.t_sim);
     this.unacked = unackedSeconds;
 
     const failed = this.run.checkFail(s, d, dt, worstSeverity);
-    if (failed) { this._finish(false, failed); return; }
-    if (s.t_sim >= this.scenario.duration) { this._finish(true, null); }
+    if (failed) { this._finish(false, failed, d); return; }
+    if (this.tutorial) {
+      this.tutorial.step(dt);
+      s.P_demand = this.tutorial.demand;
+    }
+    this.engine.ctx.trends.sample(s, d);
+    if (this.tutorial) {
+      if (this.tutorial.done) this._finish(true, null, d);
+      else if (s.t_sim >= this.scenario.duration) this._finish(false, 'tut_timeout', d);
+    } else if (s.t_sim >= this.scenario.duration) {
+      const completed = !this.objectives || this.objectives.done;
+      this._finish(completed, completed ? null : 'fail_objectives_unmet', d);
+    }
   }
 
-  _finish(completed, failed) {
+  _finish(completed, failed, d) {
     if (this.phase === PHASE.DEBRIEF) return;
+    this.engine.ctx.trends.sample(this.engine.state, d, true);
     this.phase = PHASE.DEBRIEF;
-    if (this.run) {
+    // Nur ein Szenario wird gewertet. Die RunState gibt es seit dem
+    // Schichtbericht auch im freien Spiel (siehe Konstruktor), aber eine
+    // Runde ohne vorgesehenes Ende hat kein Ergebnis: summary() haette dort
+    // weder Szenariokennung noch Schwierigkeit, und score() rechnete eine
+    // Punktzahl, die niemand in eine Bestenliste schreiben darf.
+    if (this.run && this.scenario) {
       this.run.completed = completed;
       this.run.failed = failed;
       const sum = this.run.summary(this.engine.state);
       sum.alarm_seconds_unacked = Math.round(this.unacked || 0);
-      this.result = { summary: sum, ...score(sum) };
+      if (this.objectives) {
+        sum.score_mode = 'incident_v1';
+        sum.objectives = this.objectives.view().map(({ id, met }) => ({ id, met }));
+      }
+      // causes liegt als Geschwister von summary, NICHT darin -- summary()
+      // ist unveraendert das, was api.submitScore() als Server-Payload
+      // verschickt (siehe main.js), Diagnosedaten bleiben aussen vor.
+      this.result = { summary: sum, causes: this.run.topCauses(), learning: learningReport(this.engine), ...score(sum) };
+      if (this.objectives) this.result.objectives = this.objectives.view();
+      if (this.tutorial) {
+        // `steps`/`prefix` NICHT Teil von snapshot() (das ist das
+        // Speicherformat) -- nur hier fuer die einmalige Debrief-Anzeige
+        // angehaengt, damit renderTutorialResult() (ui/tutorial.js) auch ein
+        // Tutorial mit ANDEREN Schritten als den fuenf Anfahrschritten und
+        // eigenem Text-Praefix korrekt auflistet.
+        this.result.tutorial = { ...this.tutorial.snapshot(),
+          steps: this.tutorial.steps, prefix: this.tutorial.prefix };
+        this.result.score = null;
+        this.result.parts = {};
+      }
     }
     if (this.onEnd) this.onEnd(this.result, failed);
   }

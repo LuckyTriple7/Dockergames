@@ -33,10 +33,11 @@ import { Pump, Valve, Lag, coldStopPumps } from '../sim/components.js';
 import {
   FeedwaterController, GovernorController, RodController, PowerController,
 } from '../sim/controllers.js';
-import { tsat, psat, hg, hf, hfg, rhog, dpdT, averageVoid } from '../sim/steam.js';
+import { tsat, psat, hg, hf, hfg, rhog, averageVoid } from '../sim/steam.js';
+import { rodWorthCurve } from '../sim/reactivity.js';
 import { clamp, toK, relax, LAMBDA_I135, LAMBDA_XE } from '../sim/constants.js';
 import { stepPoisons, equilibriumPoisons } from '../sim/poisons.js';
-import { rodWorthCurve } from '../sim/reactivity.js';
+import { availableSteam, saturatedPressure, coverage, transferFraction } from '../sim/thermal.js';
 import { SEVERITY } from '../sim/trips.js';
 
 const P0_DRUM = 69;
@@ -82,9 +83,39 @@ export const spec = {
     powerFraction: 0.05,  // Anteil der Spaltenergie, der im Graphit landet
     UA: 560,              // kW/K zu den Druckröhren
     T0: toK(600),
+
+    // Der Graphitstapel steht nicht in Luft, sondern in einem umgewaelzten
+    // Helium-Stickstoff-Gemisch. Das Gas ist keine Schutzatmosphaere allein:
+    // es traegt die Waerme ueber den Spalt zwischen Graphitblock und
+    // Druckroehre, und genau dafuer steckt Helium darin -- seine
+    // Waermeleitfaehigkeit ist rund sechsmal so hoch wie die von Stickstoff.
+    // Der Betrieb stellte das Mischungsverhaeltnis nach der Leistung ein,
+    // eben um die Graphittemperatur zu fuehren.
+    //
+    // Faellt der Gaskreislauf aus, bleibt Stickstoff stehen: der Spaltanteil
+    // des Waermewiderstands waechst, der Rest (Graphitleitung, Roehrenwand,
+    // Uebergang zum Kuehlmittel) bleibt. UA_noGas ist deshalb KEINE
+    // Division durch sechs, sondern eine SETZUNG, gewaehlt aus der Wirkung:
+    // bei 300 kW/K laeuft die Graphittemperatur bei Nennleistung auf rund
+    // 818 C aus, also deutlich ueber die Meldeschwelle von 760 C, und sie
+    // faellt wieder darunter, sobald der Bediener auf etwa 89 % Leistung
+    // zurueckgeht. Weniger Abstand waere keine Entscheidung, mehr waere ein
+    // Zustand, aus dem nur noch Abschalten hilft.
+    //
+    // gasTau ist der Austausch des Gases im Stapel, nicht die Traegheit des
+    // Graphits -- die steckt ohnehin in C_gr/UA (bei 560 rund 35 min, bei
+    // 300 rund 66 min) und dominiert, was der Spieler auf dem Instrument
+    // sieht.
+    UA_noGas: 300,        // kW/K, nur noch Stickstoff im Spalt
+    gasTau: 900,          // s, bis das Gemisch durchgetauscht ist
   },
 
-  feedbacks: ['rods', 'doppler', 'xenon', 'samarium', 'graphite', 'excess'],
+  // 'rods' fehlt bewusst hier -- die generische Stabwirksamkeitskurve setzt
+  // Absorberwirkung ab h=0 an, ohne die 1,25-m-Wassersaeule/Graphitspitze
+  // vor dem eigentlichen Absorber zu kennen. Fuer diesen Typ ersetzt
+  // hooks.reactivity() den Beitrag durch eine Kurve, die genau diese
+  // Vorlaufstrecke ausspart (siehe dort).
+  feedbacks: ['doppler', 'xenon', 'samarium', 'graphite', 'excess'],
 
   feedback: {
     // Der Doppler ist bei diesem Typ der einzige kräftige negative Beitrag im
@@ -120,9 +151,54 @@ export const spec = {
   // Zwei Gruppen stellvertretend für 211 Stäbe. Die Stabzahl je Gruppe geht in
   // die Abschaltreserve ein -- sie wird in Stabäquivalenten gezählt, nicht in
   // pcm, weil der Betrieb sie so zählt.
+  //
+  // worth UNVERAENDERT gelassen (siehe audit/ fuer den verworfenen Versuch,
+  // sie um 0.541 herunterzuskalieren): das haette die Nennbetrieb-ORM zwar
+  // auf 46 zurueckgeholt, aber gleichzeitig die Staebe insgesamt schwaecher
+  // gemacht -- beim Fahren auf Teillast (wo MEHR Einfahrtiefe noetig ist, um
+  // das aufkommende Xenon zu haltenden) rutscht die Anlage dann durch genau
+  // die Randzone knapp oberhalb von tip.span, in der die Kurve nach der
+  // Trennung von Absorber und Spitze am steilsten/empfindlichsten ist -- und
+  // kollabiert schon beim Fahren von 50% auf 30%, weit vor den historischen
+  // 7%. Die jetzt korrekte Kurve (Absorber erst ab tip.span wirksam) braucht
+  // mit UNVERAENDERTER Wirksamkeit bei Nennbetrieb rechnerisch ORM=85 statt
+  // 46 -- das ist der Preis der Korrektur, nicht rueckgaengig zu machen ohne
+  // die Teillastfahrt wieder zu zerstoeren. sp.orm.nominal bleibt bei 46:
+  // der Blasenkoeffizient klemmt oberhalb davon ohnehin auf seinem besten
+  // Wert (siehe _voidCoeff), 85 statt 46 aendert daran nichts.
+  //
+  // DREI Gruppen seit 0.6.11, und die dritte ist keine Aufteilung nach
+  // Geschmack: der RBMK-1000 hat neben den von oben einfahrenden Staeben 24
+  // verkuerzte Absorberstaebe (USP), die von UNTEN einfahren und die
+  // Leistungsverteilung im unteren Kernbereich formen (INSAG-7, 2.2).
+  //
+  // Belegt ist der Mechanismus des positiven Schnellabschalteffekts UNTEN:
+  // bei ganz gezogenem Stab steht dort eine 1,25 m hohe Wassersaeule, und
+  // der Graphitverdraenger schiebt sie beim Losfahren heraus. Ein von unten
+  // kommender Stab faehrt in die andere Richtung, kann diese Saeule also
+  // nicht verdraengen.
+  //
+  // SETZUNG, nicht Quelle: dass die USP gar keinen Beitrag leisten, also
+  // auch keinen spiegelbildlichen am Kernoberteil. Die WNA nimmt von den
+  // Verdraengern nur die 12 AR-Staebe aus, nicht die USP -- ob die USP oben
+  // einen tragen, war nicht zu belegen. _tipReactivity ueberspringt die
+  // Gruppe deshalb als Annahme, siehe BACKLOG.md.
+  //
+  // Solange alle drei Gruppen zusammen fahren (rodBanksMoveTogether, der
+  // Normalfall), aendert die Aufteilung nichts: die Wirksamkeiten summieren
+  // sich weiter auf 5600 pcm, die Stabzahlen auf 211, und die Spitzen-
+  // wirksamkeit wird ueber die tip-faehigen Staebe verteilt statt je Gruppe
+  // gesetzt -- bei gleicher Stellung kommt dieselbe Zahl heraus wie vorher.
+  // Erst wenn eine Gruppe woanders steht, wird der Unterschied sichtbar, und
+  // genau das braucht die Chernobyl-Uebung (siehe USP_ROD dort).
+  //
+  // Wirksamkeit je Stab: die verkuerzten Staebe sind kuerzer (3 m statt 5 m)
+  // und sitzen im unteren Kernbereich, also rund 60 % eines vollen Stabes.
+  // Die 3200 pcm der frueheren Gruppe 'sd' bleiben in der Summe erhalten.
   rodBanks: [
     { id: 'ctrl', worth: 2400, speed: 0.0056, initial: 0.22, rods: 120 },
-    { id: 'sd', worth: 3200, speed: 0.0056, initial: 0.22, rods: 91 },
+    { id: 'sd', worth: 2694, speed: 0.0056, initial: 0.22, rods: 67 },
+    { id: 'usp', worth: 506, speed: 0.0056, initial: 0.22, rods: 24, fromBelow: true },
   ],
   // Motorantrieb, 0,4 m/s über sieben Meter Kern plus Wassersäulen.
   // Der Knopf heißt hier nicht SCRAM und auch nicht RESA, sondern AZ-5 --
@@ -132,20 +208,102 @@ export const spec = {
 
   orm: { total: 211, nominal: 46, min: 30, alarm: 15 },
 
+  // Turbogenerator als Schwungmasse.
+  //
+  // Bis 0.6.0 war der Auslaufversuch ein Drehbuch: ein Ereignis fuhr den
+  // Pumpen-SOLLWERT linear auf null, ueber dreissig Sekunden. Das hatte zwei
+  // Fehler. Erstens bewegte es den Schieber des Spielers, ohne dass jemand
+  // ihn angefasst haette. Zweitens war der Endwert null -- historisch hingen
+  // aber nur VIER der acht Hauptumwaelzpumpen am auslaufenden Generator, die
+  // anderen vier blieben am Netz.
+  //
+  // Jetzt ist die Drehzahl eine echte Zustandsgroesse (s.tgSpeed). Der Rotor
+  // bremst gegen die Pumpenlast, und eine Kreiselpumpe zieht Leistung
+  // proportional zur dritten Potenz der Drehzahl (Aehnlichkeitsgesetze). Aus
+  //     J w dw/dt = -P0 (w/w0)^3
+  // wird dw/dt = -w^2/tau, und das hat die geschlossene Loesung
+  //     w(t) = w0 / (1 + w0 t/tau).
+  // Der Schritt unten ist dafuer exakt, nicht genaehert -- der Zeitschritt
+  // faellt heraus. tau ist die Zeit bis zur halben Drehzahl; 15 s bildet den
+  // dokumentierten Auslauf ab (Durchsatz spuerbar weg nach rund einer halben
+  // Minute), ohne eine Rotortraegheit zu erfinden, die niemand nachschlagen
+  // kann.
+  //
+  // Nachgemessen (tests/tools/chernobyl_coastdown.mjs): mit dieser Kurve UND
+  // dem historischen Endwert -- vier Pumpen bleiben am Netz -- zerstoert AZ-5
+  // den Kern weiterhin. Mit der alten LINEAREN Rampe auf denselben Endwert
+  // nicht: der Rotor faellt anfangs schneller, und genau die ersten Sekunden
+  // entscheiden.
+  turbogen: { coastdownPumps: 4, tau_s: 15 },
+
+  // Der Nachlauf nach dem Brennstoffversagen (siehe engine.js:
+  // startAftermath). Bisher nur bei diesem Typ -- die anderen beiden stehen
+  // im BACKLOG.
+  //
+  // Der obere biologische Schild, in den Unterlagen "Schema J"/Deckel des
+  // Reaktorschachts, wiegt rund 2000 t bei etwa 17 m Durchmesser. Aus diesen
+  // beiden nachschlagbaren Zahlen folgt ohne weitere Annahme der statische
+  // Ueberdruck, ab dem er abhebt: 2000 t mal g durch 227 m^2 -- rund 0,86 bar.
+  // Das ist die zweite Zahl, die der Nachlauf nennt.
+  //
+  // `lift_m` und `conversion` sind dagegen GESETZT, und zwar sichtbar: zehn
+  // Meter Hub sind eine Groessenordnung (der Schild wurde angehoben und fiel
+  // schraeg zurueck), und der Umsetzungsgrad einer Dampfexplosion liegt in
+  // Versuchen bei wenigen Prozent der thermischen Energie. Beide sind so
+  // gewaehlt, dass sie die Aussage eher schwaechen als staerken: mit 2 %
+  // braucht der Hub rund ein Prozent der im Brennstoff ueber Saettigung
+  // gespeicherten Energie -- mehr als genug, aber eben gerechnet und nicht
+  // behauptet.
+  //
+  // `lid_delay_s` ist keine Physik, sondern Anzeige: zwei Sekunden, damit der
+  // Ausschlag auf den Instrumenten noch zu sehen ist, bevor das Bild
+  // umschlaegt. Historisch lagen zwischen den beiden Schlaegen der Nacht
+  // ebenfalls wenige Sekunden.
+  aftermath: {
+    lid: { mass_t: 2000, diameter_m: 17, lift_m: 10 },
+    conversion: 0.02,
+    lid_delay_s: 2,
+  },
+
   // Graphitverdränger unter dem Absorber.
   tip: {
-    // Wirksamkeit je Gruppe. So kalibriert, dass die Summe über beide Gruppen
-    // bei flachem Flussprofil gut ein β ergibt und bei bodennahem Profil rund
-    // zwei β -- zusammen mit dem Blasenkoeffizienten bei leerem Kern liegt die
-    // Gesamteinfuhr dann in der Größenordnung, die am 26. April 1986 gemessen
-    // wurde.
-    worth_pcm: 320,
+    // Phenomenological TOTAL worth of the displacers, not a reconstructed
+    // accident curve. Verteilt wird sie ueber die Staebe, die ueberhaupt
+    // einen Verdraenger haben -- die von unten kommenden USP-Staebe zaehlen
+    // nicht mit (siehe rodBanks oben und _tipReactivity unten). Bis 0.6.10
+    // stand hier 320 JE GRUPPE bei zwei Gruppen; 640 als Summe ist bei
+    // gleicher Stellung dieselbe Zahl.
+    //
+    // 1150 statt der frueheren 2 x 320 seit 0.6.11, und das ist eine
+    // Kalibrierung, keine Herleitung -- so wie die Zahl es immer war. Neu ist
+    // nur, woran sie kalibriert ist. Mit 640 lag die Spitze der Exkursion bei
+    // 295 % der Nennleistung und die Reaktivitaet erreichte gerade eben beta
+    // (494 gegen 480 pcm): der Kern kippte an der Kante ueber prompt-kritisch,
+    // und schon rund hundert pcm zusaetzliche Gegenkopplung liessen die
+    // Zerstoerung ausbleiben. Das ist keine Aussage ueber die Nacht, sondern
+    // eine ueber die Kalibrierung.
+    //
+    // Nachgemessen (tests/tools/chernobyl_tip_sweep.mjs): 1150 pcm bringt die
+    // Reaktivitaet auf rund 858 pcm, also etwa 1,8 beta, die Spitze auf rund
+    // das Zehnfache der Nennleistung. Damit liegt die Uebung in der
+    // Groessenordnung, die die Untersuchungen fuer die Nacht nennen (ein
+    // Vielfaches der Nennleistung), statt eine Groessenordnung darunter -- und
+    // sie steht nicht mehr auf der Kante: zwischen 1050 und 1400 pcm zerstoert
+    // AZ-5 den Kern durchgehend.
+    //
+    // Der Preis steht mit dabei: die Zerstoerung faellt jetzt rund 2,2 s nach
+    // AZ-5 statt 5 s, also auf 01:23:42 statt 01:23:45. Dokumentiert sind fuer
+    // die Explosionen 01:23:44 bis 01:23:47. Eine staerkere Exkursion ist
+    // zwangslaeufig auch eine schnellere; von den drei Groessen (Wucht,
+    // Abschaltreserve, Zeitpunkt) treffen jetzt die ersten beiden besser und
+    // die dritte um gut eine Sekunde schlechter.
+    worth_pcm_total: 1150,
     // Nur Stäbe, die weit draußen stehen, schieben Graphit in die untere
     // Wassersäule. Wer schon halb drin steckt, hat dort längst Absorber.
     outThreshold: 0.12,
     // Über diesen Teil des Fahrwegs wirkt die Spitze, danach kommt der
     // Absorber.
-    span: 0.30,
+    span: 1.25 / 7,
   },
 
   axial: {
@@ -185,6 +343,9 @@ export const spec = {
 
   mcp: { count: 8, W0: 10500, coastTau: 8, rampTau: 5 },
 
+  // Scenario equipment in the reduced model, not a historical plant claim.
+  auxFeed: { maxFlow: 220, capacityKg: 160000 },
+
   // workFactor so gewaehlt, dass 3200 MWth die 1000 MWe der beiden Turbosaetze
   // ergeben -- 31 % Gesamtwirkungsgrad, der niedrigste der drei Typen.
   turbine: { Cv: 44, strokeS: 3, workFactor: 0.2467, bypassCv: 22, bypassStrokeS: 1.0 },
@@ -202,9 +363,13 @@ export const spec = {
   alarmComponents: {
     power_high: 'core', period_short: 'core', orm_low: 'core', orm_critical: 'core',
     void_positive: 'core', graphite_hot: 'core', axial_tilt: 'core', clad_temp: 'core',
+    graphite_gas_lost: 'core',
     drum_press_high: 'drum', drum_level_low: 'drum', drum_level_high: 'drum',
-    mcp_cavitation: 'rcp',
-    turbine_trip: 'gen',
+    rbmk_feed_limited: 'drum', rbmk_aux_ready: 'drum',
+    rbmk_aux_low: 'drum', rbmk_aux_empty: 'drum',
+    mcp_cavitation: 'rcp', mcp_stuck: 'rcp',
+    turbine_trip: 'gen', grid_lost: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
+    tg_stop_scram: 'gen', tg_stop_blocked: 'gen',
   },
 
   // Der Schalter im Kern-Panel heisst hier nach dem, was er wirklich regelt.
@@ -221,6 +386,9 @@ export const spec = {
     { id: 'period_short', key: 'trip_period_short', severity: SEVERITY.TRIP,
       test: (s, d) => s.n > 1e-3 && d.period > 0 && d.period < 10,
       delay_s: 1.0, action: 'scram' },
+    // s.promptCritical kommt fertig aus der Kinetik (sim/kinetics.js: rho > beta).
+    { id: 'prompt_critical', key: 'trip_prompt_critical', severity: SEVERITY.TRIP,
+      test: (s) => s.promptCritical, delay_s: 0, action: 'scram' },
     { id: 'orm_low', key: 'alarm_orm_low', severity: SEVERITY.WARN,
       test: (s, d) => d.orm < 30, delay_s: 1.0 },
     { id: 'orm_critical', key: 'alarm_orm_critical', severity: SEVERITY.TRIP,
@@ -235,12 +403,76 @@ export const spec = {
       test: (s) => s.L_drum > 0.78, delay_s: 2.0 },
     { id: 'mcp_cavitation', key: 'alarm_mcp_cavitation', severity: SEVERITY.WARN,
       test: (s, d) => d.subcooling < 4 && s.W_core > 0.9 * 10500, delay_s: 1.0 },
+    // Ohne Gaskreislauf steht Stickstoff im Spalt, UA faellt auf 300 kW/K,
+    // und die Graphittemperatur laeuft bei Nennleistung auf rund 818 C aus --
+    // der Weg zu dieser Meldung. UEBER DIE LEISTUNG ALLEIN ist sie nicht zu
+    // erreichen: bei intaktem UA = 560 braeuchten 760 C 5321 MW, also 166 %
+    // der Nennleistung, waehrend power_high schon bei 112 % steht (gemessen
+    // mit tests/tools/rbmk_alarm_reach.mjs). Wer ein Szenario darauf baut,
+    // braucht deshalb das Ereignis graphite_gas_loss.
     { id: 'graphite_hot', key: 'alarm_graphite_hot', severity: SEVERITY.WARN,
       test: (s) => s.T_gr > toK(760), delay_s: 5 },
+    // Die Ursache neben der Folge. Ohne diese Kachel saehe der Spieler nur
+    // eine langsam steigende Graphittemperatur und haette nichts, woran er
+    // sie festmachen koennte -- dieselbe Luecke wie beim Netzabwurf vor
+    // 0.6.26. Sie steht, solange der Kreislauf steht.
+    //
+    // INFO, nicht WARN, obwohl es ein Defekt ist: die Kachel meldet den
+    // Zustand eines Systems, keine ueberschrittene Grenze -- die hat mit
+    // graphite_hot ihre eigene. Der Unterschied ist nicht kosmetisch, er
+    // steht in der Wertung: eine Kachel, die der Spieler nicht wegbekommt,
+    // waere als WARN ein pauschaler Abzug ueber die ganze Schicht (Deckel
+    // 300 statt 100, siehe game/scoring.js) und damit ein Minus fuer etwas,
+    // das er nicht entscheiden kann. Entscheidbar ist nur die Folge.
+    { id: 'graphite_gas_lost', key: 'alarm_rbmk_graphite_gas', severity: SEVERITY.INFO,
+      test: (s, d) => !!d.graphiteGasLost, delay_s: 0, hold_s: 0 },
+    // |ao| > 0.35 ist ueber _axialTarget() nicht zu erreichen: der Stabanteil
+    // ist bei rodPush/stiffness = 0.214 gedeckelt (alle Staebe drin), und die
+    // Xenon-Schraeglage steuert im Gipfel nur 0.107 bei. Gemessenes Maximum
+    // 0.308, und das erst mit AZ-5 auf dem Gipfel nach sechs Stunden
+    // Volllast. Eine EINSEITIG klemmende Gruppe hilft gar nicht -- in
+    // _axialTarget() geht die Stabstellung nur als MITTELWERT ein.
     { id: 'axial_tilt', key: 'alarm_axial_tilt', severity: SEVERITY.WARN,
       test: (s, d) => Math.abs(d.axialOffset) > 0.35, delay_s: 5 },
     { id: 'turbine_trip', key: 'alarm_turbine_trip', severity: SEVERITY.WARN,
       test: (s) => s.turbineTripped, delay_s: 0 },
+    // Offener Generatorschalter OHNE Turbinenschnellschluss -- der
+    // Netzabwurf (loss_of_load in game/events.js setzt NUR s.breaker).
+    // Bis 0.6.26 sah der Spieler davon nichts: keine Kachel, keine Hupe,
+    // nur eine Zeile im Protokoll, die vorbeiscrollt -- waehrend die
+    // Generatorleistung auf null faellt und dort bleibt. Genau so gemeldet
+    // worden ("kam einfach so, kein Alarm nix").
+    //
+    // Die Bedingung schliesst turbineTripped aus, weil onScram() den
+    // Schalter mit oeffnet: nach einer Schnellabschaltung steht schon
+    // alarm_turbine_trip, und zwei Kacheln fuer dieselbe Ursache sind eine
+    // zu viel. Diese hier meldet den Zustand, den sonst keine meldet.
+    { id: 'grid_lost', key: 'alarm_grid_lost', severity: SEVERITY.WARN,
+      test: (s) => s.breaker === false && !s.turbineTripped, delay_s: 0 },
+    // Reaktorschutz beim Schnellschluss BEIDER Turbosaetze.
+    //
+    // Der RBMK-1000 loeste AZ-5 aus, sobald die Schnellschluss- und
+    // Regelventile beider Turbogeneratoren zufielen -- dann nimmt niemand
+    // mehr Dampf ab. Genau dieses Signal hat die Mannschaft in der Nacht
+    // abgeschaltet, damit der Auslaufversuch bei einem Fehlschlag wiederholbar
+    // blieb; als um 01:23:04 die Ventile zufielen, kam deshalb keine
+    // Abschaltung (INSAG-7). Bis 0.6.10 kannte dieses Modell das Signal gar
+    // nicht -- die Uebung stellte damit etwas nach, dessen Abschaltung sie
+    // nicht zeigen konnte.
+    //
+    // Bedingung ist s.tgCoasting, nicht s.turbineTripped: der Auslauf ist
+    // dieses Modells Entsprechung zu "beide Turbosaetze weg vom Netz". Ein
+    // einzelner Turbinenabwurf im freien Spiel ist NICHT dieses Signal und
+    // bleibt deshalb wie bisher eine Warnung (alarm_turbine_trip darueber).
+    //
+    // Wie jede andere Ausloesung hier greift auch diese nicht selbst ein
+    // (siehe sim/trips.js) -- sie meldet, und der Bediener drueckt.
+    { id: 'tg_stop_scram', key: 'trip_rbmk_tg_stop', severity: SEVERITY.TRIP,
+      test: (s) => !!s.tgCoasting && !s.tgStopBlocked, delay_s: 0, action: 'scram' },
+    // Und die Abschaltung selbst gehoert auf die Meldetafel, nicht in eine
+    // Fussnote: ein stillgelegter Reaktorschutz ist ein Anlagenzustand.
+    { id: 'tg_stop_blocked', key: 'alarm_rbmk_tg_stop_blocked', severity: SEVERITY.WARN,
+      test: (s) => !!s.tgStopBlocked, delay_s: 0, hold_s: 0 },
     { id: 'clad_temp', key: 'trip_clad_temp', severity: SEVERITY.TRIP,
       test: (s) => s.T_cl > 1477, delay_s: 0, action: 'scram' },
     // Eine klemmende Stabgruppe war vorher nur eine Zeile im Protokoll. Der
@@ -249,6 +481,24 @@ export const spec = {
     // herunter. Das gehoert auf die Meldetafel, nicht ins Protokoll.
     { id: 'rod_stuck', key: 'alarm_rod_stuck', severity: SEVERITY.WARN,
       test: (s, d) => !!d.rodStuck, delay_s: 0, hold_s: 0 },
+    // Dieselbe Luecke bei einer ausgefallenen Pumpe (mcp_trip): vorher nur
+    // eine Protokollzeile beim Ausfall selbst, danach nichts mehr auf der
+    // Meldetafel -- und der "Ein"-Knopf liess sich anklicken, als waere
+    // nichts gewesen (siehe pumpsStuck-Fix in game/events.js).
+    { id: 'mcp_stuck', key: 'alarm_mcp_stuck', severity: SEVERITY.WARN,
+      test: (s, d) => !!d.pumpStuck, delay_s: 0, hold_s: 0 },
+    { id: 'rbmk_feed_limited', key: 'alarm_rbmk_feed_limited', severity: SEVERITY.WARN,
+      test: (s) => s.auxFeedInstalled && s.fwSupplyMax < 1.3 * spec.drum.W_steam0,
+      delay_s: 0, hold_s: 0 },
+    { id: 'rbmk_aux_ready', key: 'alarm_rbmk_aux_ready', severity: SEVERITY.INFO,
+      test: (s) => s.auxFeedInstalled && s.auxFeedAvailable && !s.auxFeedOn,
+      delay_s: 0, hold_s: 0 },
+    { id: 'rbmk_aux_low', key: 'alarm_rbmk_aux_low', severity: SEVERITY.WARN,
+      test: (s) => s.auxFeedInstalled && s.auxFeedAvailable && s.auxWaterKg < 0.15 * spec.auxFeed.capacityKg,
+      delay_s: 0, hold_s: 0 },
+    { id: 'rbmk_aux_empty', key: 'alarm_rbmk_aux_empty', severity: SEVERITY.WARN,
+      test: (s) => s.auxFeedInstalled && s.auxFeedAvailable && s.auxWaterKg <= 0,
+      delay_s: 0, hold_s: 0 },
   ],
 };
 
@@ -262,6 +512,16 @@ export const hooks = {
     s.dTsub = sp.drum.subcool0;
     s.W_steam = sp.drum.W_steam0;
     s.W_fw = sp.drum.W_steam0;
+    s.W_fwDemand = s.W_fw;
+    s.W_fwMain = s.W_fw;
+    s.W_fwAux = 0;
+    s.fwSupplyMax = 1.3 * sp.drum.W_steam0;
+    s.auxFeedInstalled = false;
+    s.auxFeedAvailable = false;
+    s.auxFeedOn = false;
+    s.auxFeedDmd = 0;
+    s.auxWaterKg = sp.auxFeed.capacityKg;
+    s.coolantHeatMW = 0;
     s.gov = 0.8;
     s.bypass = 0;
     s.p_cond = sp.condenser.p0;
@@ -270,6 +530,12 @@ export const hooks = {
     s.p_prim = sp.drum.p0;
     s.P_demand = sp.P0_e;
     s.mcpDmd = 1.0;
+    // Am Netz gehalten: volle Drehzahl, kein Auslauf (siehe sp.turbogen).
+    s.tgSpeed = 1;
+    s.tgCoasting = false;
+    // Reaktorschutz beim Schnellschluss beider Turbosaetze -- normal scharf.
+    // Nur der Auslaufversuch der Nacht schaltet ihn ab, siehe trips unten.
+    s.tgStopBlocked = false;
     s.T_gr = sp.graphite.T0;
 
     // Axiales Flussprofil. ao > 0 heißt bodennah -- genau der Zustand, in dem
@@ -285,8 +551,9 @@ export const hooks = {
 
     // Stellung der Stäbe beim Auslösen der Schnellabschaltung -- nur wer weit
     // draußen stand, schiebt Graphit in die untere Wassersäule.
-    s.tipArmed = [0, 0];
+    s.tipArmed = sp.rodBanks.map(() => 0);
     s.az5 = { armed: false, t: 0 };
+    s.srv = 0;
 
     ctx.mcp = [];
     for (let i = 0; i < sp.mcp.count; i++) {
@@ -306,6 +573,11 @@ export const hooks = {
     ctx.dpLag = new Lag(0.3, 0);
     ctx.pPrev = sp.drum.p0;
     ctx.aoLag = new Lag(sp.axial.tau, 0);
+    // Waermedurchgang Graphit -> Druckroehre. Eine Zustandsgroesse, weil
+    // der Gaskreislauf ausfallen kann (siehe sp.graphite.UA_noGas und
+    // das Ereignis graphite_gas_loss); solange er laeuft, steht sie still
+    // auf dem Auslegungswert.
+    ctx.graphiteUA = new Lag(sp.graphite.gasTau, sp.graphite.UA);
 
     // Der Stabregler dieses Typs geht auf die Leistung, nicht auf eine
     // Temperatur -- die liegt durch den Trommeldruck fest.
@@ -339,6 +611,7 @@ export const hooks = {
       voidLag: ctx.voidLag,
       dpLag: ctx.dpLag,
       aoLag: ctx.aoLag,
+      graphiteUA: ctx.graphiteUA,
       powerCtl: ctx.powerCtl,
       fwCtl: ctx.fwCtl,
       govCtl: ctx.govCtl,
@@ -348,6 +621,10 @@ export const hooks = {
   /** Der Blasenbeitrag hängt von der Abschaltreserve ab -- deshalb ein Haken. */
   reactivity(sp) {
     return [
+      {
+        id: 'rods',
+        fn: (s) => _rodReactivity(s, sp),
+      },
       {
         id: 'void',
         fn: (s) => {
@@ -372,13 +649,18 @@ export const hooks = {
     const Tsat = tsat(s.p_drum);
     s.W_steam = (P * 1000) / (hg(s.p_drum) - H_FW);
     s.W_fw = s.W_steam;
+    s.W_fwDemand = s.W_fw;
+    s.W_fwMain = s.W_fw;
+    s.W_fwAux = 0;
     s.dTsub = _subcooling(s, sp);
     s.T_ci = Tsat - s.dTsub;
     s.T_co = Tsat;
     s.T_mod = Tsat;
     s.x_e = clamp(s.W_steam / s.W_core, 0, 1);
     s.P_th = P;
-    s.alphaBar = _void(s, sp);
+    // Im Gleichgewicht geht die gesamte Spaltleistung ins Kuehlmittel: der
+    // Brennstoff speichert nichts mehr, der Graphitknoten auch nicht.
+    s.alphaBar = _void(s, sp, P * 1000);
     ctx.voidLag.set(s.alphaBar);
 
     // Graphit im Gleichgewicht: was hineingeht, geht auch wieder heraus.
@@ -400,17 +682,22 @@ export const hooks = {
       for (let i = 0; i < s.rod.length; i++) { s.rod[i] = 1; s.rodDmd[i] = 1; }
       rx.compute(s, sp);
     } else {
-      // Kritisch über die Stabstellung. Beide Gruppen werden gemeinsam
-      // gefahren, damit die Abschaltreserve ein sinnvoller Mittelwert bleibt.
+      // Kritisch über die Stabstellung. ALLE Gruppen werden gemeinsam
+      // gefahren, damit die Abschaltreserve ein sinnvoller Mittelwert bleibt
+      // -- seit 0.6.11 sind es drei (siehe rodBanks), und die Schleife zaehlt
+      // sie ab, statt zwei Indizes hinzuschreiben: mit fest verdrahteten 0/1
+      // blieb die dritte Gruppe auf ihrem Anfangswert stehen, und die Suche
+      // fand eine andere Stellung als vorher.
+      const setAll = (h) => { for (let i = 0; i < s.rod.length; i++) s.rod[i] = h; };
       let lo = 0, hi = 1;
       for (let i = 0; i < 60; i++) {
         const mid = 0.5 * (lo + hi);
-        s.rod[0] = mid; s.rod[1] = mid;
+        setAll(mid);
         if (rx.compute(s, sp) > 0) lo = mid; else hi = mid;
       }
       const h = 0.5 * (lo + hi);
-      s.rod[0] = h; s.rod[1] = h;
-      s.rodDmd[0] = h; s.rodDmd[1] = h;
+      setAll(h);
+      for (let i = 0; i < s.rodDmd.length; i++) s.rodDmd[i] = h;
     }
 
     ctx.powerCtl.setpoint = n;
@@ -438,20 +725,79 @@ export const hooks = {
     s.x_e = clamp(qBoil / (W * hfg(s.p_drum)), 0, 1);
 
     const collapse = sp.drum.voidCollapse * ctx.dpLag.v;
-    s.alphaBar = ctx.voidLag.step(clamp(_void(s, sp) - collapse, 0, 0.95), h);
+    s.alphaBar = ctx.voidLag.step(clamp(_void(s, sp, qCoolKW) - collapse, 0, 0.95), h);
 
-    // Graphit: große Masse, lange Zeitkonstante. Er ist der Grund, warum der
-    // Reaktor nach einer Leistungsänderung noch minutenlang nachwirkt.
+  },
+
+  directHeat(s, sp, ctx, deposited, h) {
+    // Store the non-fuel deposit in graphite; only its released heat reaches
+    // the coolant. Do not count the same energy twice.
+    const Tsat = tsat(s.p_drum);
     const C_gr = (sp.graphite.mass_t * 1000 * sp.graphite.cp) / 1000;   // kJ/K
-    const qGr = s.P_th * 1000 * sp.graphite.powerFraction;
-    s.T_gr = relax(s.T_gr, Tsat + qGr / sp.graphite.UA, h, C_gr / sp.graphite.UA);
+    const before = s.T_gr;
+    const graphiteDeposit = Math.min(deposited, s.P_th * 1000 * sp.graphite.powerFraction);
+    // UA ist nicht mehr fest: ohne Gaskreislauf steht Stickstoff im Spalt
+    // (siehe sp.graphite). Derselbe Wert geht in BEIDE Stellen -- Endwert und
+    // Zeitkonstante -- weil beides derselbe Waermedurchgang ist: schlechterer
+    // Durchgang heisst heisser UND traeger.
+    const UA = ctx.graphiteUA.step(
+      ctx.graphiteGasLost ? sp.graphite.UA_noGas : sp.graphite.UA, h);
+    s.T_gr = relax(before, Tsat + graphiteDeposit / UA, h, C_gr / UA);
+    return deposited - C_gr * (s.T_gr - before) / h;
+  },
+
+  heatTransfer(s, sp) {
+    return transferFraction(_cpr(s, sp, { load: s.P_th / sp.P0_th }),
+      coverage(s.M_drum, sp.drum.mass * 0.55, 20000));
   },
 
   stepLoop(s, sp, ctx, dt) {
+    if (!Number.isFinite(dt) || dt <= 0) return;
+    // ── Turbogenerator-Auslauf ──────────────────────────────────────────────
+    // Geschlossene Loesung von dw/dt = -w^2/tau, siehe sp.turbogen. Laeuft
+    // nur waehrend eines Auslaufversuchs; sonst haelt das Netz die Drehzahl.
+    if (s.tgCoasting) {
+      const tau = sp.turbogen.tau_s;
+      s.tgSpeed = s.tgSpeed / (1 + (dt * s.tgSpeed) / tau);
+    } else {
+      s.tgSpeed = 1;
+    }
+
     // ── Hauptumwälzpumpen ───────────────────────────────────────────────────
+    // Die letzten `coastdownPumps` haengen am Turbogenerator und verlieren mit
+    // ihm die Drehzahl; die uebrigen bleiben am Netz. Die beiden, die vor dem
+    // Versuch stillstehen, sind bewusst die ERSTEN (siehe
+    // chernobylTutorial.js prepare()) -- die beiden zusaetzlich zugeschalteten
+    // gehoeren damit zum Netzteil, so wie die vier Testpumpen historisch
+    // eigens fuer den Versuch ausgewaehlt waren.
+    const onRotor = ctx.mcp.length - sp.turbogen.coastdownPumps;
     let W = 0;
-    for (const p of ctx.mcp) { p.demand = clamp(s.mcpDmd, 0, 1.1); p.step(dt); W += p.flow(0.06); }
+    for (let i = 0; i < ctx.mcp.length; i++) {
+      const p = ctx.mcp[i];
+      p.demand = clamp(s.mcpDmd * (i >= onRotor ? s.tgSpeed : 1), 0, 1.1);
+      // Helpers and direct replay calls must not restart a failed pump for a tick.
+      if (ctx.pumpsStuck?.has(i)) p.trip();
+      p.step(dt);
+      W += p.flow(0.06);
+    }
     s.W_core = W;
+
+    if (s.auxFeedInstalled || s.fwSupplyMax < 1.3 * sp.drum.W_steam0) {
+      s.W_fwMain = Math.min(s.W_fwDemand, s.fwSupplyMax);
+      s.W_fwAux = s.auxFeedInstalled && s.auxFeedAvailable && s.auxFeedOn
+        ? Math.min(s.auxFeedDmd * sp.auxFeed.maxFlow, s.auxWaterKg / dt) : 0;
+      // On the last partial step avoid a rounding residue from (water / dt) * dt.
+      s.auxWaterKg = s.W_fwAux === s.auxWaterKg / dt ? 0
+        : Math.max(0, s.auxWaterKg - s.W_fwAux * dt);
+      // Both supplies use H_FW (165 C): a deliberate common-enthalpy abstraction.
+      s.W_fw = s.W_fwMain + s.W_fwAux;
+    } else {
+      // Preserve the legacy W_fw alias and controller timing when inactive.
+      s.W_fwDemand = s.W_fw;
+      s.W_fwMain = s.W_fw;
+      s.W_fwAux = 0;
+    }
+    s.coolantHeatMW = s.coolantHeatKJ / dt / 1000;
 
     // ── Dampfabgabe ─────────────────────────────────────────────────────────
     ctx.govValve.demand = s.turbineTripped ? 0 : s.gov;
@@ -461,25 +807,32 @@ export const hooks = {
 
     const dp = Math.max(s.p_drum - s.p_cond, 0);
     const rhoS = rhog(s.p_drum);
-    const W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dp);
-    const W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dp);
+    let W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dp);
+    let W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dp);
     s.srv = s.p_drum > 75 ? clamp((s.p_drum - 75) / 3, 0, 1) : 0;
-    s.W_steam = W_t + W_bp + s.srv * 700;
+    const requested = W_t + W_bp + s.srv * 700;
+    s.W_steam = availableSteam({ mass: s.M_drum, feed: s.W_fw, requested, dt,
+      pressure: s.p_drum, cp: sp.drum.cp, metalCapacity: sp.drum.mass * sp.drum.cp * 0.05,
+      heat: s.coolantHeatKJ / dt, feedEnthalpy: H_FW });
+    const scale = requested > 0 ? s.W_steam / requested : 0;
+    W_t *= scale; W_bp *= scale;
 
     // ── Trommeldruck ────────────────────────────────────────────────────────
-    const W_gen = s.x_e * s.W_core;
-    const C_p = (sp.drum.mass * sp.drum.cp) / Math.max(dpdT(s.p_drum), 1e-6);
-    const dh = Math.max(hg(s.p_drum) - H_FW, 1);
-    const pNew = clamp(s.p_drum + (((W_gen - s.W_steam) * dh) * dt) / C_p, 1, 110);
+    const balance = saturatedPressure({ pressure: s.p_drum, mass: s.M_drum,
+      cp: sp.drum.cp, metalCapacity: sp.drum.mass * sp.drum.cp * 0.05,
+      heat: s.coolantHeatKJ / dt, feed: s.W_fw, feedEnthalpy: H_FW,
+      steam: s.W_steam, dt });
+    const pNew = balance.pressure;
+    s.pressureClipKJ = balance.rejectedKJ;
     ctx.dpLag.step((pNew - ctx.pPrev) / dt, dt);
     ctx.pPrev = pNew;
     s.p_drum = pNew;
     s.p_prim = s.p_drum;
 
     // ── Trommelfüllstand ────────────────────────────────────────────────────
-    s.M_drum = Math.max(s.M_drum + (s.W_fw - s.W_steam) * dt, 20000);
+    s.M_drum = Math.max(s.M_drum + (s.W_fw - s.W_steam) * dt, 0);
     const Ltrue = clamp(0.5 + (s.M_drum - sp.drum.mass) / sp.drum.massSpan, 0, 1);
-    s.L_drum = clamp(Ltrue + sp.drum.shrinkSwell * (sp.drum.p0 - s.p_drum) / sp.drum.p0, 0, 1);
+    s.L_drum = clamp(Ltrue + coverage(s.M_drum, sp.drum.mass) * sp.drum.shrinkSwell * (sp.drum.p0 - s.p_drum) / sp.drum.p0, 0, 1);
 
     s.dTsub = _subcooling(s, sp);
 
@@ -494,7 +847,10 @@ export const hooks = {
     s.ao = ctx.aoLag.step(_axialTarget(s, sp), dt);
 
     // ── Turbine und Netz ────────────────────────────────────────────────────
-    s.p_cond = clamp(psat(sp.condenser.T_cw + sp.condenser.pinch
+    // s.T_cw statt sp.condenser.T_cw: die Kuehlwassertemperatur gehoert dem
+    // Lauf, nicht der Bauart (Jahreszeit, siehe game/season.js). Der Wert aus
+    // der Anlagendatei ist weiterhin ihr Anfangswert.
+    s.p_cond = clamp(psat(s.T_cw + sp.condenser.pinch
       + (sp.condenser.rise || 12) * clamp(s.W_steam / sp.drum.W_steam0, 0, 1.2)), 0.02, 1.5);
     const wSpec = (hg(s.p_drum) - hf(s.p_cond)) * sp.turbine.workFactor;
     s.P_e = s.breaker && !s.turbineTripped ? (W_t * wSpec) / 1000 : 0;
@@ -504,19 +860,20 @@ export const hooks = {
     if (!s.scram.active) {
       const d = ctx.powerCtl.step(s.n, dt);
       if (d !== 0) {
-        s.rodDmd[0] = clamp(s.rodDmd[0] + d, 0, 1);
-        s.rodDmd[1] = clamp(s.rodDmd[1] + d, 0, 1);
+        // ALLE Gruppen, nicht die ersten zwei: seit 0.6.11 sind es drei
+        // (rodBanks), und mit fest verdrahteten Indizes waere die dritte im
+        // Normalbetrieb stehengeblieben -- die Gruppen waeren auseinander-
+        // gelaufen, obwohl rodBanksMoveTogether das Gegenteil zusagt.
+        for (let i = 0; i < s.rodDmd.length; i++) s.rodDmd[i] = clamp(s.rodDmd[i] + d, 0, 1);
       }
     }
-    s.W_fw = ctx.fwCtl.step(s.L_drum, s.W_steam, dt);
+    s.W_fwDemand = ctx.fwCtl.step(s.L_drum, s.W_steam, dt);
+    if (!s.auxFeedInstalled && s.fwSupplyMax >= 1.3 * sp.drum.W_steam0) s.W_fw = s.W_fwDemand;
     s.gov = ctx.govCtl.step(s.P_e, s.P_demand, s.p_drum, dt);
     s.bypass = s.p_drum > sp.drum.p0 + 4 ? clamp((s.p_drum - sp.drum.p0 - 4) / 6, 0, 1) : 0;
   },
 
-  /**
-   * AZ-5. Beim Auslösen wird festgehalten, welche Gruppen weit draußen standen
-   * -- nur die schieben Graphit in die untere Wassersäule.
-   */
+  /** Retain history for old saves; worth uses current geometry. */
   onScram(s, sp, ctx) {
     for (let i = 0; i < s.rod.length; i++) {
       s.tipArmed[i] = s.rod[i] < sp.tip.outThreshold ? 1 : 0;
@@ -534,14 +891,35 @@ export const hooks = {
       value: Math.round(s.mcpDmd * 100), digits: 0, unitKey: 'unit_percent',
       onInput: (v) => { s.mcpDmd = v / 100; },
     });
+    // Always register callbacks: replay builds its kit before Session.start().
+    const auxFeed = kit.buttonGroup('ctl_rbmk_aux_feed', [
+      { key: 'state_off', value: '0' }, { key: 'state_on', value: '1' },
+    ], s.auxFeedOn ? '1' : '0', (v) => {
+      if (v !== '0' && v !== '1' && v !== 0 && v !== 1) return;
+      if (!s.auxFeedInstalled) return;
+      if (v === '0' || v === 0) s.auxFeedOn = false;
+      else if (s.auxFeedAvailable) s.auxFeedOn = true;
+    });
+    const auxFlow = kit.slider({
+      labelKey: 'ctl_rbmk_aux_flow', min: 0, max: 100, step: 1,
+      value: Math.round(s.auxFeedDmd * 100), digits: 0, unitKey: 'unit_percent',
+      onInput: (v) => {
+        if (s.auxFeedInstalled && Number.isFinite(v) && v >= 0 && v <= 100) s.auxFeedDmd = v / 100;
+      },
+    });
     return [
       { mount: 'primary', node: mcp.node, set: (st) => mcp.set(Math.round(st.mcpDmd * 100)) },
+      ...(s.auxFeedInstalled ? [
+        { mount: 'safety', node: auxFeed.node, set: (st) => auxFeed.set(st.auxFeedOn ? '1' : '0') },
+        { mount: 'secondary', node: auxFlow.node, set: (st) => auxFlow.set(Math.round(st.auxFeedDmd * 100)) },
+      ] : []),
     ];
   },
 
   togglePump(s, sp, ctx, i) {
     const p = ctx.mcp[i];
     if (!p) return;
+    if (ctx.pumpsStuck?.has(i)) { p.trip(); return; }
     if (p.state === 'run') p.trip(); else p.start();
   },
 
@@ -551,6 +929,20 @@ export const hooks = {
       L_sg: s.L_drum,
       W_steam: s.W_steam,
       W_fw: s.W_fw,
+      W_fwDemand: s.W_fwDemand,
+      W_fwMain: s.W_fwMain,
+      W_fwAux: s.W_fwAux,
+      fwSupplyMax: s.fwSupplyMax,
+      auxWaterKg: s.auxWaterKg,
+      auxFeedAvailable: s.auxFeedAvailable,
+      inventoryRateKgS: s.W_fwMain + s.W_fwAux - s.W_steam,
+      // ctx.graphiteUA statt sp.graphite.UA: ohne Gaskreislauf ist der
+      // Waermedurchgang kleiner, und die Diagnose soll den Waermestrom
+      // zeigen, der wirklich fliesst.
+      graphiteHeatMW: ctx.graphiteUA.v * (s.T_gr - tsat(s.p_drum)) / 1000,
+      graphiteGasLost: !!ctx.graphiteGasLost,
+      graphiteUA: ctx.graphiteUA.v,
+      coolantHeatMW: s.coolantHeatMW,
       gov: s.gov,
       bypass: s.bypass,
       p_cond: s.p_cond,
@@ -565,6 +957,9 @@ export const hooks = {
       dnbr: _cpr(s, sp, base),
       shutdownMargin: sp.rodBanks.reduce((a, b, i) => a + b.worth * (1 - s.rod[i]), 0),
       pumpStates: ctx.mcp.map((p) => p.state),
+      // Siehe pwr.js: unterscheidet ausgefallen (Ereignis, Knopf gesperrt)
+      // von selbst abgeschaltet (Spieler, Knopf bleibt bedienbar).
+      pumpStuckList: ctx.mcp.map((_, i) => !!(ctx.pumpsStuck && ctx.pumpsStuck.has(i))),
     };
   },
 };
@@ -577,11 +972,22 @@ export const hooks = {
  * Der Betrieb zählt sie in Stäben, nicht in pcm -- und genau deshalb steht sie
  * hier auch so. Nominal 46 von 211, betriebliches Minimum 30. In der Nacht des
  * 26. April 1986 waren es sechs bis acht.
+ *
+ * Gezählt wird über die volle Wirksamkeitskurve (rodWorthCurve, h=0..1), NICHT
+ * über die um tip.span verschobene Absorberkurve aus _rodReactivity: die
+ * Betriebskennzahl OZR ist eine physikalisch berechnete, glatte Groesse ueber
+ * den gesamten Fahrweg -- kein Vorlauf-Nullbereich wie die Graphitspitze ihn
+ * fuer die MOMENTANE Reaktivitaet erzwingt. Mit der um tip.span verschobenen
+ * Kurve waere jede Stabstellung innerhalb der Spitzenspanne ORM=0, ganz gleich
+ * ob h=0,02 oder h=0,17 -- der Blasenkoeffizient stuende dort ausnahmslos auf
+ * seinem schlimmsten Wert, und die historische ORM=6-8 (die echte Reaktoren
+ * bei WEIT, aber nicht ganz gezogenen Staeben erreichten) waere in diesem
+ * Modell gar nicht erreichbar, ohne die Anlage sofort instabil zu machen.
  */
 function _orm(s, sp) {
   let sum = 0;
   for (let i = 0; i < sp.rodBanks.length; i++) {
-    sum += (sp.rodBanks[i].rods || 0) * clamp(s.rod[i], 0, 1);
+    sum += (sp.rodBanks[i].rods || 0) * rodWorthCurve(clamp(s.rod[i], 0, 1));
   }
   return sum;
 }
@@ -600,53 +1006,82 @@ function _voidCoeff(s, sp) {
   // besser -- ohne diese Begrenzung waere er bei vollstaendig eingefahrenen
   // Staeben rechnerisch negativ, und der gefaehrlichste Kennwert dieses
   // Reaktortyps haette sich stillschweigend in eine Sicherheit verwandelt.
-  const f = clamp(orm / sp.orm.nominal, 0, 1);
+  //
+  // Der SCHLECHTESTE Wert steht seit 0.6.11 nicht mehr erst bei ORM = 0,
+  // sondern schon an der Meldeschwelle des Betriebs (sp.orm.alarm = 15).
+  // Genau dort lag die Grenze, unterhalb derer das Reglement die sofortige
+  // Abschaltung verlangte -- nicht bei null, sondern bei 15, weil der
+  // Dampfblasenkoeffizient darunter als nicht mehr beherrschbar galt. Eine
+  // Rampe, die erst bei null ihren Endwert erreicht, behauptet dagegen, ORM 8
+  // sei noch ein Stueck besser als ORM 0; das ist die Aussage, gegen die die
+  // Vorschrift geschrieben wurde.
+  //
+  // Sichtbar wurde der Unterschied erst, als die Uebung die dokumentierte
+  // Abschaltreserve von 6-8 ueberhaupt anzeigen konnte (siehe rodBanks und
+  // chernobylTutorial.js: USP_ROD): mit der alten Rampe wurde der
+  // Blasenkoeffizient in genau dem Moment um ein Zehntel milder, in dem die
+  // Anzeige historisch richtig wurde.
+  const floor = sp.orm.alarm || 0;
+  const f = clamp((orm - floor) / Math.max(1e-6, sp.orm.nominal - floor), 0, 1);
   const a0 = sp.feedback.void_pcm_per_pct_nominal;
   const a1 = sp.feedback.void_pcm_per_pct_depleted;
   return a1 + (a0 - a1) * f;
 }
 
 /**
- * Graphitspitzen der Schnellabschaltung.
+ * Absorberwirksamkeit der Stäbe -- anders als die generische Kurve (siehe
+ * reactivity.js: rodWorthCurve) NICHT ab h=0 wirksam.
  *
- *   ρ_Spitze = W · f_unten · Σ g(h)      g(h) = sin(π·h/span) für h < span
+ * Der Absorber (Bor) sitzt hinter 4,5 m Graphitverdränger. Solange ein
+ * gezogener Stab noch im ersten Stück seines Fahrwegs steckt (0 bis
+ * `tip.span`, dieselbe Wassersäule wie in _tipReactivity), schiebt er dort
+ * NUR Graphit -- kein Absorber erreicht in dieser Phase den Kern. Erst
+ * danach beginnt die eigentliche Abschaltwirkung, und zwar über den
+ * VERBLEIBENDEN Fahrweg (span bis 1), nicht ueber die volle Strecke.
  *
- * Es zählen nur die Gruppen, die beim Auslösen weit draußen standen. f_unten
- * gewichtet mit dem Flussprofil: bei bodennahem Fluss wirkt der Graphit dort,
- * wo die meiste Leistung entsteht, und die Einfuhr wird doppelt so groß.
- *
- * Jenseits von span sitzt der Absorber im Kern und der Beitrag ist weg -- die
- * Reaktivität wird stark negativ. Nur eben zu spät.
+ * Ohne diese Trennung faengt rodWorthCurve(h) schon ab h=0 an, Reaktivitaet
+ * abzuziehen (kleine, aber nicht null Steigung dort) -- das hebt einen
+ * grossen Teil dessen wieder auf, was _tipReactivity in genau diesem
+ * Fahrwegabschnitt hinzufuegt, und der positive Schnellabschalteffekt bleibt
+ * ein Rechenartefakt statt sich wie in der Literatur beschrieben (INSAG-7)
+ * als klar positiver Nettoeffekt in den ersten Sekunden zu zeigen.
  */
+function _rodReactivity(s, sp) {
+  const span = sp.tip.span;
+  const banks = sp.rodBanks;
+  let r = 0;
+  for (let i = 0; i < banks.length; i++) {
+    const h = s.rod[i];
+    const x = h <= span ? 0 : (h - span) / (1 - span);
+    r -= banks[i].worth * 1e-5 * rodWorthCurve(x);
+  }
+  return r;
+}
+
+/** Reduced displacer worth over the initial 1.25 m of a 7 m core. */
 function _tipReactivity(s, sp) {
-  if (!s.az5 || !s.az5.armed) return 0;
+  // Reduced geometric shape: identical positions/profile have identical worth,
+  // whether reached by normal drive or AZ-5. No button-triggered reactivity.
   const span = sp.tip.span;
   const fBot = clamp(1 + s.ao, 0, 2);
+  const banks = sp.rodBanks;
+  // Gewichtet ueber die Staebe MIT Verdraenger. Die von unten einfahrenden
+  // USP-Staebe haben keinen und bleiben draussen -- sie schieben am Kernboden
+  // keine Wassersaeule heraus (siehe rodBanks oben). Bei gleicher Stellung
+  // aller Gruppen ist das Ergebnis dasselbe wie mit der frueheren Rechnung
+  // "worth_pcm je Gruppe", weil sich die Gewichte zu eins summieren.
+  let tipRods = 0;
+  for (const b of banks) if (!b.fromBelow) tipRods += b.rods || 0;
+  if (!tipRods) return 0;
   let tip = 0;
-  let notYet = 0;
-  for (let i = 0; i < s.rod.length; i++) {
-    if (!s.tipArmed[i]) continue;
+  for (let i = 0; i < banks.length; i++) {
+    if (banks[i].fromBelow) continue;
     const h = s.rod[i];
-    if (h <= 0) continue;
-
-    // Der Graphitverdränger schiebt sich in die untere Wassersäule.
-    if (h < span) tip += Math.sin((Math.PI * h) / span);
-
-    // Und solange er das tut, ist der Absorber noch gar nicht im Kern -- er
-    // hängt fünf Meter darüber. Der allgemeine Stabbeitrag rechnet ihn aber
-    // vom ersten Zentimeter an mit, weil er nichts von Verdrängern weiß.
-    // Hier wird er deshalb wieder herausgerechnet und über den doppelten
-    // Verdrängerweg langsam wieder zugelassen.
-    //
-    // Ohne diese Verrechnung gewinnt der Absorber jede Sekunde: bei h = 0,3
-    // stehen +350 pcm Graphit gegen −830 pcm Absorber, die Schnellabschaltung
-    // wäre auch mit leerem Kern sofort negativ, und die Eigenheit, um die es
-    // bei diesem Reaktortyp geht, gäbe es im Spiel nicht.
-    const worth = sp.rodBanks[i].worth || 0;
-    const fade = h <= span ? 1 : clamp((2 * span - h) / span, 0, 1);
-    if (fade > 0) notYet += worth * rodWorthCurve(h) * fade;
+    if (h > 0 && h < span) {
+      tip += ((banks[i].rods || 0) / tipRods) * Math.sin(Math.PI * h / span);
+    }
   }
-  return (sp.tip.worth_pcm * fBot * tip + notYet) * 1e-5;
+  return sp.tip.worth_pcm_total * fBot * tip * 1e-5;
 }
 
 /**
@@ -677,10 +1112,44 @@ function _subcooling(s, sp) {
   return clamp((hSat - hMix) / sp.coolant.cp, 0, 80);
 }
 
-function _void(s, sp) {
+/**
+ * Mittlerer Blasenanteil im Kern.
+ *
+ * `qCoolKW` ist die Waerme, die im Rechenschritt TATSAECHLICH ins Kuehlmittel
+ * gelangt -- dieselbe Groesse, aus der coreCoolant() den Dampfgehalt s.x_e
+ * bildet. Bis 0.6.27 stand hier stattdessen die momentane Spaltleistung
+ * (s.P_th * 1000), und das war der schaerfste Modellfehler dieses Typs:
+ *
+ * averageVoid() setzt sich aus zwei Faktoren zusammen -- dem Dampfgehalt in
+ * der Siedezone und `fBoil`, dem Anteil des Kanals, der ueberhaupt siedet.
+ * Der erste kam traege ueber Brennstoff (tau = 7 s), Huellrohr und
+ * Waermeuebergang, der zweite sprang der Spaltleistung OHNE jede Traegheit
+ * nach. Eine prompte Leistungsspitze verschob damit die Siedegrenze im
+ * selben Augenblick, in dem sie entstand.
+ *
+ * Beim RBMK ist der Blasenkoeffizient positiv -- die Rueckkopplung war also
+ * siebenmal schneller als der Doppler, der einzige kraeftige negative
+ * Beitrag. Das Ergebnis war ein ungedaempfter Grenzzyklus: die Anlage
+ * schwang nach jeder Stoerung mit rund 20 s Periode auf, und zwar innerhalb
+ * ihres EIGENEN erlaubten Betriebsbands (sp.orm.min = 30). Gemessen bei
+ * Kernalter "mittel" (ORM 33) nach einem Netzabwurf: 830 bis 6272 MW bei
+ * festgehaltenen Staeben. Mit dem Leistungsregler in Automatik wurde daraus
+ * eine Abwaertsspirale, weil die Schwingung unsymmetrisch ist -- kurze hohe
+ * Spitzen, lange tiefe Taeler, im Mittel zu wenig Leistung, also zieht der
+ * Regler. Jeder gezogene Stab verschlechtert ueber _voidCoeff den
+ * Blasenkoeffizienten, und der treibt die naechste Schwingung staerker.
+ *
+ * Physikalisch kann der Blasenanteil nicht schneller reagieren als der
+ * Brennstoff heiss wird: die Waerme muss durch Pellet, Spalt und Huellrohr.
+ * Genau diesen Weg nimmt sie jetzt. Die verbleibende Verzoegerung
+ * (ctx.voidLag, 1,0 s) steht weiter fuer das Wandern der Siedegrenze im
+ * Kanal und bleibt unveraendert -- sie kommt jetzt NACH der Traegheit des
+ * Brennstoffs statt an ihrer Stelle.
+ */
+function _void(s, sp, qCoolKW) {
   const W = Math.max(s.W_core, 1);
   const G = W / sp.coolant.flowArea_m2;
-  const qPerKg = (s.P_th * 1000) / W;
+  const qPerKg = Math.max(qCoolKW, 0) / W;
   const subPerKg = sp.coolant.cp * s.dTsub;
   const fBoil = clamp(1 - subPerKg / Math.max(qPerKg, 1e-3), 0.05, 0.98);
   return averageVoid(s.x_e, s.p_drum, G, fBoil);

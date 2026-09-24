@@ -37,6 +37,11 @@ export class Loop {
      *  bleibt true, aber requestAnimationFrame wird nie wieder aufgerufen --
      *  ein Einfrieren ohne jede sichtbare Meldung. */
     this.onCrash = null;
+    /** Wird einmal je Bild gerufen, mit {steps, slip, speed} -- die Groessen,
+     *  die eine Nachrechnung NICHT wiederherstellen kann. Nur das
+     *  Debug-Protokoll haengt sich hier ein (game/debugTape.js); ohne
+     *  eingeschalteten Debug-Modus bleibt der Haken leer. */
+    this.onFrame = null;
     this._frame = this._frame.bind(this);
     this._onVisibility = this._onVisibility.bind(this);
   }
@@ -98,6 +103,7 @@ export class Loop {
           this.slip = slipping;
           if (this.onSlip) this.onSlip(slipping);
         }
+        if (this.onFrame) this.onFrame(now, { steps, slip: slipping, speed: this.speed });
       }
 
       this.render(this.engine.state, now);

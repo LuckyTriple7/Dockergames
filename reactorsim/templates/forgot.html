@@ -1,0 +1,26 @@
+{% extends "auth_base.html" %}
+{% block subtitle %}{{ t.forgot_title }}{% endblock %}
+{% block form %}
+  <form class="box" method="post" action="/forgot" autocomplete="on">
+    <h1>{{ t.app_title }}<span>{{ t.forgot_title }}</span></h1>
+
+    {% if error %}<p class="err">{{ t.get(error, error) }}</p>{% endif %}
+
+    {% if done %}
+      {# Immer dieselbe Antwort, ob es die Adresse gibt oder nicht -- sonst
+         liesse sich hier ablesen, wer ein Konto hat (siehe app.py). #}
+      <p class="ok">{{ t.forgot_done }}</p>
+    {% elif error != 'forgot_mail_off' %}
+      <p class="note">{{ t.forgot_intro }}</p>
+      <label>{{ t.forgot_email }}
+        <input type="email" name="email" autocomplete="username" autocapitalize="none"
+               spellcheck="false" required autofocus>
+      </label>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit">{{ t.forgot_submit }}</button>
+    {% endif %}
+
+    <p class="back"><a href="/login">{{ t.forgot_back }}</a></p>
+    {% include "auth_foot.html" %}
+  </form>
+{% endblock %}

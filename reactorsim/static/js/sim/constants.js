@@ -47,12 +47,10 @@ export const LAMBDA_PM = 3.63e-6;      // 1/s, Halbwertszeit 53,1 h
 export const SIGMA_SM_PHI100 = 1.2e-6; // 1/s
 
 // ── Nachzerfallswärme ────────────────────────────────────────────────────────
-// Way-Wigner (t^-0.2) braucht die gesamte Leistungsgeschichte und ist bei t=0
-// singulär -- für eine laufende Simulation die falsche Form. Vier exponentielle
-// Pseudogruppen bilden denselben Verlauf über fünf Zehnerpotenzen nach und
-// tragen ihre Geschichte im eigenen Zustand.
-export const DECAY_F = [0.030, 0.020, 0.013, 0.007];      // Anteil an P0
-export const DECAY_L = [0.2, 0.01, 5e-4, 1e-5];           // 1/s
+// Broad logarithmic time scales retain heat over days and weeks. These are
+// gameplay pseudo-groups, not isotope inventories or an ANS-5.1 calculation.
+export const DECAY_F = [0.024, 0.019, 0.012, 0.007, 0.004, 0.0025, 0.0015];
+export const DECAY_L = [0.5, 0.04, 0.003, 0.0002, 0.000012, 0.0000007, 0.00000002];
 export const DECAY_SUM = DECAY_F.reduce((a, b) => a + b, 0); // 0,070
 /** Anteil der Leistung, der prompt aus der Spaltung kommt. Der Rest ist
  *  Nachzerfallswärme -- sonst wären es im stationären Betrieb 107 %. */

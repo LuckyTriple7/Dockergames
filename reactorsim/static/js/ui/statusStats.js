@@ -15,6 +15,11 @@
 
 export const STATUS_STATS = [
   { key: 'power_th_pct', labelKey: 'status_power_th' },
+  // Dieselbe Groesse als MW statt Prozent -- fuer wen ein absoluter Wert
+  // leichter zu lesen ist als der Anteil an der Nennleistung. Beide stehen
+  // permanent im Katalog, nicht als Umschalter an EINER Kachel: wer beide
+  // sehen will (z.B. zum Umrechnen der Nennleistung), waehlt einfach beide.
+  { key: 'power_th_mw', labelKey: 'status_power_th_mw' },
   { key: 'power_e', labelKey: 'status_power_e' },
   { key: 'demand', labelKey: 'status_demand' },
   { key: 'rho_pcm', labelKey: 'val_reactivity' },
@@ -33,12 +38,19 @@ export const STATUS_STATS = [
   { key: 'period', labelKey: 'status_period' },
   { key: 'freq', labelKey: 'val_frequency' },
   { key: 'clock', labelKey: 'status_clock' },
+  // Tageszeit des nachgestellten Ablaufs -- nur in Szenarien belegt, die eine
+  // echte Uhr haben (siehe panels.js: ctx.wallClock), sonst "—".
+  { key: 'wallclock', labelKey: 'status_wallclock' },
   { key: 'subcool', labelKey: 'val_subcooling' },
   { key: 'dnbr', labelKey: 'status_margin' },
   { key: 'p_sg', labelKey: 'val_sg_press' },
   { key: 'w_steam', labelKey: 'val_steam_flow' },
   { key: 'gov', labelKey: 'val_gov' },
   { key: 'p_cond', labelKey: 'val_cond_press' },
+  // Kuehlwasser am Kondensatoreintritt -- im freien Spiel die Jahreszeit
+  // (siehe game/season.js), sonst der Auslegungspunkt der Anlage. Gehoert
+  // neben p_cond: die beiden erklaeren einander.
+  { key: 't_cw', labelKey: 'val_cw_temp' },
   { key: 'l_sg', labelKey: 'val_sg_level' },
   { key: 'w_fw', labelKey: 'val_feed_flow' },
   { key: 'breaker', labelKey: 'val_breaker' },

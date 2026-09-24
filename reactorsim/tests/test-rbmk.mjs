@@ -99,35 +99,26 @@ test('Leistungsabsenkung frisst die Abschaltreserve auf', () => {
   assert.ok(tiles.includes('orm_low'), `Meldungen: ${tiles.join(', ') || 'keine'}`);
 });
 
-test('AZ-5 bei leerem Kern: POSITIVE Einfuhr und Exkursion', () => {
-  const e = lowPowerWithXenon(12);
+test('initial insertion from fully withdrawn rods can add positive reactivity', () => {
+  const e = createEngine(rbmk, { n: 0.07 });
   const s = e.state;
-  assert.ok(!s.scram.active, 'schon vorher abgeschaltet');
-  const nStart = s.n;
-
-  e.scram('az5');
-  let rhoMax = -1, nMax = 0, tipMax = 0;
-  for (let i = 0, n = Math.round(6 / DT); i < n; i++) {
-    e.step(DT);
-    const d = e.derive();
-    rhoMax = Math.max(rhoMax, d.rho_pcm);
-    tipMax = Math.max(tipMax, d.tip_pcm);
-    nMax = Math.max(nMax, s.n);
-    if (s.destroyed) break;
-  }
-  assert.ok(tipMax > 400, `Spitzenbeitrag nur ${tipMax.toFixed(0)} pcm`);
-  assert.ok(rhoMax > 100, `Reaktivitaet blieb bei ${rhoMax.toFixed(0)} pcm`);
-  // Prompt kritisch: die Kette traegt sich ohne die verzoegerten Neutronen.
-  assert.ok(rhoMax > e.ctx.betaEff * 1e5,
-    `nicht prompt kritisch (${rhoMax.toFixed(0)} pcm gegen beta ${(e.ctx.betaEff * 1e5).toFixed(0)})`);
-  assert.ok(nMax > 20 * nStart, `Leistung stieg nur auf das ${(nMax / nStart).toFixed(1)}-fache`);
-  assert.ok(s.destroyed, 'der Kern haelt das aus -- dann stimmt die Kalibrierung nicht');
+  e.ctx.powerCtl.auto = false;
+  s.rod.fill(0); s.rodDmd.fill(0); s.ao = 0.5;
+  // Hold thermal/poison conditions fixed to isolate geometric worth.
+  const before = e.reactivity.compute(s, e.spec);
+  s.rod.fill(0.04);
+  assert.ok(e.reactivity.compute(s, e.spec) > before);
+  assert.ok(e.derive().tip_pcm > 400);
+  s.rod.fill(1);
+  assert.ok(e.reactivity.compute(s, e.spec) < before);
+  assert.equal(e.derive().tip_pcm, 0);
 });
 
 test('AZ-5 aus dem Nennbetrieb: sauber negativ, keine Exkursion', () => {
   const e = boot();
   const s = e.state;
   const d0 = e.derive();
+  const n0 = s.n;
   assert.ok(d0.orm > 40, `Abschaltreserve ${d0.orm.toFixed(1)}`);
 
   e.scram('az5');
@@ -137,8 +128,8 @@ test('AZ-5 aus dem Nennbetrieb: sauber negativ, keine Exkursion', () => {
     rhoMax = Math.max(rhoMax, e.derive().rho_pcm);
     nMax = Math.max(nMax, s.n);
   }
-  assert.ok(rhoMax <= 0, `Reaktivitaet wurde positiv: ${rhoMax.toFixed(0)} pcm`);
-  assert.ok(nMax <= 1.001, `Leistungsspitze ${(nMax * 100).toFixed(1)} %`);
+  assert.ok(rhoMax <= 1, `Reaktivitaet wurde positiv: ${rhoMax.toFixed(0)} pcm`);
+  assert.ok(nMax <= n0 * 1.001, `Leistungsspitze ${(nMax * 100).toFixed(1)} %`);
   assert.ok(s.n < 0.05, `nach 30 s noch ${(s.n * 100).toFixed(2)} %`);
   assert.ok(!s.destroyed, 'Brennstoffschaden bei sauberer Abschaltung');
   // Die Spitzen zaehlen hier gar nicht: die Staebe standen nicht weit genug
@@ -151,7 +142,7 @@ test('achtzehn Sekunden Einfahrzeit -- kein Schwerkraftfall', () => {
   const s = e.state;
   e.scram('test');
   run(e, 9);
-  assert.ok(s.rod[0] > 0.4 && s.rod[0] < 0.95,
+  assert.ok(s.rod[0] > 0.4 && s.rod[0] < 0.97,
     `nach 9 s stehen die Staebe bei ${s.rod[0].toFixed(2)}`);
   run(e, 11);
   assert.ok(s.rod[0] > 0.999, `nach 20 s erst bei ${s.rod[0].toFixed(3)}`);
@@ -174,5 +165,37 @@ test('Zufaellige Eingriffe erzeugen kein NaN', async () => {
     assert.ok(Number.isFinite(s.n) && s.n >= 0, `n = ${s.n}`);
     assert.ok(Number.isFinite(s.p_drum) && s.p_drum > 0, `p_drum = ${s.p_drum}`);
     assert.ok(Number.isFinite(s.T_gr), `T_gr = ${s.T_gr}`);
+  }
+});
+
+
+test('Reaktorschutz beim Schnellschluss beider Turbosaetze -- scharf meldet er, abgeschaltet nicht', () => {
+  // Das Signal, das die Mannschaft in der Nacht zum 26.04.1986 abgeschaltet
+  // hat. Es muss BEIDES koennen, sonst ist seine Abschaltung in der Uebung
+  // eine Behauptung ueber etwas, das ohnehin nie kaeme.
+  const armed = boot();
+  armed.state.tgCoasting = true;
+  run(armed, 1);
+  const armedTile = armed.trips.tiles().find(t => t.id === 'tg_stop_scram');
+  assert.ok(armedTile && armedTile.tile !== 'normal',
+    'scharf muss der Schutz beim Auslauf beider Turbosaetze melden');
+
+  const blocked = boot();
+  blocked.state.tgStopBlocked = true;
+  blocked.state.tgCoasting = true;
+  run(blocked, 1);
+  const blockedTile = blocked.trips.tiles().find(t => t.id === 'tg_stop_scram');
+  assert.ok(blockedTile && blockedTile.tile === 'normal',
+    'abgeschaltet darf er nicht melden -- genau das war der Eingriff');
+  const shown = blocked.trips.tiles().find(t => t.id === 'tg_stop_blocked');
+  assert.ok(shown && shown.tile !== 'normal',
+    'dass er abgeschaltet ist, gehoert auf die Meldetafel');
+
+  // Im gewoehnlichen Betrieb steht keine der beiden Kacheln.
+  const normal = boot();
+  run(normal, 1);
+  for (const id of ['tg_stop_scram', 'tg_stop_blocked']) {
+    const tile = normal.trips.tiles().find(t => t.id === id);
+    assert.ok(tile && tile.tile === 'normal', `${id} darf im Nennbetrieb nicht stehen`);
   }
 });

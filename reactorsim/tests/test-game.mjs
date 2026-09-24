@@ -66,9 +66,10 @@ test('Wertung: Bestandteile und Vorzeichen', () => {
     deviation_mwh: 0, alarm_seconds_unacked: 0,
     violation_seconds: { 1: 0, 2: 0, 3: 0 },
     scram_count: 0, fuel_damage: false, completed: true, difficulty: 2,
+    duration_s: 3600,
   };
   const a = score(perfect);
-  assert.equal(a.score, 1500);   // 1000 Energie + 2 × 250 Bonus
+  assert.equal(a.score, 2500);   // 1000 Mission + 1000 Energie + 2 × 250 Bonus
 
   const bad = score({ ...perfect, scram_count: 1, fuel_damage: true, completed: false });
   assert.ok(bad.score < 0, `Punkte ${bad.score}`);
@@ -141,7 +142,7 @@ test('jedes Szenario läuft ohne Ausnahme bis zum Ende', async () => {
     const steps = Math.round((def.duration_s + 60) / DT);
     for (let i = 0; i < steps && session.phase === PHASE.RUNNING; i++) {
       e.step(DT);
-      session.step(DT, 0, 0);
+      session.step(DT, [], 0);
       assert.equal(e.state.fault, null, `${def.id}: Simulationsfehler ${e.state.fault}`);
     }
 
@@ -150,8 +151,14 @@ test('jedes Szenario läuft ohne Ausnahme bis zum Ende', async () => {
     // geben, und die Kennzahlen muessen brauchbar sein.
     if (ended.result) {
       const sum = ended.result.summary;
-      assert.ok(Number.isFinite(ended.result.score), `${def.id}: Punkte ${ended.result.score}`);
-      assert.ok(sum.energy_mwh_demanded > 0, `${def.id}: keine Anforderung`);
+      assert.ok(def.tutorial ? ended.result.score === null : Number.isFinite(ended.result.score), `${def.id}: Punkte ${ended.result.score}`);
+      if (def.tutorial) assert.equal(sum.completed, false);
+      else if (def.demand.some(point => point.mw > 0)) assert.ok(sum.energy_mwh_demanded > 0, `${def.id}: keine Anforderung`);
+      else {
+        assert.equal(def.score_mode, 'incident_v1', `${def.id}: zero-demand shift must use safety scoring`);
+        assert.equal(sum.energy_mwh_demanded, 0);
+        assert.equal(sum.completed, false, `${def.id}: waiting alone must not pass the safety goals`);
+      }
       assert.ok(sum.duration_s > 0);
       for (const v of Object.values(sum.violation_seconds)) assert.ok(Number.isFinite(v));
     }
@@ -163,7 +170,7 @@ test('Freies Spiel endet nur bei Brennstoffschaden', () => {
   const session = new Session(e, null);
   assert.equal(session.phase, PHASE.RUNNING);
   session.start();
-  for (let i = 0; i < 2000; i++) { e.step(DT); session.step(DT, 0, 0); }
+  for (let i = 0; i < 2000; i++) { e.step(DT); session.step(DT, [], 0); }
   assert.equal(session.phase, PHASE.RUNNING);
   assert.equal(session.result, null);
 });

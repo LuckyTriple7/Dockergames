@@ -6,6 +6,7 @@
 
 import { Rng } from '../rng.js';
 import { clamp } from '../sim/constants.js';
+import { SEVERITY } from '../sim/trips.js';
 
 /**
  * Wert einer stückweise linearen Kurve. Stützstellen sind {t, mw}; zwischen
@@ -76,6 +77,7 @@ export class Scenario {
 
   /** Fällige akustische Vorwarnungen -- je Ereignis einmal, 2-5 Minuten davor. */
   dueAlerts(t) {
+    if (this.def.guidance?.event_alerts === false) return [];
     const out = [];
     for (const e of this.events) {
       if (!e.alertFired && t >= e.alertAt) { e.alertFired = true; out.push(e); }
@@ -88,22 +90,116 @@ export class Scenario {
     for (const e of this.events) if (!e.fired && e.t > t) return e;
     return null;
   }
+
+  /**
+   * Nach dem Laden eines Spielstands: Ereignisse, deren Zeitpunkt schon
+   * vergangen ist, als bereits ausgelöst markieren, OHNE sie erneut
+   * anzuwenden -- ihre Wirkung steckt schon im geladenen Zustand (state/
+   * components/malfunctions, siehe net/persist.js). Ohne das feuerte jedes
+   * vergangene Ereignis beim nächsten Bild ein zweites Mal: doppelte
+   * Protokollzeilen, und bei einer Meldung wie "Pumpe ausgefallen"
+   * zusätzlich ein kurzes Aus-und-wieder-An auf der Meldetafel samt Hupe,
+   * weil die zugrunde liegende Bedingung für einen Sekundenbruchteil neu
+   * bewertet wurde (dieselbe Instanz kennt "schon gefeuert" ja nicht mehr --
+   * jeder Rundenstart, auch das Fortsetzen, baut eine frische Scenario-
+   * Instanz).
+   */
+  catchUp(t) {
+    for (const e of this.events) {
+      if (!e.fired && t >= e.t) e.fired = true;
+      if (!e.alertFired && t >= e.alertAt) e.alertFired = true;
+    }
+  }
 }
+
+/**
+ * Meldetafel-Kacheln für die Fail-Bedingung 'grid_deviation' (siehe
+ * RunState.checkFail): ohne die stand nirgends, dass gerade eine Uhr läuft --
+ * "Abweichung" in der Statuszeile lief die ganze Zeit sichtbar mit, aber ohne
+ * jede Warnfarbe oder Meldung. Ein Spieler, der die Netzanforderung überholt
+ * (Leistung liefern, obwohl 0 MW verlangt sind), fiel nach der stillen Frist
+ * einfach aus der Runde -- kein Alarm, kein Ton, kein Log-Eintrag zuvor.
+ *
+ * Zwei Stufen wie bei orm_low/orm_critical: WARN sobald die Abweichung
+ * überhaupt übers Limit geht, TRIP als letzte Warnung kurz vor der Frist
+ * (`for_s`), mit Vorlauf genug, um noch reagieren zu können (Leistung
+ * zurücknehmen oder SCRAM -- SCRAM setzt die Frist ohnehin auf null, siehe
+ * checkFail()). `test()` prüft dieselbe Bedingung wie checkFail() selbst,
+ * einschließlich des SCRAM-Ausnahmefalls, sonst bliebe die Kachel bei einer
+ * gewollten Abschaltung fälschlich stehen.
+ *
+ * Gehört hierher statt zu den Reaktortypen: die Bedingung kommt aus der
+ * Szenariodatei, nicht aus der Anlage. Engine/TripSystem kennen dafür
+ * opts.extraTrips (siehe sim/engine.js).
+ *
+ * @param {object} def  geladene Szenario-JSON (Scenario.def)
+ * @returns {object[]}  0 oder 2 Eintraege fuer TripSystem
+ */
+export function gridDeviationTrips(def) {
+  const f = (def.fail || []).find((x) => x.type === 'grid_deviation');
+  if (!f) return [];
+  const mw = f.mw;
+  const forS = f.for_s || 60;
+  // Vorlauf vor der harten Frist: 90 s, aber nie mehr als die Haelfte der
+  // Frist selbst -- sonst wuerde die TRIP-Kachel bei einer kurzen Frist (z.B.
+  // 150 s) schon fast beim Ueberschreiten selbst aufleuchten.
+  const tripDelay = Math.max(1, forS - Math.min(90, forS * 0.5));
+  const cond = (s) => !s.scram.active && Math.abs(s.P_e - s.P_demand) > mw;
+  return [
+    {
+      id: 'grid_deviation_warn', key: 'alarm_grid_deviation_warn', severity: SEVERITY.WARN,
+      test: cond, delay_s: 5,
+    },
+    {
+      id: 'grid_deviation_trip', key: 'alarm_grid_deviation_trip', severity: SEVERITY.TRIP,
+      test: cond, delay_s: tripDelay,
+    },
+  ];
+}
+
+// Toleranzband des freien Spiels: Abweichungen darunter zaehlen nicht als
+// Lastfolgefehler. Dieselbe Groessenordnung wie die Vorgabe eines Szenarios
+// ohne eigene Angabe (siehe Scenario.tolerance oben) -- eine zweite Zahl
+// waere nur eine zweite Stellschraube fuer denselben Gedanken.
+const FREE_TOLERANCE_MW = 50;
 
 /**
  * Fortschritt eines Laufs. Sammelt Kennzahlen, keine Punkte -- gewertet wird
  * erst am Ende, und zwar an einer Stelle (game/scoring.js), damit Client und
  * Server dieselbe Formel benutzen können.
+ *
+ * `scenario` darf null sein. Bis 0.6.6 war es das nie: das freie Spiel bekam
+ * gar keine RunState, und damit auch keine einzige Kennzahl -- kein Blick auf
+ * gelieferte Energie, keine Alarmzeit, keine SCRAM-Zaehlung. Gerechnet wurde
+ * dort dasselbe wie im Szenario, nur sah es niemand. Ohne Szenario fuehrt die
+ * Netzanforderung im Zustand (s.P_demand) statt der Kurve aus der JSON-Datei,
+ * und das Toleranzband ist FREE_TOLERANCE_MW.
  */
 export class RunState {
   constructor(scenario, spec) {
-    this.scenario = scenario;
+    this.scenario = scenario || null;
     this.P0_e = spec.P0_e;
     this.energyDelivered = 0;    // MWh
     this.energyDemanded = 0;     // MWh
     this.deviationMWh = 0;       // ∫|P_e − P_soll| dt
     this.violationSeconds = { 1: 0, 2: 0, 3: 0 };
+    // Ursachen-Zeiten fuers Debrief -- Schluessel ist der Uebersetzungs-
+    // schluessel der Kachel (z.B. 'alarm_graphite_hot'), nicht ihre id, damit
+    // die Anzeige spaeter kein zweites Nachschlagen braucht. Anders als
+    // violationSeconds NICHT exklusiv: jede gerade aktive Kachel bekommt
+    // ihren vollen Anteil, unabhaengig von den anderen (siehe accumulate()).
+    // Rein fuer die Anzeige, geht nie in die Punkteformel und nie zum Server.
+    this.causeSeconds = new Map();
     this.scramCount = 0;
+    // Erfuellte und gescheiterte Netzauftraege (siehe game/dispatch.js). Nur
+    // im freien Spiel je ungleich null; in einem Szenario fuehrt die
+    // Bedarfskurve, da gibt es keine Auftraege. Stehen hier und nicht in der
+    // Dispatch selbst, weil der Schichtbericht sie alle acht Stunden gegen
+    // seine Bezugslinie bilanziert und dafuer EINE Quelle braucht, die schon
+    // im Spielstand liegt. Gehen NICHT in summary() ein -- das ist der
+    // Server-Payload, und das freie Spiel reicht nie etwas ein.
+    this.ordersMet = 0;
+    this.ordersFailed = 0;
     this.maxFuelK = 0;
     this.minDnbr = Infinity;
     this.minOrm = Infinity;
@@ -113,15 +209,33 @@ export class RunState {
     this.scramSeen = false;
   }
 
-  /** Ein Rechenschritt an Kennzahlen. */
-  accumulate(s, d, worstSeverity, dt) {
+  /** Ein Rechenschritt an Kennzahlen.
+   *  @param {Array} tiles engine.trips.tiles() dieses Takts -- fuer die
+   *  Ursachen-Zeiten (siehe causeSeconds). worstSeverity kommt weiterhin
+   *  separat herein: dieselbe Zahl wird auch fuer checkFail() gebraucht,
+   *  hier zusaetzlich einzupacken waere eine zweite Herleitung derselben
+   *  Groesse. */
+  accumulate(s, d, worstSeverity, tiles, dt) {
     const h = dt / 3600;
-    const demand = this.scenario.demandAt(s.t_sim);
+    // Wer die Anforderung fuehrt: die Kurve des Szenarios, sonst der Zustand.
+    // Tutorial und freies Spiel setzen s.P_demand selbst (tutorial.demand
+    // bzw. _stepFreeDemand() in session.js) -- dort waere demandAt() die
+    // falsche Quelle, im freien Spiel gibt es sie gar nicht.
+    const scripted = this.scenario && !this.scenario.def.tutorial;
+    const demand = scripted ? this.scenario.demandAt(s.t_sim) : s.P_demand;
+    const tolerance = this.scenario ? this.scenario.tolerance : FREE_TOLERANCE_MW;
     this.energyDelivered += s.P_e * h;
     this.energyDemanded += demand * h;
     const dev = Math.abs(s.P_e - demand);
-    if (dev > this.scenario.tolerance) this.deviationMWh += (dev - this.scenario.tolerance) * h;
+    if (dev > tolerance) this.deviationMWh += (dev - tolerance) * h;
     if (worstSeverity > 0) this.violationSeconds[worstSeverity] += dt;
+    // Parallel, nicht exklusiv: jede gerade aktive Kachel zaehlt fuer sich,
+    // unabhaengig davon, ob noch andere gleichzeitig anstehen.
+    for (const tile of tiles) {
+      if (tile.tile === 'new' || tile.tile === 'ack') {
+        this.causeSeconds.set(tile.key, (this.causeSeconds.get(tile.key) || 0) + dt);
+      }
+    }
     if (s.T_f > this.maxFuelK) this.maxFuelK = s.T_f;
     if (Number.isFinite(d.dnbr) && d.dnbr < this.minDnbr) this.minDnbr = d.dnbr;
     if (Number.isFinite(d.orm) && d.orm < this.minOrm) this.minOrm = d.orm;
@@ -143,7 +257,10 @@ export class RunState {
       energyDemanded: this.energyDemanded,
       deviationMWh: this.deviationMWh,
       violationSeconds: { ...this.violationSeconds },
+      causeSeconds: [...this.causeSeconds],
       scramCount: this.scramCount,
+      ordersMet: this.ordersMet,
+      ordersFailed: this.ordersFailed,
       maxFuelK: this.maxFuelK,
       minDnbr: Number.isFinite(this.minDnbr) ? this.minDnbr : null,
       minOrm: Number.isFinite(this.minOrm) ? this.minOrm : null,
@@ -156,6 +273,10 @@ export class RunState {
 
   restore(d) {
     if (!d || typeof d !== 'object') return;
+    if (Array.isArray(d.causeSeconds)) {
+      this.causeSeconds = new Map(d.causeSeconds.filter((entry) => Array.isArray(entry)
+        && typeof entry[0] === 'string' && Number.isFinite(entry[1]) && entry[1] >= 0));
+    }
     if (Number.isFinite(d.energyDelivered)) this.energyDelivered = d.energyDelivered;
     if (Number.isFinite(d.energyDemanded)) this.energyDemanded = d.energyDemanded;
     if (Number.isFinite(d.deviationMWh)) this.deviationMWh = d.deviationMWh;
@@ -165,6 +286,8 @@ export class RunState {
       }
     }
     if (Number.isFinite(d.scramCount)) this.scramCount = d.scramCount;
+    if (Number.isFinite(d.ordersMet) && d.ordersMet >= 0) this.ordersMet = d.ordersMet;
+    if (Number.isFinite(d.ordersFailed) && d.ordersFailed >= 0) this.ordersFailed = d.ordersFailed;
     if (Number.isFinite(d.maxFuelK)) this.maxFuelK = d.maxFuelK;
     if (Number.isFinite(d.minDnbr)) this.minDnbr = d.minDnbr;
     if (Number.isFinite(d.minOrm)) this.minOrm = d.minOrm;
@@ -172,6 +295,18 @@ export class RunState {
     if (typeof d.scramSeen === 'boolean') this.scramSeen = d.scramSeen;
     if (Number.isFinite(d.tripFor)) this._tripFor = d.tripFor;
     if (Number.isFinite(d.devFor)) this._devFor = d.devFor;
+  }
+
+  /** Top 3 Ursachen fuers Debrief, absteigend nach Sekunden. Liegt bewusst
+   *  NICHT in summary() -- summary() ist zugleich der Server-Payload
+   *  (api.submitScore() verschickt sie unveraendert), reine Diagnosedaten
+   *  gehoeren da strukturell nicht hinein. session.js haengt das Ergebnis
+   *  stattdessen als Geschwister von summary an result.causes. */
+  topCauses() {
+    return [...this.causeSeconds.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([key, seconds]) => ({ key, seconds: round(seconds, 1) }));
   }
 
   /**
@@ -187,7 +322,9 @@ export class RunState {
    */
   checkFail(s, d, dt, worstSeverity = 0) {
     if (this.failed) return this.failed;
-    for (const f of this.scenario.def.fail || []) {
+    // Ohne Szenario gibt es keine Fehlbedingungen: das freie Spiel endet
+    // allein am Brennstoffschaden, und den prueft session.js selbst.
+    for (const f of (this.scenario ? this.scenario.def.fail : null) || []) {
       if (f.if === 'difficulty>=3' && this.scenario.difficulty < 3) continue;
       if (f.type === 'fuel_damage' && s.destroyed) return (this.failed = 'fail_fuel_damage');
       if (f.type === 'scram' && s.scram.active) return (this.failed = 'fail_scram');
@@ -232,8 +369,8 @@ export class RunState {
   summary(s) {
     return {
       reactor: s.reactor,
-      scenario: this.scenario.id,
-      difficulty: this.scenario.difficulty,
+      scenario: this.scenario ? this.scenario.id : null,
+      difficulty: this.scenario ? this.scenario.difficulty : 0,
       energy_mwh_delivered: round(this.energyDelivered, 2),
       energy_mwh_demanded: round(this.energyDemanded, 2),
       deviation_mwh: round(this.deviationMWh, 3),
@@ -245,6 +382,10 @@ export class RunState {
       alarm_seconds_unacked: 0,   // wird vom Aufrufer gesetzt
       scram_count: this.scramCount,
       fuel_damage: this.destroyed,
+      // Nur beim SWR jemals gesetzt (plants/bwr.js) -- bei DWR/RBMK bleiben
+      // s.contFailed/s.h2Exploded fuer immer undefined, !! macht daraus false.
+      cont_failed: !!s.contFailed,
+      h2_exploded: !!s.h2Exploded,
       max_fuel_c: round(this.maxFuelK - 273.15, 1),
       min_dnbr: Number.isFinite(this.minDnbr) ? round(this.minDnbr, 3) : null,
       min_orm: Number.isFinite(this.minOrm) ? round(this.minOrm, 1) : null,

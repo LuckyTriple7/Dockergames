@@ -18,8 +18,9 @@
 
 import { Pump, Valve, Lag, coldStopPumps } from '../sim/components.js';
 import { FeedwaterController, GovernorController, RodController } from '../sim/controllers.js';
-import { tsat, psat, hg, hf, hfg, rhog, dpdT, averageVoid } from '../sim/steam.js';
+import { tsat, psat, hg, hf, hfg, rhog, averageVoid } from '../sim/steam.js';
 import { clamp, toK, relax } from '../sim/constants.js';
+import { availableSteam, saturatedPressure, coverage, transferFraction } from '../sim/thermal.js';
 import { SEVERITY } from '../sim/trips.js';
 
 const P0 = 70.7;                     // bar, Domdruck
@@ -87,6 +88,14 @@ export const spec = {
 
   recirc: {
     W0: 13000,
+    // Der Schieber endet bei 45 %, weil darunter der Betriebspunkt dieses
+    // Modells nicht mehr am Durchsatz haengt (siehe BACKLOG.md, "SWR: der
+    // Betriebspunkt unter 48 % Umwaelzstrom"). Ein PUMPENAUSFALL geht
+    // trotzdem darunter -- uebrig bleiben 12 % Naturumlauf, und dort faellt
+    // der Blasenanteil mit dem Massenstrom statt zu steigen (Driftterm in
+    // voidFraction()). Gemessen mit tests/tools/bwr_recirc_trip.mjs: 371 %
+    // Spitze und zerstoerter Brennstoff nach 8,9 s, also genau die falsche
+    // Richtung. Deshalb gibt es zu rcp_trip kein SWR-Szenario.
     min: 0.45,
     max: 1.10,
     tau: 6,               // s, Hochlauf der Umwaelzpumpen
@@ -118,12 +127,6 @@ export const spec = {
     // der Effekt sein soll, aber nicht in der Lage, die Anzeige von "voll"
     // auf "leer" zu ziehen.
     swellMax: 0.25,
-    // Temperaturhub über die Sättigung, den die reine Dampfkühlung bei
-    // vollständig freiliegendem Kern erreicht -- deutlich über der
-    // Hüllrohrgrenze (1204 °C), damit Nachzerfallswärme ohne Bedeckung
-    // tatsächlich zum Hüllrohrversagen führt und nicht in einem Gleich-
-    // gewicht knapp darunter steckenbleibt.
-    dryOverheatK: 3200,
     T_fw: T_FW,
     W_steam0: 2059,
     subcool0: 12,
@@ -151,10 +154,24 @@ export const spec = {
   // ausgelegt -- genau deshalb hätte er im Original gereicht.
   ic: { W0: 130, enduranceS: 7200 },
 
-  // Löschwassereinspeisung als letzter Handgriff: kein Motor, keine
-  // Elektronik, funktioniert auch im vollständigen Stromausfall -- dafür
-  // viel weniger Durchsatz als die reguläre Speisewasseranlage.
-  fireInj: { W0: 35 },
+  // Diesel-driven low-pressure injection with finite external water supply.
+  fireInj: { W0: 35, shutoffBar: 12, supplyKg: 1000000 },
+
+  // Notstromdiesel. Er traegt den Eigenbedarf, nicht das Netz: Schaltraum,
+  // Leittechnik, Notspeisung -- nicht die Umwaelzpumpe und nicht die
+  // Hauptspeisepumpen. Deshalb ist feedMax kein Bruchteil des Vollast-
+  // speisestroms (2059 kg/s), sondern in derselben Groessenordnung wie der
+  // Notkondensator (ic.W0 = 130): beide sind dafuer da, Nachzerfallswaerme
+  // abzufuehren, und fuer nichts sonst. Unmittelbar nach der Abschaltung
+  // (rund 7 % von P0_th, etwa 140 kg/s Dampf) reicht das knapp nicht -- ein
+  // paar Minuten spaeter schon. Genau das ist die Aussage: der Diesel ist
+  // ein Weg zurueck, kein Rueckgaengigmachen.
+  //
+  // startS ist die Anlaufzeit in Simulationssekunden. Kein Wuerfel, ob er
+  // anspringt: ein Notstromdiesel, der mit einer Wahrscheinlichkeit
+  // versagt, waere im selben Lauf einmal die Rettung und einmal nicht, und
+  // der Spieler koennte aus keinem von beiden etwas lernen.
+  diesel: { startS: 30, feedMax: 130 },
 
   // Sicherheitsbehälter (Druckkammer + Kondensationskammer). Baut sich aus
   // dem Sicherheitsventil-Dampf auf, der in die Kondensationskammer bläst --
@@ -182,6 +199,26 @@ export const spec = {
   // chancenlos gegen einen Reaktor, der noch auf Leistung laeuft. Genau die
   // Reihenfolge, die die Hilfe beschreibt: erst abschalten, dann venten.
   containment: { p0: 1.05, capacity: 520000, designLimit: 4.3, ventCv: 60 },
+
+  // Referenzschenkel der Fuellstandsmessung. Die Messung vergleicht den
+  // Druck einer stehenden Wassersaeule (Referenzschenkel, oben mit einem
+  // Kondensationsgefaess) mit dem Druck im Behaelter. Kocht diese Saeule
+  // weg, faellt der Vergleichsdruck -- und das Geraet meldet MEHR Wasser,
+  // als da ist. Sie kocht genau dann, wenn der Sicherheitsbehaelter heisser
+  // ist als die Saettigung zum Reaktordruck; der Schenkel haengt am
+  // Behaelterdruck, steht aber in der Behaelteratmosphaere. Im Normalbetrieb
+  // (70 bar im Dom, rund 1 bar im Sicherheitsbehaelter) kann das nicht
+  // passieren -- erst wenn der Reaktor abgesenkt und der Behaelter aufgeheizt
+  // ist, kehrt sich das Verhaeltnis um. Genau diese Lage hatte Fukushima-1:
+  // die Anzeige stand ueber der Kernoberkante, waehrend der Kern frei lag.
+  //
+  // dTmin ist der Abstand, ab dem ueberhaupt etwas passiert -- ohne ihn
+  // trocknete der Schenkel auch beim Kaltstart langsam aus, wo Dom und
+  // Sicherheitsbehaelter beide knapp ueber Umgebungsdruck stehen und die
+  // Rechnung ein Grad Unterschied findet. dTfull ist die Differenz, bei der
+  // dryoutS voll wirkt; darunter trocknet er entsprechend langsamer. biasMax
+  // ist der Fehler bei ganz leerem Schenkel, in Anteilen der Skala.
+  refLeg: { dryoutS: 1200, refillS: 2400, dTmin: 10, dTfull: 30, biasMax: 0.5 },
 
   // Wasserstoff aus der Zirkon-Wasser-Reaktion. Setzt oberhalb von 1200 °C
   // Hüllrohrtemperatur ein, lange bevor der Brennstoff selbst schmilzt --
@@ -215,7 +252,7 @@ export const spec = {
     power_high: 'rpv', period_short: 'rpv', oprm: 'rpv', instability: 'rpv',
     dome_press_high: 'rpv', level_low: 'rpv', level_high: 'rpv', srv_open: 'srv', clad_temp: 'rpv',
     recirc_low: 'rcp',
-    turbine_trip: 'gen',
+    turbine_trip: 'gen', grid_lost: 'gen', grid_deviation_warn: 'gen', grid_deviation_trip: 'gen',
     cont_press_high: 'rpv', h2_critical: 'rpv',
   },
 
@@ -233,6 +270,9 @@ export const spec = {
     { id: 'period_short', key: 'trip_period_short', severity: SEVERITY.TRIP,
       test: (s, d) => s.n > 1e-3 && d.period > 0 && d.period < 10,
       delay_s: 2.0, action: 'scram' },
+    // s.promptCritical kommt fertig aus der Kinetik (sim/kinetics.js: rho > beta).
+    { id: 'prompt_critical', key: 'trip_prompt_critical', severity: SEVERITY.TRIP,
+      test: (s) => s.promptCritical, delay_s: 0, action: 'scram' },
     { id: 'dome_press_high', key: 'trip_dome_press_high', severity: SEVERITY.TRIP,
       test: (s) => s.p_dome > 78.5, delay_s: 0.5, action: 'scram' },
     { id: 'level_low', key: 'trip_level_low', severity: SEVERITY.TRIP,
@@ -258,6 +298,19 @@ export const spec = {
       test: (s) => s.srv > 0.01, delay_s: 0 },
     { id: 'turbine_trip', key: 'alarm_turbine_trip', severity: SEVERITY.WARN,
       test: (s) => s.turbineTripped, delay_s: 0 },
+    // Offener Generatorschalter OHNE Turbinenschnellschluss -- der
+    // Netzabwurf (loss_of_load in game/events.js setzt NUR s.breaker).
+    // Bis 0.6.26 sah der Spieler davon nichts: keine Kachel, keine Hupe,
+    // nur eine Zeile im Protokoll, die vorbeiscrollt -- waehrend die
+    // Generatorleistung auf null faellt und dort bleibt. Genau so gemeldet
+    // worden ("kam einfach so, kein Alarm nix").
+    //
+    // Die Bedingung schliesst turbineTripped aus, weil onScram() den
+    // Schalter mit oeffnet: nach einer Schnellabschaltung steht schon
+    // alarm_turbine_trip, und zwei Kacheln fuer dieselbe Ursache sind eine
+    // zu viel. Diese hier meldet den Zustand, den sonst keine meldet.
+    { id: 'grid_lost', key: 'alarm_grid_lost', severity: SEVERITY.WARN,
+      test: (s) => s.breaker === false && !s.turbineTripped, delay_s: 0 },
     { id: 'clad_temp', key: 'trip_clad_temp', severity: SEVERITY.TRIP,
       test: (s) => s.T_cl > 1477, delay_s: 0, action: 'scram' },
     // Eine klemmende Stabgruppe war vorher nur eine Zeile im Protokoll. Der
@@ -300,11 +353,32 @@ export const hooks = {
     s.oscV = 0;
 
     // Stromversorgung -- im Normalbetrieb immer da. Eine Störung (Station-
-    // Blackout) setzt beides auf false; ohne Gleichstrom fallen die
+    // Blackout) nimmt beides; ohne Gleichstrom fallen die
     // Notkondensator-Ventile in ihre sichere Stellung: ZU, unbemerkt, weil
     // dieselbe Störung auch die Anzeigen mitreißt.
+    //
+    // gridPower und acPower sind seit 0.6.23 zwei verschiedene Dinge.
+    // acPower heisst "es liegt Wechselstrom an" und wird von allem gelesen,
+    // was einen Motor oder eine Leittechnik braucht. gridPower heisst
+    // "dieser Wechselstrom kommt aus dem Netz" -- und nur daran haengt, was
+    // ein Notstromdiesel NICHT traegt. Ohne die Trennung waere der Diesel
+    // ein Knopf, der die Störung zurücknimmt, statt einer, der die Anlage
+    // in einen schwächeren, aber beherrschbaren Zustand bringt.
+    //
+    // ACHTUNG fuer alles, was den Strom nehmen will: acPower ist seit
+    // 0.6.23 ABGELEITET. stepDiesel() bildet es jeden Rechenschritt neu aus
+    // gridPower und dieselRun, ein direkt gesetztes acPower ist im naechsten
+    // Takt wieder weg. Wer das Netz nehmen will, nimmt gridPower.
+    s.gridPower = true;
     s.acPower = true;
     s.dcPower = true;
+
+    // Notstromdiesel. dieselCmd ist die Bedienerabsicht, dieselRun der
+    // laufende Diesel -- die beiden fallen während des Anlaufs auseinander,
+    // und dieselT misst, wie weit er damit ist.
+    s.dieselCmd = false;
+    s.dieselT = 0;
+    s.dieselRun = false;
 
     // Notkondensator. icDemand ist die Bedienerabsicht (Automatik/Auf per
     // Default), icOpen die tatsächliche Ventilstellung -- die beiden fallen
@@ -315,6 +389,8 @@ export const hooks = {
 
     // Löschwassereinspeisung: von Hand, ohne jede Elektronik.
     s.fireInjOn = false;
+    s.fireWaterKg = sp.fireInj.supplyKg;
+    s.depressurize = false;
 
     // Sicherheitsbehälter.
     s.contMass = 0;
@@ -322,8 +398,13 @@ export const hooks = {
     s.contVentOpen = false;
     s.contFailed = false;
 
+    // Fuellstand der Referenzsaeule (1 = voll). Siehe spec.refLeg.
+    s.refLegFill = 1;
+
     // Wasserstoff aus der Hüllrohrreaktion, in kg (grobe Näherung).
     s.h2Mass = 0;
+    s.h2BuildingMass = 0;
+    s.h2ProducedKg = 0;
     s.h2Exploded = false;
 
     ctx.recircPump = new Pump({
@@ -462,52 +543,14 @@ export const hooks = {
   coreCoolant(s, sp, ctx, qCoolKW, h) {
     const Tsat = tsat(s.p_dome);
 
-    // Kernfreilegung: solange genug Wasser im Behaelter steht, siedet der
-    // Kern und haelt seine Austrittstemperatur an der Saettigung fest, ganz
-    // gleich wie klein der Durchsatz ist -- Sieden ist ein sehr guter
-    // Waermeuebergang. Faellt der Fuellstand unter die obere Kernkante,
-    // kuehlt dort nur noch vorbeistroemender Dampf, und der Waermeuebergang
-    // bricht auf einen Bruchteil ein. covered nutzt die RAW-Masse (M_rpv),
-    // nicht die auf 0..1 gestauchte Anzeigegroesse L_rpv -- die ist am
-    // unteren Ende laengst bei 0, waehrend physisch noch Wasser im
-    // Ringraum steht.
-    const covered = clamp((s.M_rpv - sp.vessel.mUncoverFloor) /
-      (sp.vessel.mUncoverStart - sp.vessel.mUncoverFloor), 0, 1);
-    // Bewusst KEIN Ziel aus qCoolKW hergeleitet: qCoolKW ist bereits das
-    // Ergebnis von UA_cc·(T_cl−T_cool) aus dem VORIGEN Schritt -- ein Ziel,
-    // das davon selbst wieder abhaengt, pendelt sich zirkulaer irgendwo
-    // unterhalb der Grenztemperatur ein, sobald T_cl an T_cool heranrueckt,
-    // und die Nachzerfallswaerme "findet" scheinbar von selbst ein
-    // Gleichgewicht, das keins ist. dryOverheatK ist stattdessen ein fester
-    // Wert: voll frei liegend strebt die Kuehlmitteltemperatur so weit über
-    // die Saettigung, dass sie über die Huellrohrgrenze hinaustreibt --
-    // genau das Szenario, das Fukushima-1 zeigt: kein Leistungsausflug,
-    // reiner Kuehlungsverlust.
-    const dryTarget = Tsat + sp.vessel.dryOverheatK;
-    const coolTarget = Tsat + (1 - covered) * (dryTarget - Tsat);
-    // Bedeckt reagiert die Saettigungstemperatur sofort (Sieden ist traege-
-    // frei), unbedeckt braucht die Dampfkuehlung ein paar Minuten, um sich
-    // einzustellen -- beides ueber dieselbe relax()-Zeitkonstante, nur nach
-    // covered gewichtet.
-    s.T_co = relax(s.T_co, coolTarget, h, 3.0 + (1 - covered) * 180);
+    // No temperature target above saturation: heat originates in the fuel.
+    // The cladding transfer coefficient handles loss of wetted area.
+    s.T_co = relax(s.T_co, Tsat, h, 3);
     s.T_mod = Tsat;
-    // Eintritt: die Unterkuehlung folgt der Mischung aus Umwaelzwasser und
-    // Speisewasser, aber traege -- der Weg durch den Fallraum dauert. Sobald
-    // der Kern ueberwiegend frei liegt, verliert "Eintritt" seinen Sinn --
-    // dieselbe Dampfkuehlung erfasst dann den ganzen Kanal, Ein- und Austritt
-    // gleichermassen. Ohne das hier wuerde die generische T_cool =
-    // 0,5·(T_ci+T_co) der Motorengine die Kernfreilegung zur Haelfte wieder
-    // wegmitteln, weil T_ci stur an der Saettigung haengen bliebe.
-    s.T_ci = relax(s.T_ci, covered > 0.5 ? (Tsat - s.dTsub) : coolTarget, h, 3.0 + (1 - covered) * 180);
+    s.T_ci = relax(s.T_ci, Tsat - s.dTsub, h, 3);
 
     const W = Math.max(s.W_core, 1);
     const qSub = W * sp.coolant.cp * Math.max(Tsat - s.T_ci, 0);
-    // Bewusst NICHT mit covered multipliziert: der noch bedeckte Teil des
-    // Kerns siedet unabhaengig davon weiter, wieviel oben schon frei liegt --
-    // sonst wuerde ein einsetzender Kernfreilegung den Massenverlust
-    // druckseitig wieder ABBREMSEN, statt ihn (wie in Wirklichkeit) unbeirrt
-    // weiterlaufen zu lassen, waehrend zusaetzlich die Huellrohrtemperatur
-    // ueber T_co/dryTarget hochlaeuft.
     const qBoil = Math.max(qCoolKW - qSub, 0);
     s.x_e = clamp(qBoil / (W * hfg(s.p_dome)), 0, 1);
 
@@ -529,7 +572,16 @@ export const hooks = {
     s.alphaBar = ctx.voidLag.step(clamp(_void(s, sp) - collapse, 0, 0.95), h);
   },
 
+  heatTransfer(s, sp) {
+    return transferFraction(_cpr(s, sp, { load: s.P_th / sp.P0_th }),
+      coverage(s.M_rpv, sp.vessel.mUncoverStart, sp.vessel.mUncoverFloor));
+  },
+
   stepLoop(s, sp, ctx, dt) {
+    stepDiesel(s, sp, dt);
+    if (!s.acPower) s.W_fw = Math.min(fireInjectionFlow(s, sp), s.fireWaterKg / dt);
+    s.W_fw = Math.min(s.W_fw, Math.max(0, (sp.vessel.massMax - s.M_rpv) / dt));
+    if (!s.acPower) s.fireWaterKg = Math.max(0, s.fireWaterKg - s.W_fw * dt);
     // ── Umwaelzstrom ────────────────────────────────────────────────────────
     ctx.recircPump.demand = clamp(s.recircDmd, 0, sp.recirc.max);
     ctx.recircPump.step(dt);
@@ -563,14 +615,20 @@ export const hooks = {
 
     const dp = Math.max(s.p_dome - s.p_cond, 0);
     const rhoS = rhog(s.p_dome);
-    const W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dp);
-    const W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dp);
+    let W_t = ctx.govValve.flow(sp.turbine.Cv, rhoS, dp);
+    let W_bp = ctx.bypassValve.flow(sp.turbine.bypassCv, rhoS, dp);
 
     // Sicherheitsventile: blasen in die Kondensationskammer, nicht zur Turbine.
-    s.srv = s.p_dome > 78 ? clamp((s.p_dome - 78) / 3, 0, 1) : 0;
-    const W_srv = s.srv * 900;
-
-    s.W_steam = W_t + W_bp + W_srv;
+    s.srv = s.depressurize && s.dcPower ? 1
+      : (s.p_dome > 78 ? clamp((s.p_dome - 78) / 3, 0, 1) : 0);
+    let W_srv = s.srv * 900;
+    const requested = W_t + W_bp + W_srv;
+    const actual = availableSteam({ mass: s.M_rpv, feed: s.W_fw, requested, dt,
+      pressure: s.p_dome, cp: sp.vessel.cp, metalCapacity: sp.vessel.mass * sp.vessel.cp * 0.05,
+      heat: s.coolantHeatKJ / dt, feedEnthalpy: s.acPower ? H_FW : 4.2 * 20 });
+    const scale = requested > 0 ? actual / requested : 0;
+    W_t *= scale; W_bp *= scale; W_srv *= scale;
+    s.W_steam = actual;
 
     // ── Notkondensator ──────────────────────────────────────────────────────
     // Automatik will ihn offen, sobald isoliert wurde (SCRAM + Frischdampf
@@ -599,11 +657,13 @@ export const hooks = {
     // Erzeugt wird, was im Kern verdampft; abgefuehrt, was die Ventile UND
     // der Notkondensator lassen. Der IC zaehlt nur hier, nicht im
     // Fuellstand weiter unten -- sein Kondensat bleibt im eigenen Kreislauf.
-    const W_gen = s.x_e * s.W_core;
-    const W_out = s.W_steam + W_ic;
-    const C_p = (sp.vessel.mass * sp.vessel.cp) / Math.max(dpdT(s.p_dome), 1e-6);
-    const dh = Math.max(hg(s.p_dome) - H_FW, 1);
-    const pNew = clamp(s.p_dome + (((W_gen - W_out) * dh) * dt) / C_p, 1, 110);
+    const balance = saturatedPressure({ pressure: s.p_dome, mass: s.M_rpv,
+      cp: sp.vessel.cp, metalCapacity: sp.vessel.mass * sp.vessel.cp * 0.05,
+      heat: s.coolantHeatKJ / dt, feed: s.W_fw,
+      feedEnthalpy: s.acPower ? H_FW : 4.2 * 20, steam: s.W_steam,
+      extraCooling: W_ic * hfg(s.p_dome), dt });
+    const pNew = balance.pressure;
+    s.pressureClipKJ = balance.rejectedKJ;
     // Die geglaettete Aenderungsrate treibt den Blasenkollaps im Kern.
     ctx.dpLag.step((pNew - ctx.pPrev) / dt, dt);
     ctx.pPrev = pNew;
@@ -629,30 +689,47 @@ export const hooks = {
     }
     if (s.contFailed) s.contMass = Math.max(0, s.contMass - sp.containment.ventCv * 2 * dt);
 
+    // ── Referenzschenkel der Fuellstandsmessung ─────────────────────────────
+    // Behaelteratmosphaere heisser als die Saettigung zum Reaktordruck: die
+    // Wassersaeule der Messung siedet aus. Umgekehrt fuellt das Kondensations-
+    // gefaess sie von selbst wieder auf. Der Fehler wirkt nur auf die ANZEIGE
+    // (siehe derived()), nicht auf s.L_rpv -- die Meldung "Fuellstand niedrig"
+    // kommt weiterhin am echten Stand, sonst haette der Spieler bei leerem
+    // Schenkel ueberhaupt keinen Hinweis mehr.
+    const dTleg = tsat(s.pCont) - tsat(Math.max(s.p_dome, 0.05)) - sp.refLeg.dTmin;
+    s.refLegFill = dTleg > 0
+      ? Math.max(0, s.refLegFill - (dTleg / sp.refLeg.dTfull) * (dt / sp.refLeg.dryoutS))
+      : Math.min(1, s.refLegFill + dt / sp.refLeg.refillS);
+
     // ── Wasserstoff ─────────────────────────────────────────────────────────
-    // Zirkon-Wasser-Reaktion oberhalb von 1200 °C Huellrohrtemperatur --
-    // lange vor der eigentlichen Kernzerstoerung ueber die Enthalpie.
-    if (s.T_cl > sp.h2.onsetK) {
-      s.h2Mass += sp.h2.rate * (s.T_cl - sp.h2.onsetK) * dt;
+    // Simplified bounded oxidation source and two gas compartments. The
+    // inert containment is not the oxygen-containing reactor building.
+    const produced = Math.min(Math.max(0, 1000 - s.h2ProducedKg),
+      Math.max(0, sp.h2.rate * (s.T_cl - sp.h2.onsetK) * dt),
+      Math.max(0, s.M_rpv + (s.W_fw - s.W_steam) * dt) / 9);
+    s.h2ProducedKg += produced;
+    s.h2Mass += produced;
+    s.M_rpv -= produced * 9;
+    // Controlled vent goes to the stack. Overpressure/failure can leak gas
+    // into the building independently of the vent command.
+    const ventRate = s.contVentOpen ? 0.02 : 0;
+    const leakRate = s.contFailed || s.pCont > sp.containment.designLimit * 0.7 ? 0.002 : 0;
+    const removed = s.h2Mass * (1 - Math.exp(-(ventRate + leakRate) * dt));
+    if (ventRate + leakRate > 0) {
+      s.h2Mass -= removed;
+      s.h2BuildingMass += removed * leakRate / (ventRate + leakRate);
     }
-    if (!s.h2Exploded && s.contVentOpen && s.h2Mass > 25) {
-      // Der Wasserstoff geht beim Fukushima-Unfall nicht kontrolliert durch
-      // den Kamin ab, sondern sucht sich seinen Weg zurueck ins
-      // Reaktorgebaeude -- genau beim Venten wird er dorthin gedrueckt.
+    // 10,000 m3 air compartment, ambient H2 density 0.0838 kg/m3.
+    // Ignition is assumed once a flammable mixture forms (game abstraction).
+    if (!s.h2Exploded && s.h2BuildingMass / (10000 * 0.0838) >= 0.04) {
       s.h2Exploded = true;
       ctx.log.push({ t: s.t_sim, key: 'event_h2_explosion', severity: 3 });
     }
 
     // ── Fuellstand ──────────────────────────────────────────────────────────
     //
-    // Der Behaelter hat eine Obergrenze. Vorher stand hier nur eine UNTERE
-    // (20 000 kg), und das Ergebnis war absurd: bei abgesperrtem Frischdampf
-    // speiste der Regler mit 1724 kg/s nach, waehrend nur noch 900 kg/s ueber
-    // das Sicherheitsventil abgingen -- ueber vierzig Minuten wuchs das
-    // Inventar auf 2 056 144 kg, das Elffache des Nennwerts. Voll ist voll:
-    // was darueber hinaus gefoerdert wird, geht mit dem Dampf weiter, es
-    // staut sich nicht im Behaelter.
-    s.M_rpv = clamp(s.M_rpv + (s.W_fw - s.W_steam) * dt, 20000, sp.vessel.massMax);
+    // Actual feed is capped before the balance; no mass is discarded.
+    s.M_rpv = Math.max(0, s.M_rpv + (s.W_fw - s.W_steam) * dt);
 
     const Ltrue = clamp(0.5 + (s.M_rpv - sp.vessel.mass) / sp.vessel.massSpan, 0, 1);
     // Schrumpfen und Quellen ist hier staerker als beim Druckwasserreaktor:
@@ -671,13 +748,16 @@ export const hooks = {
     // klebte.
     const swell = clamp(sp.vessel.shrinkSwell * (sp.vessel.p0 - s.p_dome) / sp.vessel.p0,
       -sp.vessel.swellMax, sp.vessel.swellMax);
-    s.L_rpv = clamp(Ltrue + swell, 0, 1);
+    s.L_rpv = clamp(Ltrue + coverage(s.M_rpv, sp.vessel.mass) * swell, 0, 1);
 
     // ── Unterkuehlung am Kerneintritt ───────────────────────────────────────
     s.dTsub = _subcooling(s, sp);
 
     // ── Turbine und Netz ────────────────────────────────────────────────────
-    s.p_cond = clamp(psat(sp.condenser.T_cw + sp.condenser.pinch
+    // s.T_cw statt sp.condenser.T_cw: die Kuehlwassertemperatur gehoert dem
+    // Lauf, nicht der Bauart (Jahreszeit, siehe game/season.js). Der Wert aus
+    // der Anlagendatei ist weiterhin ihr Anfangswert.
+    s.p_cond = clamp(psat(s.T_cw + sp.condenser.pinch
       + (sp.condenser.rise || 12) * clamp(s.W_steam / sp.vessel.W_steam0, 0, 1.2)), 0.02, 1.5);
     const wSpec = (hg(s.p_dome) - hf(s.p_cond)) * sp.turbine.workFactor;
     s.P_e = s.breaker && !s.turbineTripped ? (W_t * wSpec) / 1000 : 0;
@@ -687,11 +767,14 @@ export const hooks = {
     if (!s.scram.active && ctx.rodCtl.auto) {
       s.rodDmd[0] = clamp(s.rodDmd[0] + ctx.rodCtl.step(s.T_mod, 1, dt), 0, 1);
     }
-    // Ohne Wechselstrom laufen weder Speisewasserpumpen noch ihre Regelung --
-    // was dann noch Wasser bringt, ist ausschliesslich die Loeschwasser-
-    // einspeisung, motorlos und ohne jede Elektronik.
+    // Diesel injection needs low pressure, but no grid AC.
     s.W_fw = s.acPower ? ctx.fwCtl.step(s.L_rpv, s.W_steam, dt)
-      : (s.fireInjOn ? sp.fireInj.W0 : 0);
+      : fireInjectionFlow(s, sp);
+    // Am Notstromdiesel haengt die Notspeisung, nicht die Hauptspeisepumpe.
+    // Der Regler darf weiter regeln -- er kommt nur nicht mehr so weit. Ohne
+    // diesen Deckel liefe die Anlage nach dem Dieselstart wieder auf
+    // Vollast, und die Störung waere mit einem Knopf erledigt.
+    if (!s.gridPower && s.dieselRun) s.W_fw = Math.min(s.W_fw, sp.diesel.feedMax);
     // Das Regelventil haelt den Druck, nicht die Leistung.
     s.gov = ctx.govCtl.step(s.P_e, s.P_demand, s.p_dome, dt);
     s.bypass = s.p_dome > sp.vessel.p0 + 4
@@ -740,23 +823,38 @@ export const hooks = {
       { key: 'state_closed', value: '0' },
     ], '1', (v) => { s.msiv = Number(v); });
 
-    // Notkondensator: der Bediener stellt nur die ABSICHT (icDemand), die
-    // tatsächliche Ventilstellung braucht zusätzlich Gleichstrom. Genau
-    // deshalb wird die Anzeige unten bewusst NICHT mehr nachgeführt, sobald
-    // der Gleichstrom fehlt -- sie zeigt dann die letzte Stellung, die noch
-    // gemeldet wurde, nicht die echte. Das ist die Meldung, die es 2011 nie
-    // gab, absichtlich als Leerstelle nachgebildet statt als Alarmkachel.
+    // Buttons show the request; diagnostics separately show feedback loss.
     const ic = kit.buttonGroup('ctl_ic', [
       { key: 'state_open', value: '1' },
       { key: 'state_closed', value: '0' },
     ], '1', (v) => { s.icDemand = Number(v); });
 
-    // Löschwassereinspeisung: einzige Wasserquelle, die auch ohne jeden
-    // Strom funktioniert.
+    // Enable the diesel pump; actual flow still depends on pressure.
     const fireInj = kit.buttonGroup('ctl_fire_inj', [
       { key: 'state_open', value: '1' },
       { key: 'state_closed', value: '0' },
     ], '0', (v) => { s.fireInjOn = !!Number(v); });
+
+    const depressurize = kit.buttonGroup('ctl_depressurize', [
+      { key: 'state_open', value: '1' }, { key: 'state_closed', value: '0' },
+    ], '0', (v) => { s.depressurize = !!Number(v); });
+    const dc = kit.buttonGroup('ctl_emergency_dc', [
+      { key: 'state_on', value: '1' }, { key: 'state_off', value: '0' },
+    ], '1', (v) => { s.dcPower = !!Number(v); });
+    // Direkt hinter der Batterie, weil der Anlasser an ihr haengt: die
+    // Reihenfolge auf dem Schirm ist die Reihenfolge der Handgriffe.
+    const diesel = kit.buttonGroup('ctl_diesel', [
+      { key: 'state_on', value: '1' }, { key: 'state_off', value: '0' },
+    ], '0', (v) => { s.dieselCmd = !!Number(v); });
+    // Eigene Anzeige fuer den Anlauf: ein Knopf, der auf "ein" steht,
+    // waehrend noch nichts anliegt, waere sonst nicht von einem kaputten zu
+    // unterscheiden. Sie zeigt die Sekunden bis zur Spannung und danach den
+    // tragenden Diesel.
+    const dieselState = kit.indicator({ labelKey: 'val_diesel', digits: 0,
+      read: () => (s.dieselRun ? 0 : Math.max(0, sp.diesel.startS - s.dieselT)),
+      unitKey: 'unit_seconds' });
+    const fireSupply = kit.indicator({ labelKey: 'val_fire_water', unitKey: 'unit_t',
+      digits: 1, read: () => s.fireWaterKg / 1000 });
 
     // Sicherheitsbehälter-Venten: kontrollierte Freisetzung, um einen
     // unkontrollierten Bruch zu verhindern.
@@ -771,12 +869,14 @@ export const hooks = {
       {
         mount: 'safety',
         node: ic.node,
-        // Kein Update, solange kein Gleichstrom da ist -- die Anzeige friert
-        // auf dem letzten bekannten Stand ein, statt die wahre (geschlossene)
-        // Stellung zu verraten.
-        set: (st) => { if (st.dcPower) ic.set(String(st.icDemand)); },
+        set: (st) => ic.set(String(st.icDemand)),
       },
       { mount: 'safety', node: fireInj.node, set: (st) => fireInj.set(st.fireInjOn ? '1' : '0') },
+      { mount: 'safety', node: depressurize.node, set: (st) => depressurize.set(st.depressurize ? '1' : '0') },
+      { mount: 'safety', node: dc.node, set: (st) => dc.set(st.dcPower ? '1' : '0') },
+      { mount: 'safety', node: diesel.node, set: (st) => diesel.set(st.dieselCmd ? '1' : '0') },
+      { mount: 'safety', node: dieselState.node, set: () => dieselState.set() },
+      { mount: 'safety', node: fireSupply.node, set: () => fireSupply.set() },
       { mount: 'safety', node: contVent.node, set: (st) => contVent.set(st.contVentOpen ? '1' : '0') },
     ];
   },
@@ -787,12 +887,19 @@ export const hooks = {
   },
 
   derived(s, sp, ctx, base) {
-    // Fuellstandsanzeige braucht wie der Notkondensator Gleichstrom (Referenz-
-    // leg-Messung) -- ohne ihn friert sie auf dem letzten echten Wert ein,
-    // waehrend der Kern in Wirklichkeit weiter leerlaeuft. Genau das hat 2011
-    // dazu gefuehrt, dass die Warte den Fuellstand fuer laenger stabil hielt,
-    // als er es war.
-    ctx.displayLevel = s.dcPower ? s.L_rpv : (ctx.displayLevel ?? s.L_rpv);
+    // Fuellstandsanzeige braucht wie der Notkondensator Gleichstrom -- ohne
+    // ihn friert sie auf dem letzten Wert ein, waehrend der Kern in
+    // Wirklichkeit weiter leerlaeuft. Genau das hat 2011 dazu gefuehrt, dass
+    // die Warte den Fuellstand fuer laenger stabil hielt, als er es war.
+    //
+    // Der zweite Fehler ist der gemeinere und der historisch entscheidende:
+    // ein ausgekochter Referenzschenkel (s.refLegFill, siehe stepLoop) laesst
+    // die Anzeige ZU HOCH lesen. In Fukushima-1 stand sie damit ueber der
+    // Kernoberkante, waehrend der Kern schon frei lag -- die Warte sah keinen
+    // Grund einzuspeisen. Der Fehler steht additiv auf dem echten Stand und
+    // wird eingefroren wie der Wert selbst, sobald der Gleichstrom fehlt.
+    const indicated = clamp(s.L_rpv + sp.refLeg.biasMax * (1 - s.refLegFill), 0, 1);
+    ctx.displayLevel = s.dcPower ? indicated : (ctx.displayLevel ?? indicated);
     return {
       p_sg: s.p_dome,
       L_sg: ctx.displayLevel,
@@ -811,6 +918,9 @@ export const hooks = {
       dnbr: _cpr(s, sp, base),
       shutdownMargin: sp.rodBanks.reduce((a, b, i) => a + b.worth * (1 - s.rod[i]), 0),
       pumpStates: [ctx.recircPump.state],
+      // Siehe pwr.js: unterscheidet ausgefallen (Ereignis, Knopf gesperrt)
+      // von selbst abgeschaltet (Spieler, Knopf bleibt bedienbar).
+      pumpStuckList: [!!ctx.recircPumpStuck],
       pCont: s.pCont,
       h2Mass: s.h2Mass,
     };
@@ -824,7 +934,8 @@ function _subcooling(s, sp) {
   const W = Math.max(s.W_core, 1);
   const Wfw = clamp(s.W_fw, 0, W);
   const hSat = hf(s.p_dome);
-  const hMix = (Wfw * H_FW + (W - Wfw) * hSat) / W;
+  const hFeed = s.acPower ? H_FW : 4.2 * 20;
+  const hMix = (Wfw * hFeed + (W - Wfw) * hSat) / W;
   return clamp((hSat - hMix) / sp.coolant.cp, 0, 60);
 }
 
@@ -867,4 +978,42 @@ function _cpr(s, sp, base) {
   return clamp(1.9 * Math.pow(flow, 0.5) * Math.pow(q, 0.35) / power, 0, 20);
 }
 
+/**
+ * Notstromdiesel: anfordern, anlaufen, tragen.
+ *
+ * Steht hier und nicht in game/events.js, weil es kein Ereignis ist,
+ * sondern Anlagentechnik -- dieselbe Trennung wie beim Instandhaltungstrupp
+ * (game/repairs.js): dort haengt die Reparatur am Anlagenzustand statt am
+ * ausloesenden Ereignis, hier haengt der Strom an der Maschine statt an der
+ * Störung, die ihn genommen hat.
+ *
+ * Der Anlasser braucht Gleichstrom. Nach einem Station-Blackout heisst das:
+ * erst die Ersatzbatterien (ctl_emergency_dc), dann der Diesel -- zwei
+ * Handgriffe in genau dieser Reihenfolge, und beide stehen schon auf dem
+ * Schirm. Ein LAUFENDER Diesel braucht die Batterie nicht mehr; er erregt
+ * sich selbst, und ihn beim naechsten Spannungseinbruch wieder ausgehen zu
+ * lassen waere eine Strafe ohne Vorbild.
+ */
+function stepDiesel(s, sp, dt) {
+  if (s.destroyed || !s.dieselCmd) {
+    s.dieselT = 0;
+    s.dieselRun = false;
+  } else if (!s.dieselRun) {
+    // Faellt die Batterie waehrend des Anlaufs weg, faengt er von vorne an.
+    // Der Anlasser dreht dann eben nicht weiter, und ein halb angelassener
+    // Diesel ist kein Zustand, den man aufheben koennte.
+    s.dieselT = s.dcPower ? s.dieselT + dt : 0;
+    if (s.dieselT >= sp.diesel.startS) s.dieselRun = true;
+  }
+  // EINE Stelle, die acPower setzt -- sonst muesste jede andere wissen, ob
+  // gerade das Netz oder der Diesel traegt.
+  s.acPower = s.gridPower || s.dieselRun;
+}
+
 export default { spec, hooks };
+
+/** Diesel pump curve, no AC grid required; zero flow above shutoff head. */
+export function fireInjectionFlow(s, sp = spec) {
+  if (!s.fireInjOn || !(s.fireWaterKg > 0)) return 0;
+  return sp.fireInj.W0 * Math.sqrt(clamp(1 - Math.max(s.p_dome - 1, 0) / (sp.fireInj.shutoffBar - 1), 0, 1));
+}

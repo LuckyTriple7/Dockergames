@@ -5,16 +5,55 @@
 // neuer Reaktortyp die Anzeige erweitern kann, ohne dass main.js wächst.
 
 import { $, el, setText, setAttr } from './dom.js';
-import { t, num, clock, has } from './i18n.js';
+import { t, num, clock, clockOfDay, has } from './i18n.js';
 import { gauge, bar, reactivityBars } from './gauges.js';
-import { TrendRecorder } from './trend.js';
+import { buildTrends } from './trend.js';
 import { Annunciator, Horn } from './annunciator.js';
+import { PulseLoop } from './music.js';
 import {
-  autoSwitch, station, slider, buttonGroup, jogButtons, pumpRow,
+  autoSwitch, station, slider, buttonGroup, indicator, jogButtons, pumpRow, controlsBlocked,
 } from './controls.js';
 import { MIMICS } from './mimic.js';
+import { runHelper } from '../game/helper.js';
+import { record } from '../game/coreActions.js';
+import { recordingKit } from '../game/replayKit.js';
+import { noteAction } from '../game/learning.js';
+import { buildDiagnostics, buildRbmkFeedDiagnostics } from './diagnostics.js';
 
 const U = (key) => ' ' + t(key);
+
+/**
+ * Hilfetext in den DOM setzen -- eine winzige, selbst geschriebene Teilmenge
+ * von Markdown statt roher innerHTML: Leerzeile trennt Absaetze, "### " macht
+ * eine eigene Zwischenueberschrift daraus, "**..**" wird fett. Reicht fuer
+ * die Instrumenten- und Meldetafel-Hilfetexte (siehe locales/*.json) und baut
+ * echte Knoten statt eines HTML-Strings -- kein Escaping noetig, keine
+ * Einschleusung moeglich, selbst wenn ein Text mal spitze Klammern enthaelt.
+ */
+function renderHelpText(node, text) {
+  node.replaceChildren();
+  for (const block of text.split('\n\n')) {
+    if (block.startsWith('### ')) {
+      node.append(el('p.rs-help-h', { text: block.slice(4) }));
+      continue;
+    }
+    const p = document.createElement('p');
+    const lines = block.split('\n');
+    lines.forEach((line, i) => {
+      if (i > 0) p.append(document.createElement('br'));
+      for (const part of line.split(/(\*\*[^*]+\*\*)/g)) {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          const strong = document.createElement('strong');
+          strong.textContent = part.slice(2, -2);
+          p.append(strong);
+        } else if (part) {
+          p.append(document.createTextNode(part));
+        }
+      }
+    });
+    node.append(p);
+  }
+}
 
 /**
  * Primaerdruck-Ampel fuer die Statuszeile -- dieselben Zahlen wie die
@@ -42,7 +81,7 @@ function coreFlowSeverity(id, kgs) {
   return undefined;
 }
 
-export function buildPanels(engine, render, geiger) {
+export function buildPanels(engine, render, helperEnabled) {
   const s = engine.state;
   const sp = engine.spec;
   const ctx = engine.ctx;
@@ -68,13 +107,13 @@ export function buildPanels(engine, render, geiger) {
   const gCore = [
     { g: gauge({ label: t('status_power_th'), min: 0, max: 120, digits: 1, unitKey: 'unit_percent',
         bands: [[0, 100, 'ok'], [100, 110, 'warn'], [110, 120, 'danger']] }),
-      get: (d) => d.power_th_pct },
+      get: (d) => d.power_th_pct, key: 'gauge_power_th_help' },
     { g: gauge({ label: t('val_fuel_temp'), min: 200, max: 2000, digits: 0, unitKey: 'unit_celsius',
         bands: [[200, 1400, 'ok'], [1400, 1700, 'warn'], [1700, 2000, 'danger']] }),
-      get: (d, st) => st.T_f - 273.15 },
+      get: (d, st) => st.T_f - 273.15, key: 'gauge_fuel_temp_help' },
     { g: gauge({ label: t('val_reactivity'), min: -500, max: 500, digits: 0, unitKey: 'unit_pcm',
         bands: [[-500, -200, 'warn'], [-200, 200, 'ok'], [200, 500, 'danger']] }),
-      get: (d) => d.rho_pcm },
+      get: (d) => d.rho_pcm, key: 'gauge_reactivity_help' },
   ];
   // Leeren, bevor angehaengt wird: buildPanels() laeuft bei jedem Neustart
   // erneut (siehe boot()), und ohne das hier blieben die Instrumente der
@@ -96,13 +135,13 @@ export function buildPanels(engine, render, geiger) {
   const gPrim = [
     { g: gauge({ label: t('status_pressure'), min: pg.min, max: pg.max, digits: 1, unitKey: 'unit_bar',
         bands: pg.bands }),
-      get: (d, st) => st.p_prim },
+      get: (d, st) => st.p_prim, key: 'gauge_prim_pressure_help' },
     { g: gauge({ label: t('val_subcooling'), min: 0, max: 40, digits: 1, unitKey: 'unit_kelvin',
         bands: [[0, 8, 'danger'], [8, 15, 'warn'], [15, 40, 'ok']] }),
-      get: (d) => d.subcooling },
+      get: (d) => d.subcooling, key: 'gauge_subcooling_help' },
     { g: gauge({ label: t(sp.marginKey || 'val_dnbr'), min: 1, max: 4, digits: 2,
         bands: [[1, 1.3, 'danger'], [1.3, 1.8, 'warn'], [1.8, 4, 'ok']] }),
-      get: (d) => d.dnbr },
+      get: (d) => d.dnbr, key: 'gauge_dnbr_help' },
   ];
   const primBox = $('#rs-prim-gauges');
   primBox.replaceChildren();
@@ -111,13 +150,13 @@ export function buildPanels(engine, render, geiger) {
   const gSec = [
     { g: gauge({ label: t('val_sg_press'), min: 40, max: 100, digits: 1, unitKey: 'unit_bar',
         bands: [[40, 55, 'warn'], [55, 76, 'ok'], [76, 100, 'danger']] }),
-      get: (d) => d.p_sg },
+      get: (d) => d.p_sg, key: 'gauge_sg_press_help' },
     { g: gauge({ label: t('val_sg_level'), min: 0, max: 100, digits: 0, unitKey: 'unit_percent',
         bands: [[0, 25, 'danger'], [25, 40, 'warn'], [40, 70, 'ok'], [70, 100, 'warn']] }),
-      get: (d) => d.L_sg * 100 },
+      get: (d) => d.L_sg * 100, key: 'gauge_sg_level_help' },
     { g: gauge({ label: t('val_generator'), min: 0, max: sp.P0_e * 1.15, digits: 0, unitKey: 'unit_mwe',
         bands: [[0, sp.P0_e, 'ok'], [sp.P0_e, sp.P0_e * 1.15, 'warn']] }),
-      get: (d, st) => st.P_e },
+      get: (d, st) => st.P_e, key: 'gauge_generator_help' },
   ];
   // Sicherheitsbehälterdruck stand bisher nur als Zeile unter "Sicherheits-
   // systeme" -- kein Rundinstrument wie jeder andere überwachte Druck. Nur
@@ -128,7 +167,7 @@ export function buildPanels(engine, render, geiger) {
       g: gauge({ label: t('val_cont_press'), min: 0, max: cont.designLimit * 1.15, digits: 2, unitKey: 'unit_bar',
         bands: [[0, cont.designLimit * 0.7, 'ok'], [cont.designLimit * 0.7, cont.designLimit * 0.9, 'warn'],
           [cont.designLimit * 0.9, cont.designLimit * 1.15, 'danger']] }),
-      get: (d, st) => st.pCont,
+      get: (d, st) => st.pCont, key: 'gauge_cont_press_help',
     });
   }
   const secBox = $('#rs-sec-gauges');
@@ -136,7 +175,15 @@ export function buildPanels(engine, render, geiger) {
   for (const x of gSec) secBox.append(x.g.node);
 
   // ── Stabstellungen ─────────────────────────────────────────────────────────
-  const rodBars = sp.rodBanks.map((b) => bar({ label: t('ctl_rod_bank_' + b.id) }));
+  // fromBelow kommt aus der Anlagendatei, nicht aus einer Sonderregel hier:
+  // beim RBMK fahren die 24 verkuerzten Staebe (USP) von unten ein, alle
+  // anderen von oben (siehe plants/rbmk.js: rodBanks). Der Balken zeichnet
+  // die Richtung, statt sie in die Beschriftung zu schreiben.
+  const rodBars = sp.rodBanks.map((b) => bar({
+    label: t('ctl_rod_bank_' + b.id),
+    fromBelow: !!b.fromBelow,
+    title: has('ctl_rod_bank_' + b.id + '_title') ? t('ctl_rod_bank_' + b.id + '_title') : null,
+  }));
   const rodsBox = $('#rs-rods');
   rodsBox.replaceChildren(el('div.rs-bars', null, rodBars.map((r) => r.node)));
 
@@ -144,6 +191,13 @@ export function buildPanels(engine, render, geiger) {
   const rhoIds = engine.reactivity.parts.map((p) => p.id).filter((id) => id !== 'excess');
   const rho = reactivityBars([...rhoIds, 'total']);
   $('#rs-rho').replaceChildren(rho.node);
+  // Vollausschlag der Balken: Standard 3000 pcm (siehe reactivityBars()) traf
+  // beim RBMK genau den Gleichgewichtswert der Xenon-Vergiftung im
+  // Volllastbetrieb (xenon_worth_pcm) -- der Balken stand von Anfang an am
+  // Anschlag, ganz ohne Störung, und hätte einen echten Xenon-Brunnen (siehe
+  // Nachtschicht-Szenario) gar nicht mehr zeigen können. 50 % Reserve über dem
+  // größten bekannten Einzelwert dieses Typs, damit oben noch Luft bleibt.
+  const rhoScale = Math.max(3000, (sp.feedback.xenon_worth_pcm || 0) * 1.5);
 
   // ── Bedienung ──────────────────────────────────────────────────────────────
   // Welcher Regler die Stäbe führt, ist typabhängig: beim Druckwasserreaktor
@@ -151,42 +205,43 @@ export function buildPanels(engine, render, geiger) {
   // Siedewasserreaktor gar keiner -- dort ist der Umwälzstrom das Stellglied.
   // Deshalb zeigt der Schalter auf ctx.rodAutoCtl und nicht fest auf ctx.rodCtl.
   const rodCtl = ctx.rodAutoCtl;
+  // Die eigentliche Umschaltlogik (samt RBMK-Sonderfall) steht jetzt in
+  // coreActions.js CORE_ACTIONS.rod_auto -- dieselbe Stelle, die auch die
+  // Server-Nachrechnung (game/replay.js) fuer diese Handlung anspringt.
   const rodAuto = rodCtl
-    ? autoSwitch(sp.rodAutoKey || 'ctl_rod_auto', rodCtl.auto, (v) => {
-        // Stossfrei, wie im Dateikopf von controllers.js versprochen: der
-        // RBMK-Leistungsregler (PowerController) traegt sein setpoint als
-        // festes Feld, einmalig bei Rundenbeginn gesetzt (rbmk.js hooks.init)
-        // und seither nie aktualisiert. Ohne diese Zeile sprang er beim
-        // Einschalten auf den Sollwert von Rundenbeginn zurueck, egal wie weit
-        // die Leistung seither manuell oder durch Xenon gewandert war -- bei
-        // niedriger Ist-Leistung zog er dann hart in die falsche Richtung.
-        // RodController (PWR) regelt live auf setpoint(load), hat kein
-        // eingefrorenes Feld und braucht das nicht -- daher der typeof-Test.
-        if (v && typeof rodCtl.setpoint === 'number') rodCtl.setpoint = s.n;
-        rodCtl.auto = v;
-      })
+    ? autoSwitch(sp.rodAutoKey || 'ctl_rod_auto', rodCtl.auto, (v) => record(engine, 'rod_auto', v))
     : null;
-  const rodJog = jogButtons('ctl_rods', (dir) => {
-    if (rodCtl && rodCtl.auto) { rodCtl.auto = false; rodAuto.set(false); }
-    s.rodDmd[0] = Math.max(0, Math.min(1, s.rodDmd[0] + dir * 0.005));
-    if (sp.rodBanksMoveTogether) {
-      for (let i = 1; i < s.rodDmd.length; i++) {
-        s.rodDmd[i] = Math.max(0, Math.min(1, s.rodDmd[i] + dir * 0.005));
-      }
-    }
-  });
+  // Motorengeraeusch der Stabfahrt: pulse() haelt die Schleife am Laufen,
+  // solange jogRod() im Ein-Taktrhythmus (Klick-Wiederholung oder gehaltene
+  // Pfeiltaste) weiter aufgerufen wird, und laesst sie sonst von selbst
+  // auslaufen -- kein eigenes "losgelassen" noetig (siehe PulseLoop).
+  const rodSound = new PulseLoop('game_rods_move.mp3', 0.5);
+  // Eigene Funktion statt Inline-Callback: der Tastaturkurzbefehl (Strg+Pfeil
+  // hoch/runter, siehe main.js) fährt dieselben Stäbe, ohne über die Knöpfe zu
+  // gehen -- controlsBlocked() sperrt hier direkt, weil dieser Weg an
+  // jogButtons' eigener Sperre vorbei ruft. Die eigentliche Stabbewegung
+  // steht in coreActions.js CORE_ACTIONS.rod_jog; record() zeichnet die
+  // Handlung auf (siehe game/recorder.js) UND fuehrt sie aus.
+  const jogRod = (dir) => {
+    if (controlsBlocked()) return;
+    rodSound.pulse();
+    record(engine, 'rod_jog', dir);
+    // Sofortige Sichtsynchronisierung -- render.add('text', ...) holt den
+    // Automatik/Hand-Zustand zwar ohnehin jedes Bild nach, aber ohne diese
+    // Zeile stuende der Schalter fuer den Bruchteil einer Sekunde noch auf
+    // Automatik, obwohl CORE_ACTIONS.rod_jog ihn laengst auf Hand gestellt hat.
+    if (rodAuto) rodAuto.set(false);
+  };
+  const rodJog = jogButtons('ctl_rods', jogRod);
   $('#rs-rod-ctl').replaceChildren(
-    ...(rodAuto ? [rodAuto.node] : []), rodJog.node,
-    el('p.rs-ctl-hint', { text: t('hint_rods') }));
+    ...(rodAuto ? [rodAuto.node] : []), rodJog.node);
 
   // Wie viele Pumpen es gibt, sagt der Typ ueber seine Anzeigewerte -- ein
   // Druckwasserreaktor hat vier Hauptkuehlmittelpumpen, ein Siedewasserreaktor
   // eine Umwaelzpumpe. Frueher stand hier ctx.pumps.length, und der
   // Siedewasserreaktor stuerzte beim Aufbau der Oberflaeche ab.
   const pumpStates0 = engine.derive().pumpStates || [];
-  const pumps = pumpRow(pumpStates0.length, (i) => {
-    if (hooks.togglePump) hooks.togglePump(s, sp, ctx, i);
-  });
+  const pumps = pumpRow(pumpStates0.length, (i) => record(engine, 'pump_toggle', i));
   $('#rs-pumps').replaceChildren(pumps.node);
 
   // Turbinenventil und Speisewasser als Regelstationen: Umschalter plus
@@ -196,25 +251,23 @@ export function buildPanels(engine, render, geiger) {
   // Handwert auf Volllast stand.
   const govStation = station({
     labelKey: 'ctl_gov_valve', min: 0, max: 100, step: 1, unitKey: 'unit_percent',
-    hint: 'hint_gov',
     read: () => ctxPos(ctx.govValve) * 100,
-    write: (v) => { ctx.govCtl.manual = v / 100; },
+    write: (v) => record(engine, 'gov_write', v),
     isAuto: () => ctx.govCtl.auto,
-    setAuto: (v) => { ctx.govCtl.auto = v; },
+    setAuto: (v) => record(engine, 'gov_auto', v),
   });
   const fwStation = station({
     labelKey: 'ctl_fw_flow', min: 0, max: 130, step: 1, unitKey: 'unit_percent',
-    hint: 'hint_fw',
     read: () => (s.W_fw / fwNominal(sp)) * 100,
-    write: (v) => { ctx.fwCtl.manual = v / 100; },
+    write: (v) => record(engine, 'fw_write', v),
     isAuto: () => ctx.fwCtl.auto,
-    setAuto: (v) => { ctx.fwCtl.auto = v; },
+    setAuto: (v) => record(engine, 'fw_auto', v),
   });
 
   const demand = slider({
     labelKey: 'ctl_demand', min: 0, max: Math.round(sp.P0_e), step: 5,
     value: Math.round(s.P_demand), digits: 0, unitKey: 'unit_mwe',
-    onInput: (v) => { s.P_demand = v; },
+    onInput: (v) => record(engine, 'demand_set', v),
   });
   // Nach einem Turbinenschnellschluss bleibt der Generator sonst für den
   // Rest des Laufs bei null -- weder s.turbineTripped noch der Regler geben
@@ -222,16 +275,25 @@ export function buildPanels(engine, render, geiger) {
   // immer da, aber erst nach einem Trip wirklich etwas zu drücken.
   const turbineResume = el('button.rs-btn.rs-btn-primary', { type: 'button', disabled: true },
     [t('btn_turbine_resume')]);
-  turbineResume.addEventListener('click', () => engine.resumeTurbine());
+  turbineResume.addEventListener('click', () => { if (!controlsBlocked()) record(engine, 'turbine_resume', null); });
   $('#rs-grid-ctl').replaceChildren(demand.node, turbineResume);
 
   // Typspezifische Bedienung. Ein Druckwasserreaktor braucht Bor und einen
   // Druckhalter, ein Siedewasserreaktor den Umwaelzstrom und die
   // Frischdampf-Absperrung -- beides hier fest zu verdrahten hiesse, die
   // Oberflaeche bei jedem neuen Typ aufzuschneiden.
-  const extras = (hooks.uiControls ? hooks.uiControls(s, sp, ctx, {
-    autoSwitch, station, slider, buttonGroup,
-  }) : []) || [];
+  //
+  // recordingKit() schaltet sich dazwischen: jede Bedienhandlung wird zuerst
+  // aufgezeichnet (siehe game/recorder.js), bevor sie an die echten, DOM
+  // bauenden Fabriken unten durchgereicht wird. game/replay.js benutzt fuer
+  // dieselbe Schnittstelle einen Kit ohne Oberflaeche (captureKit), um genau
+  // diese Handlungen ohne DOM nachzuspielen -- die Mutationslogik selbst
+  // steht deshalb nur hier in der Typdatei, kein zweites Mal.
+  const uiKit = recordingKit(
+    { autoSwitch, station, slider, buttonGroup, indicator },
+    (id, v) => { noteAction(engine, id, v); if (engine.recorder) engine.recorder.record(id, v); },
+  );
+  const extras = (hooks.uiControls ? hooks.uiControls(s, sp, ctx, uiKit) : []) || [];
   const mounts = {
     core: $('#rs-rod-ctl'), primary: $('#rs-pumps'),
     secondary: $('#rs-sec-ctl'), grid: $('#rs-grid-ctl'), chem: $('#rs-chem-ctl'),
@@ -245,41 +307,13 @@ export function buildPanels(engine, render, geiger) {
     target.append(x.node);
   }
 
-  // ── Trendschreiber ─────────────────────────────────────────────────────────
-  const trends = [
-    new TrendRecorder([
-      { id: 'pth', key: 'trend_ch_pth', color: '#64d8ff', get: (st, d) => d.power_th_pct },
-      { id: 'pe', key: 'trend_ch_pe', color: '#3fd67f', get: (st) => (100 * st.P_e) / sp.P0_e },
-      { id: 'dem', key: 'trend_ch_demand', color: '#ffb020', get: (st) => (100 * st.P_demand) / sp.P0_e },
-    ], { titleKey: 'trend_power', fmt: 1 }),
-    new TrendRecorder([
-      { id: 'thot', key: 'trend_ch_thot', color: '#ff7a3d', get: (st) => st.T_co - 273.15 },
-      { id: 'tavg', key: 'trend_ch_tavg', color: '#ffd27a', get: (st, d) => d.T_avg - 273.15 },
-      { id: 'tcold', key: 'trend_ch_tcold', color: '#4b8fd6', get: (st) => st.T_ci - 273.15 },
-    ], { titleKey: 'trend_temp', fmt: 1 }),
-    new TrendRecorder([
-      { id: 'pprim', key: 'trend_ch_pprim', color: '#64d8ff', get: (st) => st.p_prim },
-      { id: 'psg', key: 'trend_ch_psg', color: '#cfd9e2', get: (st, d) => d.p_sg },
-    ], { titleKey: 'trend_pressure', fmt: 1 }),
-    new TrendRecorder([
-      { id: 'rho', key: 'trend_ch_rho', color: '#ff4d4d', get: (st, d) => d.rho_pcm },
-      { id: 'xe', key: 'trend_ch_xenon', color: '#b489ff', get: (st) => st.X * 100 },
-    ], { titleKey: 'trend_reactivity', fmt: 0 }),
-  ];
-  const trendBox = $('#rs-trends');
-  trendBox.replaceChildren(...trends.map((r) => r.node));
+  const diagnostics = buildDiagnostics(engine);
+  $('#rs-pumps').append(diagnostics.node);
+  const rbmkFeedDiagnostics = buildRbmkFeedDiagnostics(engine);
+  if (rbmkFeedDiagnostics) $('#rs-safety-ctl').append(rbmkFeedDiagnostics.node);
 
-  const ranges = [['trend_10min', 600], ['trend_1h', 3600], ['trend_8h', 28800]];
-  const rangeBtns = ranges.map(([key, secs]) => {
-    const b = el('button.rs-gbtn', { type: 'button' }, [t(key)]);
-    b.addEventListener('click', () => {
-      for (const r of trends) r.setRange(secs);
-      for (const other of rangeBtns) other.classList.toggle('rs-on', other === b);
-    });
-    return b;
-  });
-  rangeBtns[0].classList.add('rs-on');
-  $('#rs-trend-range').replaceChildren(...rangeBtns);
+  // ── Trendschreiber ─────────────────────────────────────────────────────────
+  const trendView = buildTrends(engine, render);
 
   // Der Abstand zur Siedekrise heisst je nach Kern anders -- DNBR beim
   // Druckwasserreaktor, CPR bei den beiden siedenden. Die Zeile steht fest im
@@ -335,10 +369,27 @@ export function buildPanels(engine, render, geiger) {
   // erklären sich schon über ihren Text selbst, has() unterscheidet das von
   // einer wirklich fehlenden Übersetzung (die t() sonst als Schlüsselnamen
   // ausgibt -- unlesbar im Fenster).
+  const fixBtn = $('#rs-alarm-help-fix');
+  const fixResult = $('#rs-alarm-fix-result');
+  const fixMsg = $('#rs-alarm-fix-msg');
+  const fixList = $('#rs-alarm-fix-list');
+  // Die zuletzt gezeigte Meldung -- der Fix-Knopf braucht ihre id, wenn er
+  // gedrueckt wird, und kein zweites Argument passt hier ohne die bestehende
+  // onSelect(def)-Schnittstelle der Annunciator-Klasse anzufassen.
+  let helpDef = null;
+
   const showAlarmHelp = (def) => {
+    helpDef = def;
     const helpKey = def.key + '_help';
     setText($('#rs-alarm-help-title'), t(def.key));
-    setText($('#rs-alarm-help-text'), has(helpKey) ? t(helpKey) : t('alarm_help_none'));
+    renderHelpText($('#rs-alarm-help-text'), has(helpKey) ? t(helpKey) : t('alarm_help_none'));
+    fixResult.hidden = true;
+    fixList.replaceChildren();
+    setText(fixMsg, '');
+    // Nur echte Meldungen haben eine id (ein Protokolleintrag wie "SCRAM
+    // ausgeloest" hat keine, siehe sim/trips.js) -- und nur wenn der Spieler
+    // die Hilfe im Startbildschirm eingeschaltet hat (Standard: an).
+    fixBtn.hidden = !helperEnabled || !def.id;
     alarmHelp.hidden = false;
   };
   $('#rs-alarm-help-close').addEventListener('click', () => { alarmHelp.hidden = true; });
@@ -347,26 +398,93 @@ export function buildPanels(engine, render, geiger) {
     if (ev.key === 'Escape' && !alarmHelp.hidden) alarmHelp.hidden = true;
   });
 
-  const annun = new Annunciator($('#rs-annun'), $('#rs-log'), sp.trips || [], showAlarmHelp);
+  // Dasselbe Fenster wie fuer Meldetafel-Kacheln, nur ohne den Beheben-Knopf
+  // -- ein Rundinstrument ist kein anstehender Fehler, den man quittiert,
+  // sondern ein Wert, den man nachschlaegt. helpDef bleibt dabei unberuehrt:
+  // der Fix-Knopf hat so nichts zu tun, ganz gleich was zuletzt offen war.
+  const showGaugeHelp = (label, ...helpKeys) => {
+    setText($('#rs-alarm-help-title'), label);
+    // Mehrere Schluessel werden aneinandergehaengt: der Netzauftrag erklaert
+    // erst seine Mechanik und dann, was an DIESEM Reaktortyp zu tun ist
+    // (siehe ui/dispatch.js). Ein fehlender Teil faellt heraus statt seinen
+    // Schluesselnamen ins Fenster zu schreiben.
+    const text = helpKeys.filter((key) => has(key)).map((key) => t(key)).join('\n\n');
+    renderHelpText($('#rs-alarm-help-text'), text || t('alarm_help_none'));
+    fixResult.hidden = true;
+    fixList.replaceChildren();
+    setText(fixMsg, '');
+    fixBtn.hidden = true;
+    alarmHelp.hidden = false;
+  };
+  // Jedes Rundinstrument bekommt sein eigenes gauge_<name>_help -- Kern-,
+  // Primaer- und Sekundaerkreis-Instrumente in einem Rutsch, dieselbe
+  // Klick/Tastatur-Behandlung wie eine Meldetafel-Kachel (siehe annunciator.js).
+  for (const x of [...gCore, ...gPrim, ...gSec]) {
+    if (!x.key) continue;
+    const node = x.g.node;
+    node.setAttribute('role', 'button');
+    node.setAttribute('tabindex', '0');
+    const label = node.querySelector('.rs-gauge-label').textContent;
+    // Zweiter, typeigener Schluessel: <key>_<reaktortyp>. Er ist optional --
+    // has() laesst ihn weg, wo es ihn nicht gibt --, und er loest ein Problem,
+    // das der gemeinsame Text nicht loesen kann: dieselbe Kachel bedeutet je
+    // Typ etwas anderes. Der Leistungsbegrenzer etwa (plants/pwr.js
+    // _limitedDemand) gilt nur fuer den turbinengefuehrten Druckwasserreaktor,
+    // stuende aber im gemeinsamen Text bei allen drei.
+    const keys = [x.key, `${x.key}_${sp.id}`];
+    node.addEventListener('click', () => showGaugeHelp(label, ...keys));
+    node.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); showGaugeHelp(label, ...keys); }
+    });
+  }
+
+  // Automatischer Helfer (game/helper.js): fuehrt die im Hilfetext oben
+  // beschriebene Bedienhandlung selbst aus und sagt genau, was er getan hat
+  // -- als Liste hier im Dialog UND als Protokolleintraege in der Meldetafel
+  // (annun.log() weiter unten definiert; der Klick kommt immer erst, NACHDEM
+  // buildPanels() zurueckgekehrt ist, also existiert annun laengst).
+  fixBtn.addEventListener('click', () => {
+    if (!helperEnabled || !helpDef || !helpDef.id) return;
+    const { status, actions } = runHelper(engine, sp.id, helpDef.id);
+    fixResult.hidden = false;
+    if (status === 'fixed') {
+      setText(fixMsg, t('alarm_fix_heading'));
+      fixList.replaceChildren(...actions.map((a) => el('li', null, [t(a.key, a.params)])));
+      annun.log(actions.map((a) => ({ t: s.t_sim, key: a.key, params: a.params, severity: 1 })));
+    } else {
+      fixList.replaceChildren();
+      setText(fixMsg, t(status === 'none' ? 'alarm_fix_none' : 'alarm_fix_unfixable'));
+    }
+  });
+
+  // engine.trips.defs statt sp.trips: enthaelt dieselbe Liste PLUS die
+  // Szenario-eigenen Meldungen (opts.extraTrips, siehe sim/engine.js) -- ohne
+  // die hier mitzugeben, haette z.B. "Netzanforderung verfehlt" keine Kachel
+  // auf der Meldetafel, obwohl die Engine sie laengst mitfuehrt (Hupe und
+  // Protokolleintrag kaemen trotzdem, nur die blinkende Kachel fehlte).
+  const annun = new Annunciator($('#rs-annun'), $('#rs-log'), engine.trips.defs, showAlarmHelp);
   const horn = new Horn();
   let hornNext = 0;
 
-  $('#rs-ack').addEventListener('click', () => { horn.unlock(); engine.trips.ack(); });
+  $('#rs-ack').addEventListener('click', () => { horn.unlock(); horn.ack(); record(engine, 'ack', null); });
   // "Rückstellen" räumt nicht nur die Meldetafel auf, sondern gibt bei
   // stehendem SCRAM auch den Reaktorschutz frei -- sonst blieben die Stäbe
   // nach einer Schnellabschaltung für den Rest des Laufs auf "ganz rein"
   // verriegelt, ganz gleich was der Bediener an den Stäben einstellt. Wie bei
   // der Meldetafel gilt: eine noch anstehende Ursache lässt sich nicht
   // wegdrücken, resetScram() gibt in dem Fall nur false zurück.
-  $('#rs-alarm-reset').addEventListener('click', () => {
-    engine.trips.reset();
-    engine.resetScram();
-  });
+  $('#rs-alarm-reset').addEventListener('click', () => record(engine, 'reset', null));
 
   // ── Nachführung ────────────────────────────────────────────────────────────
-  const statusBar = $('#rs-status-alarm');
+  // tabAlarm ist der Tab-Reiter (nur auf dem Handy sichtbar, die Tabbar
+  // verschwindet ab 1024px); alarmHeader ist die Kopfzeile der Meldetafel
+  // selbst, die im Desktop-Raster stattdessen gleichzeitig mit allen anderen
+  // Kacheln dasteht. Beide bekommen dieselben data-sev/data-unack wie die
+  // Kacheln (siehe annunciator.css) -- kein eigener Statusbalken mehr, der
+  // beim Auftauchen Inhalte darunter verschiebt.
+  const statusBar = $('#rs-status');
   const tabAlarm = $('#rs-tab-alarm-label');
-  const promptNode = $('#rs-prompt');
+  const alarmHeader = $('#rs-p-alarm > .rs-panel-h');
 
   render.add('gauge', () => {
     const d = engine.derive();
@@ -378,6 +496,17 @@ export function buildPanels(engine, render, geiger) {
 
   render.add('text', () => {
     const d = engine.derive();
+    // Einmal geholt, dreifach gebraucht (Abweichungs-Farbe unten, Meldetafel,
+    // Alarm-Schwere) -- baut sonst denselben Array drei Mal im selben Bild.
+    const tiles = engine.trips.tiles();
+    const isTileActive = (tile) => tile.tile === 'new' || tile.tile === 'ack';
+    // Hoechste anstehende Schwere unter den gegebenen Kachel-IDs, oder 0 --
+    // fuer die Farbe einzelner Werte (z.B. "Abweichung"), die an einer
+    // Meldung haengen, aber nicht selbst eine Panel-Grenzwertprobe sind.
+    const severityOf = (...ids) => ids.reduce((worst, id) => {
+      const tile = tiles.find((tl) => tl.id === id);
+      return tile && isTileActive(tile) ? Math.max(worst, tile.severity) : worst;
+    }, 0);
 
     // Auch die groß gedruckten Leitwerte in der Statuszeile bekommen eine
     // Zustandsfarbe statt fest verdrahtetem Blau -- sonst sieht eine Anlage,
@@ -385,10 +514,20 @@ export function buildPanels(engine, render, geiger) {
     // einzigen immer sichtbaren Zeile genauso ruhig aus wie im Normalbetrieb.
     put('power_th_pct', num(d.power_th_pct, 1) + U('unit_percent'),
         d.power_th_pct >= 110 ? 3 : (d.power_th_pct >= 100 ? 1 : 0));
+    // Dieselbe Schwelle wie oben, nur an der Prozentzahl gemessen statt am
+    // MW-Wert selbst -- die Nennleistung unterscheidet sich je Reaktortyp
+    // (sp.P0_th), der Grenzwert in Prozent nicht.
+    put('power_th_mw', num(d.P_th, 0) + U('unit_mwth'),
+        d.power_th_pct >= 110 ? 3 : (d.power_th_pct >= 100 ? 1 : 0));
     put('power_e', num(s.P_e, 0) + U('unit_mwe'),
         s.turbineTripped ? 2 : (!s.breaker && s.P_demand > 0 ? 1 : 0));
     put('demand', num(s.P_demand, 0) + U('unit_mwe'));
-    put('deviation', (d.deviation >= 0 ? '+' : '') + num(d.deviation, 0) + U('unit_mwe'));
+    // Farbe kommt von der Meldetafel-Kachel (siehe game/scenario.js,
+    // gridDeviationTrips()), nicht von einer eigenen Schwelle hier: nur ein
+    // Szenario mit grid_deviation-Fail hat die Kacheln ueberhaupt, sonst
+    // liefert severityOf() 0 und die Anzeige bleibt ungefaerbt wie bisher.
+    put('deviation', (d.deviation >= 0 ? '+' : '') + num(d.deviation, 0) + U('unit_mwe'),
+        severityOf('grid_deviation_warn', 'grid_deviation_trip'));
     put('t_avg', num(d.T_avg - 273.15, 1) + U('unit_celsius'));
     put('t_hot', num(d.T_hot - 273.15, 1) + U('unit_celsius'));
     put('t_cold', num(d.T_cold - 273.15, 1) + U('unit_celsius'));
@@ -416,6 +555,12 @@ export function buildPanels(engine, render, geiger) {
     put('period', fmtPeriod(d.period), periodDanger ? 3 : (periodWarn ? 1 : 0));
     put('freq', num(s.f_grid, 2) + U('unit_hz'));
     put('clock', clock(s.t_sim));
+    // Tageszeit statt Betriebszeit -- nur dort belegt, wo ein Szenario seinen
+    // Ablauf auf eine echte Uhr legt (bisher allein die Nacht zum 26.04.,
+    // siehe chernobylTutorial.js: ctx.wallClock ist der Versatz zu t_sim).
+    // Ueberall sonst bleibt die Kachel auf "—", wie orm beim DWR.
+    put('wallclock', Number.isFinite(ctx.wallClock)
+      ? clockOfDay(s.t_sim + ctx.wallClock) : t('state_none'));
     put('subcool', num(d.subcooling, 1) + U('unit_kelvin'), d.subcooling < 8 ? 3 : (d.subcooling < 15 ? 1 : 0));
     put('dnbr', num(d.dnbr, 2), d.dnbr < 1.3 ? 3 : (d.dnbr < 1.8 ? 1 : 0));
     // Gesamtreaktivitaet als reine Zahl -- dieselben Baender wie das
@@ -434,8 +579,13 @@ export function buildPanels(engine, render, geiger) {
     put('w_steam', num(s.W_steam, 0) + U('unit_kgs'));
     put('gov', num(ctxPos(ctx.govValve) * 100, 0) + U('unit_percent'));
     put('p_cond', num(s.p_cond, 3) + U('unit_bar'));
-    put('l_sg', num(d.L_sg * 100, 0) + U('unit_percent'),
-        d.L_sg < 0.25 ? 3 : (d.L_sg < 0.32 || d.L_sg > 0.78 ? 1 : 0));
+    // Kuehlwassertemperatur: erklaert den Kondensatordruck darueber. Im
+    // Sommer steht hier eine hohe Zahl, und deshalb ist die Abendspitze mit
+    // dieser Anlage nicht mehr ganz zu decken (siehe game/season.js).
+    put('t_cw', num(s.T_cw - 273.15, 1) + U('unit_celsius'));
+    const levelLost = sp.id === 'bwr' && !s.dcPower;
+    put('l_sg', levelLost ? t('diag_unavailable') : num(d.L_sg * 100, 0) + U('unit_percent'),
+        levelLost ? 2 : (d.L_sg < 0.25 ? 3 : (d.L_sg < 0.32 || d.L_sg > 0.78 ? 1 : 0)));
     put('w_fw', num(s.W_fw, 0) + U('unit_kgs'));
     put('breaker', t(s.breaker ? 'state_on' : 'state_off'));
     put('xenon', num(s.X * 100, 1) + U('unit_percent'));
@@ -474,32 +624,48 @@ export function buildPanels(engine, render, geiger) {
     put('h2_mass', s.h2Mass === undefined ? t('state_none') : num(s.h2Mass, 1) + U('unit_kg'),
         s.h2Mass === undefined ? undefined : (s.h2Mass > 40 ? 3 : (s.h2Mass > 15 ? 1 : 0)));
 
-    rho.set(d.breakdown, d.rho);
-    pumps.set(d.pumpStates || []);
+    rho.set(d.breakdown, d.rho, rhoScale);
+    pumps.set(d.pumpStates || [], d.pumpStuckList);
+    diagnostics.set();
+    rbmkFeedDiagnostics?.set(d);
     demand.set(Math.round(s.P_demand));
-    turbineResume.disabled = !s.turbineTripped || s.scram.active;
+    // Auch bei bloss offenem Generatorschalter (Netzabwurf) -- dieselbe
+    // Bedingung wie engine.resumeTurbine(), sonst stuende der Knopf grau vor
+    // einem Zustand, den er aufloesen koennte.
+    turbineResume.disabled = (!s.turbineTripped && s.breaker !== false) || s.scram.active;
     if (rodAuto && rodCtl) rodAuto.set(rodCtl.auto);
     govStation.set();
     fwStation.set();
     for (const x of extras) if (x.set) x.set(s, d);
 
-    promptNode.hidden = !s.promptCritical;
-
     // Meldetafel und Protokoll
-    annun.update(engine.trips.tiles());
+    annun.update(tiles);
     const entries = engine.drainLog();
     if (entries.length) annun.log(entries);
 
-    let worst = 0, worstKey = null;
-    for (const tile of engine.trips.tiles()) {
-      if (tile.tile === 'new' || tile.tile === 'ack') {
-        if (tile.severity > worst) { worst = tile.severity; worstKey = tile.key; }
-      }
+    let worst = 0;
+    for (const tile of tiles) {
+      if ((tile.tile === 'new' || tile.tile === 'ack') && tile.severity > worst) worst = tile.severity;
     }
-    setAttr(statusBar, 'data-sev', worst);
-    put('worst_alarm', worstKey ? t(worstKey) : t('status_alarm_none'));
+    // Bis 0.1.32 stand der schwerste Zustand zusaetzlich als eigene Zeile in
+    // der Kopfzeile -- verschob beim Auftauchen alles darunter und
+    // wiederholte nur, was auf der Meldetafel eh schon steht. Jetzt faerben
+    // sich Tab-Reiter (Handy, Tabbar) und Meldetafel-Kopfzeile selbst
+    // (Desktop-Raster, wo es keine Tabbar gibt) -- dieselbe Farbe/Blinken wie
+    // eine Kachel, so lange etwas weder quittiert noch rueckgestellt ist.
     setAttr(tabAlarm, 'data-sev', worst);
     setAttr(tabAlarm, 'data-unack', engine.trips.horn ? '1' : '0');
+    setAttr(alarmHeader, 'data-sev', worst);
+    setAttr(alarmHeader, 'data-unack', engine.trips.horn ? '1' : '0');
+
+    // Der Kopf blinkt, solange die Schnellabschaltung steht (RESA bei DWR
+    // und SWR, AZ-5 beim RBMK -- derselbe Merker, nur ein anderer Name auf
+    // dem Schild). Die Meldetafel sagt es zwar auch, aber sie ist im
+    // Handy-Raster hinter einem Reiter, und wer gerade eine Transiente
+    // faehrt, schaut auf die Zahlen oben. Anders als die Kacheln haengt das
+    // NICHT an "quittiert": eine abgeschaltete Anlage bleibt abgeschaltet,
+    // auch wenn die Hupe laengst aus ist, und genau das soll zu sehen sein.
+    setAttr(statusBar, 'data-scram', s.scram.active ? '1' : '0');
 
     // Hupe im Takt der blinkenden Kachel -- laeuft als Dauerschleife, solange
     // etwas unquittiert ist (siehe Horn.alarm()), und wird sofort abgestellt,
@@ -510,15 +676,6 @@ export function buildPanels(engine, render, geiger) {
     } else {
       horn.silence();
     }
-    // Geigerzähler: tickt immer ein bisschen, schneller mit der schwersten
-    // anstehenden Meldung -- dieselbe worst-Kennzahl wie oben, keine eigene
-    // Berechnung noetig.
-    if (geiger) geiger.step(worst, nowMs);
-  });
-
-  render.add('trend', () => {
-    const d = engine.derive();
-    for (const r of trends) { r.sample(s, d); r.draw(); }
   });
 
   if (mimic) {
@@ -527,7 +684,7 @@ export function buildPanels(engine, render, geiger) {
     // zählt mit: die Ursache ist zwar weg, aber noch nicht quittiert, und
     // genau das soll am Bauteil noch sichtbar sein.
     const alarmComponents = sp.alarmComponents || {};
-    render.add('mimic', () => {
+    render.add('mimic', (_state, now) => {
       const alarms = new Map();
       for (const tile of engine.trips.tiles()) {
         if (tile.tile === 'normal') continue;
@@ -535,11 +692,23 @@ export function buildPanels(engine, render, geiger) {
         if (!key) continue;
         if (!alarms.has(key) || alarms.get(key) < tile.severity) alarms.set(key, tile.severity);
       }
-      mimic.update(s, engine.derive(), sp, alarms);
+      // now: fuer das kurze Aufblinken der Steuerstab-Anzeige bei Bewegung
+      // (siehe mimic.js rodTracker()).
+      mimic.update(s, engine.derive(), sp, alarms, now);
     });
   }
 
-  return { horn };
+  // annun: main.js braucht sie einmalig nach dem Laden eines Spielstands, um
+  // ctx.history (siehe sim/engine.js) ins Log-Panel nachzutragen -- das Panel
+  // selbst startet immer mit leerem DOM (siehe Annunciator-Konstruktor).
+  return { horn, jogRod, rodSound, annun,
+    sampleTrends: trendView.sampleTrends,
+    // Dasselbe Hilfefenster, das ein Rundinstrument oeffnet -- damit
+    // ui/dispatch.js den Netzauftrag erklaeren kann, ohne sich ein zweites
+    // Fenster zu bauen. Uebergabe statt Import: die Funktion lebt in dieser
+    // Closure (sie kennt helperEnabled und die Dialogknoten).
+    showHelp: showGaugeHelp,
+  };
 }
 
 function ctxPos(valve) { return valve ? valve.pos : 0; }

@@ -19,8 +19,8 @@
 // Die Kachelzustände folgen der Ringback-Folge nach ISA-18.2:
 //
 //   normal → new (schnelles Blinken, Hupe) → ack (Dauerlicht)
-//          → clear (langsames Blinken, wenn die Ursache weg, aber nicht
-//                   quittiert wurde) → normal
+//          → clear (langsames Blinken, Hupe läuft weiter, weil unquittiert,
+//                   auch wenn die Ursache schon weg ist) → normal
 //
 // Dass Quittieren eine eigene Handlung ist, ist Absicht: unquittierte
 // Alarmsekunden gehen in die Wertung ein.
@@ -83,8 +83,15 @@ export class TripSystem {
         this.events.push({ t: s.t_sim, id: def.id, key: def.key, severity: def.severity, kind: 'off' });
       }
 
-      if (st.tile === 'new') { st.unackS += dt; horn = true; }
-      if (st.tile === 'clear') st.unackS += dt;
+      // Hupe UND Kachel-Blinken laufen fuer 'new' UND 'clear' -- eine kurz
+      // aufblitzende Stoerung, die von selbst wieder weg ist, bevor jemand
+      // quittiert, darf die Hupe nicht schon verstummen lassen. Vorher stand
+      // hier nur 'new': eine Sirene, die gerade erst zwei Sekunden lief,
+      // wurde mitten im Ton abgewuergt (silence()), sobald die Bedingung
+      // verschwand -- der seit 0.0.74 geplante Dauerton nach der Sirene kam
+      // dadurch praktisch nie an, weil viele Ausloesungen kuerzer stehen als
+      // die Sirene selbst laeuft.
+      if (st.tile === 'new' || st.tile === 'clear') { st.unackS += dt; horn = true; }
 
       if (st.latched && def.severity > worst) { worst = def.severity; worstId = def.id; }
     }
@@ -131,5 +138,42 @@ export class TripSystem {
     const e = this.events;
     this.events = [];
     return e;
+  }
+
+  /** Quittierstatus je Kachel sichern -- fuer Spielstaende (siehe persist.js),
+   *  damit eine quittierte Meldung nach dem Laden quittiert bleibt, statt
+   *  erneut aufzublinken und die Hupe neu loszutreten. `def` (die Funktionen
+   *  darin) kommt bewusst NICHT mit: die serialisieren nicht und muessen es
+   *  auch nicht -- dieselbe TripSystem-Instanz bringt ihre defs beim Bauen
+   *  schon mit, nur der veraenderliche Zustand je Kachel wird gebraucht. */
+  snapshot() {
+    const out = {};
+    for (const [id, st] of this.states) {
+      out[id] = {
+        active: st.active, latched: st.latched, tile: st.tile,
+        tOn: st.tOn, tOff: st.tOff, since: st.since, unackS: st.unackS,
+      };
+    }
+    return out;
+  }
+
+  /** Gegenstueck zu snapshot(). Eine id, die es in DIESER Instanz nicht
+   *  (mehr) gibt -- z.B. ein Szenario-Trip aus einem anderen Lauf -- wird
+   *  stillschweigend uebersprungen, statt den Ladevorgang scheitern zu
+   *  lassen; ein alter Spielstand ohne dieses Feld liess frueher jede
+   *  Kachel einfach auf "normal" stehen (wie bisher), auch das bleibt so. */
+  restore(data) {
+    if (!data || typeof data !== 'object') return;
+    for (const [id, st] of this.states) {
+      const d = data[id];
+      if (!d || typeof d !== 'object') continue;
+      st.active = !!d.active;
+      st.latched = !!d.latched;
+      st.tile = ['normal', 'new', 'ack', 'clear'].includes(d.tile) ? d.tile : 'normal';
+      st.tOn = Number(d.tOn) || 0;
+      st.tOff = Number(d.tOff) || 0;
+      st.since = Number(d.since) || 0;
+      st.unackS = Number(d.unackS) || 0;
+    }
   }
 }
