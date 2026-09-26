@@ -71,7 +71,12 @@ OUTCOMES = (OUTCOME_COMPLETED, OUTCOME_FAILED, OUTCOME_DESTROYED, OUTCOME_ABORTE
 # Dauerschluessel wird.
 RESET_TTL_S = 2 * 3600
 
-_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+# Domainteil als punktfreie Segmente, durch genau einen Punkt getrennt. Die
+# alte Form `[^@\s]+\.[^@\s]+` liess den Punkt in beide Klassen fallen: bei
+# einer langen Domain ohne Treffer probierte die Engine jede Stelle als
+# Trennpunkt durch -- quadratisch (CodeQL py/polynomial-redos). Hier gibt es
+# fuer jede Adresse genau eine Zerlegung.
+_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$')
 
 # Wie in auth.py: kein Zeichen, das sich beim Abtippen oder in einer
 # Protokollzeile missverstehen laesst -- das erzeugte Passwort wird dem Admin

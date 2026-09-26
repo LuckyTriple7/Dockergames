@@ -98,7 +98,7 @@ def test_admin_can_create_a_player_with_own_password(admin):
     assert lr.status_code == 302
 
 
-@pytest.mark.parametrize('email', ['not-an-email', '', '   ', 'a@b'])
+@pytest.mark.parametrize('email', ['not-an-email', '', '   ', 'a@b', 'a@b.', 'a@.b', 'a@b..c'])
 def test_bad_email_rejected(admin, email):
     mod, c = admin
     r = c.post('/admin/users', data={'email': email, 'password': '', 'csrf': _admin_csrf(c)})

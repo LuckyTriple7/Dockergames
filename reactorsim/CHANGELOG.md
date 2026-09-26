@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.35
+
+- 🔒 **E-Mail-Prüfung ohne quadratisches Backtracking** (CodeQL
+  `py/polynomial-redos`, `users.py`). `_EMAIL_RE` prüfte den Domainteil als
+  `[^@\s]+\.[^@\s]+` -- der Punkt passte in beide Klassen, und bei einer
+  Domain ohne Treffer probierte die Engine jede Stelle als Trennpunkt
+  durch. Mit 20.000 Punkten brauchte eine einzige Prüfung knapp drei
+  Sekunden. Die 254-Zeichen-Grenze davor hielt das im Betrieb klein, aber
+  sie stand nur zufällig vor dem Regex.
+
+  Der Domainteil besteht jetzt aus punktfreien Segmenten, getrennt durch
+  genau einen Punkt: für jede Adresse gibt es nur noch eine Zerlegung.
+  Nebenbei fällt `a@b..c` durch, das vorher als gültig galt. Der Test für
+  abgewiesene Adressen prüft dazu `a@b.`, `a@.b` und `a@b..c`.
+
 ## 0.6.34
 
 - 🔊 **Die Explosion hat jetzt ihren eigenen Klang**
