@@ -6,7 +6,7 @@
 // vorher fertig sein soll -- der Ton kam also, wenn alles vorbei war.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { createEndSounds } from '../static/js/game/endSounds.js';
 
 function fakeHorn() {
@@ -82,8 +82,11 @@ test('der Endbildschirm spielt keinen Klang mehr', () => {
 
 test('der Explosionsklang ist von der Kernzerstoerung getrennt', () => {
   const annun = readFileSync(new URL('../static/js/ui/annunciator.js', import.meta.url), 'utf8');
-  // Noch derselbe Clip, aber schon eine eigene Stelle: liegt der eigene
-  // Klang vor, wird EXPLOSION_CLIP umgesetzt und sonst nichts.
-  assert.match(annun, /const EXPLOSION_CLIP = '[\w.-]+';/);
+  // Eigener Clip, nicht der der Kernzerstoerung -- und die Datei muss auch
+  // wirklich ausgeliefert werden, sonst bleibt die Explosion still.
+  const m = annun.match(/const EXPLOSION_CLIP = '([\w.-]+)';/);
+  assert.ok(m, 'EXPLOSION_CLIP fehlt');
+  assert.notEqual(m[1], 'game_over.mp3');
+  assert.ok(existsSync(new URL(`../static/audio/${m[1]}`, import.meta.url)), `${m[1]} fehlt in static/audio`);
   assert.match(annun, /explosion\(\)\s*\{\s*if \(this\.enabled\) playClip\(EXPLOSION_CLIP\);/);
 });

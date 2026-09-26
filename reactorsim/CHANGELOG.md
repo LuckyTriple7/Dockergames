@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.34
+
+- 🔊 **Die Explosion hat jetzt ihren eigenen Klang**
+  (`reactor-explosion.mp3`). Bisher spielte sie denselben Clip wie die
+  Kernzerstörung (`game_over.mp3`) -- im Tschernobyl-Szenario hörte man
+  also zweimal dasselbe: erst beim Brennstoffversagen, dann noch einmal,
+  wenn der obere Schild abhebt. Die Weiche dafür war seit dem Einbau von
+  `endSounds.js` vorbereitet, es wurde nur `EXPLOSION_CLIP` in
+  `annunciator.js` umgesetzt. Gilt ebenso für die Wasserstoffexplosion
+  im SWR.
+
+  Der Test prüft jetzt außerdem, dass der Clip nicht `game_over.mp3` ist
+  und die Datei in `static/audio/` wirklich liegt -- ein Tippfehler im
+  Namen hätte die Explosion sonst stumm gemacht, ohne dass etwas auffällt.
+
 ## 0.6.33
 
 - 🐛 **0.6.32 hat dem Spieler den Leitstand nackt hingestellt.** Um dem
